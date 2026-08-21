@@ -1,0 +1,515 @@
+# VAWLUME built-in extractor-output mapping profile: DeepSqueak
+# Drafted from the VAWLUME DeepSqueak design reference and checked against
+# the current DeepSqueak v3.x repository/export implementation.
+#
+# This is a SOURCE-MAPPING profile, not a database schema. Canonical level
+# and field names are deliberately abstract so the relational schema can be
+# designed around the semantics established here.
+
+profile:
+  id: "vawlume.deepsqueak.output.v3_2"
+  name: "DeepSqueak v3.2 extractor-output mapping"
+  kind: "extractor_output"
+  profile_schema_version: "0.1-draft"
+  status: "built_in_template_draft"
+
+extractor:
+  name: "DeepSqueak"
+  version_scope:
+    preferred: "3.2.x"
+    compatible_family: "3.x"
+  implementation_language: "MATLAB"
+  version_required_at_ingest: true
+
+mapping_policy:
+  preserve_native_names: true
+  preserve_raw_values: true
+  preserve_unmapped_fields: true
+  preserve_artifact_hierarchy: true
+  normalize_units_without_overwriting_native_values: true
+  unknown_fields: "preserve_and_warn"
+  missing_expected_fields: "warn_or_fail_by_requiredness"
+  level_equivalence_does_not_imply_metric_equivalence: true
+  class_level_equivalence_does_not_imply_category_identity: true
+
+# Shared equivalence classes are the bridge across extractor profiles.
+# A DeepSqueak "call" and a MUPET "syllable" can therefore converge on the
+# same canonical event level without pretending their boundaries are identical.
+level_mappings:
+  - native_level: "audio_file"
+    native_singular: "audio file"
+    canonical_level: "recording"
+    equivalence_class: "source_recording"
+    mapping_strength: "structural_semantic"
+
+  - native_level: "detection_processing_context"
+    native_singular: "detection run"
+    canonical_level: "extraction_run"
+    equivalence_class: "extractor_processing_run"
+    mapping_strength: "structural_semantic"
+    instantiate_from:
+      - "source recording identity"
+      - "detection settings"
+      - "detector network identity"
+      - "native detection artifact"
+
+  - native_level: "Calls"
+    native_singular: "call"
+    canonical_level: "event"
+    canonical_subtype: "vocalization_detection"
+    equivalence_class: "vocalization_event"
+    mapping_strength: "structural_semantic"
+    metric_identity_assumed: false
+
+  - native_level: "call_label_or_type"
+    native_singular: "call label"
+    canonical_level: "event_annotation"
+    equivalence_class: "extractor_native_class_assignment"
+    mapping_strength: "structural_only"
+    notes:
+      - "A DeepSqueak label may be manual, supervised, or clustering-derived."
+      - "Do not infer a classification run from the label alone when its provenance is unavailable."
+
+  - native_level: "classification_or_clustering_run"
+    native_singular: "classification/clustering run"
+    canonical_level: "classification_run"
+    equivalence_class: "extractor_classification_run"
+    mapping_strength: "structural_semantic"
+
+  - native_level: "class_or_cluster"
+    native_singular: "class/cluster"
+    canonical_level: "classification_class"
+    equivalence_class: "extractor_native_class"
+    mapping_strength: "structural_only"
+    notes:
+      - "Class identity is model/run scoped."
+      - "No automatic identity with MUPET repertoire units or laboratory taxonomies."
+
+artifact_discovery:
+  root_mode: "user_supplied"
+
+  artifacts:
+    - artifact_key: "native_detection"
+      canonical_artifact_type: "native_processed_event_container"
+      native_artifact_type: "DeepSqueak detection file"
+      format: "mat"
+      include:
+        glob:
+          - "*.mat"
+          - "**/*.mat"
+      priority: "preferred_for_provenance"
+      ingest_phase: "prototype_optional"
+      expected_contents:
+        - "audio path/information"
+        - "Calls"
+        - "detection metadata"
+      hierarchy_emitted:
+        - "recording"
+        - "extraction_run"
+        - "event"
+      provenance_sources:
+        - "detection settings"
+        - "detection time"
+        - "detector network identity"
+        - "audio linkage"
+
+    - artifact_key: "event_stats_excel"
+      canonical_artifact_type: "event_export"
+      native_artifact_type: "DeepSqueak Excel call-statistics export"
+      format: "xlsx"
+      include:
+        glob:
+          - "*_Stats.xlsx"
+      priority: "prototype_primary"
+      ingest_phase: "prototype_required"
+      table:
+        sheet_selector: "first_sheet"
+        header_row: 1
+      row_level: "event"
+      hierarchy_emitted:
+        - "native_detection_artifact_reference"
+        - "event"
+        - "event_measurement"
+
+    - artifact_key: "detector_network"
+      canonical_artifact_type: "detector_model"
+      native_artifact_type: "DeepSqueak detector network"
+      format: "mat_or_version_specific"
+      priority: "provenance_when_available"
+      ingest_phase: "prototype_optional"
+      checksum_when_available: true
+
+    - artifact_key: "classification_model"
+      canonical_artifact_type: "classification_model"
+      native_artifact_type: "DeepSqueak classifier/clustering model"
+      format: "version_specific"
+      priority: "optional"
+      ingest_phase: "future_or_when_available"
+      hierarchy_emitted:
+        - "classification_run"
+        - "classification_class"
+
+recording_linkage:
+  preferred_order:
+    - method: "source_audio_checksum"
+      strength: "strongest"
+    - method: "persistent_vawlume_recording_id"
+      strength: "strong"
+    - method: "native_detection_audio_path_metadata"
+      strength: "strong_if_resolved"
+    - method: "documented_relative_path"
+      strength: "moderate"
+    - method: "filename"
+      strength: "weak_fallback"
+  excel_file_column:
+    source_field: "File"
+    maps_to: "native_detection_artifact_path"
+    notes:
+      - "Current v3.x export code writes the selected call/detection file path here."
+      - "Do not treat this field as the source WAV path without resolving the detection artifact."
+
+event_identity:
+  canonical_level: "event"
+  native_id:
+    source_field: "ID"
+    canonical_field: "native_event_id"
+    scope:
+      - "event_stats_excel artifact"
+      - "native detection artifact"
+  stable_cross_artifact_identifier: false
+  vawlume_id_required: true
+
+field_mappings:
+  # Artifact/event identity and annotation fields
+  - source_field: "File"
+    aliases: []
+    target_level: "extractor_artifact"
+    canonical_field: "native_detection_artifact_path"
+    data_type: "string"
+    semantic_role: "artifact_locator"
+    equivalence_class: "native_detection_artifact_reference"
+    preserve_raw: true
+
+  - source_field: "ID"
+    aliases: []
+    target_level: "event"
+    canonical_field: "native_event_id"
+    data_type: "integer"
+    semantic_role: "identifier"
+    preserve_raw: true
+
+  - source_field: "Label"
+    aliases: []
+    target_level: "event_annotation"
+    canonical_field: "native_call_label"
+    data_type: "string"
+    semantic_role: "native_class_or_manual_label"
+    equivalence_class: "extractor_native_class_assignment"
+    preserve_raw: true
+
+  - source_field: "Accepted"
+    aliases: []
+    target_level: "event_annotation"
+    canonical_field: "native_review_status"
+    data_type: "integer"
+    native_unit: null
+    canonical_unit: null
+    allowed_raw_values: [0, 1]
+    value_mapping:
+      0: "rejected"
+      1: "accepted"
+    semantic_role: "curation_state"
+    treat_as_ground_truth: false
+    preserve_raw: true
+
+  - source_field: "Score"
+    aliases: []
+    target_level: "event_measurement"
+    canonical_field: "native_detection_score"
+    data_type: "float"
+    native_unit: null
+    canonical_unit: null
+    semantic_role: "detector_model_score"
+    equivalence_class: "detector_confidence_like_quantity"
+    cross_extractor_comparable_by_default: false
+    preserve_raw: true
+
+  # Timing
+  - source_field: "Begin Time (s)"
+    aliases: []
+    target_level: "event_measurement"
+    canonical_field: "call_start_time"
+    data_type: "float"
+    native_unit: "s"
+    canonical_unit: "s"
+    transform: "identity"
+    derivation_stage: "contour_derived"
+    equivalence_class: "vocalization_start_time"
+    cross_extractor_relationship: "comparable_same_intended_construct"
+    consilience_role: "primary"
+    preserve_raw: true
+
+  - source_field: "End Time (s)"
+    aliases: []
+    target_level: "event_measurement"
+    canonical_field: "call_end_time"
+    data_type: "float"
+    native_unit: "s"
+    canonical_unit: "s"
+    transform: "identity"
+    derivation_stage: "contour_derived"
+    equivalence_class: "vocalization_end_time"
+    cross_extractor_relationship: "comparable_same_intended_construct"
+    consilience_role: "primary"
+    preserve_raw: true
+
+  - source_field: "Call Length (s)"
+    aliases: []
+    target_level: "event_measurement"
+    canonical_field: "call_duration"
+    data_type: "float"
+    native_unit: "s"
+    canonical_unit: "s"
+    transform: "identity"
+    derivation_stage: "contour_derived"
+    operational_definition: "End Time - Begin Time"
+    equivalence_class: "vocalization_duration"
+    cross_extractor_relationship: "comparable_not_metric_equivalent"
+    consilience_role: "primary_or_supporting"
+    preserve_raw: true
+
+  # Frequency
+  - source_field: "Principal Frequency (kHz)"
+    aliases:
+      - "Principle Frequency (kHz)"
+    target_level: "event_measurement"
+    canonical_field: "contour_median_frequency"
+    broader_canonical_concept: "frequency_center"
+    data_type: "float"
+    native_unit: "kHz"
+    canonical_unit: "Hz"
+    transform: "kHz_to_Hz"
+    derivation_stage: "contour_derived"
+    operational_definition: "median frequency of the DeepSqueak contour"
+    equivalence_class: "vocalization_frequency_center"
+    cross_extractor_relationship: "comparable_not_equivalent_to_MUPET_mean_frequency"
+    consilience_role: "supporting"
+    preserve_raw: true
+
+  - source_field: "Low Freq (kHz)"
+    aliases: []
+    target_level: "event_measurement"
+    canonical_field: "frequency_min"
+    data_type: "float"
+    native_unit: "kHz"
+    canonical_unit: "Hz"
+    transform: "kHz_to_Hz"
+    derivation_stage: "contour_derived"
+    operational_definition: "lowest contour frequency"
+    equivalence_class: "vocalization_frequency_min"
+    cross_extractor_relationship: "comparable_method_specific"
+    consilience_role: "supporting"
+    preserve_raw: true
+
+  - source_field: "High Freq (kHz)"
+    aliases: []
+    target_level: "event_measurement"
+    canonical_field: "frequency_max"
+    data_type: "float"
+    native_unit: "kHz"
+    canonical_unit: "Hz"
+    transform: "kHz_to_Hz"
+    derivation_stage: "contour_derived"
+    operational_definition: "highest contour frequency"
+    equivalence_class: "vocalization_frequency_max"
+    cross_extractor_relationship: "comparable_method_specific"
+    consilience_role: "supporting"
+    preserve_raw: true
+
+  - source_field: "Delta Freq (kHz)"
+    aliases: []
+    target_level: "event_measurement"
+    canonical_field: "frequency_bandwidth"
+    data_type: "float"
+    native_unit: "kHz"
+    canonical_unit: "Hz"
+    transform: "kHz_to_Hz"
+    derivation_stage: "contour_derived"
+    operational_definition: "High Freq - Low Freq"
+    equivalence_class: "vocalization_frequency_bandwidth"
+    cross_extractor_relationship: "comparable_method_specific"
+    consilience_role: "supporting"
+    preserve_raw: true
+
+  - source_field: "Frequency Standard Deviation (kHz)"
+    aliases: []
+    target_level: "event_measurement"
+    canonical_field: "frequency_sd"
+    data_type: "float"
+    native_unit: "kHz"
+    canonical_unit: "Hz"
+    transform: "kHz_to_Hz"
+    derivation_stage: "contour_derived"
+    equivalence_class: "vocalization_frequency_sd"
+    cross_extractor_relationship: "no_direct_MUPET_event_csv_equivalent"
+    consilience_role: "none_by_default"
+    preserve_raw: true
+
+  - source_field: "Slope (kHz/s)"
+    aliases: []
+    target_level: "event_measurement"
+    canonical_field: "frequency_slope"
+    data_type: "float"
+    native_unit: "kHz/s"
+    canonical_unit: "Hz/s"
+    transform: "kHz_per_s_to_Hz_per_s"
+    derivation_stage: "contour_derived"
+    equivalence_class: "vocalization_frequency_slope"
+    cross_extractor_relationship: "no_direct_MUPET_event_csv_equivalent"
+    consilience_role: "none_by_default"
+    preserve_raw: true
+
+  - source_field: "Peak Freq (kHz)"
+    aliases:
+      - "Peak Freq"
+    target_level: "event_measurement"
+    canonical_field: "peak_frequency"
+    data_type: "float"
+    native_unit: "kHz"
+    canonical_unit: "Hz"
+    transform: "kHz_to_Hz"
+    derivation_stage: "contour_derived"
+    operational_definition: "contour frequency at highest contour power"
+    equivalence_class: "vocalization_peak_frequency"
+    cross_extractor_relationship: "no_clear_direct_MUPET_event_csv_equivalent"
+    consilience_role: "none_by_default"
+    preserve_raw: true
+
+  # Shape / power
+  - source_field: "Sinuosity"
+    aliases: []
+    target_level: "event_measurement"
+    canonical_field: "contour_sinuosity"
+    data_type: "float"
+    native_unit: "ratio"
+    canonical_unit: "ratio"
+    transform: "identity"
+    derivation_stage: "contour_derived"
+    equivalence_class: "vocalization_contour_sinuosity"
+    cross_extractor_relationship: "extractor_specific"
+    consilience_role: "none_by_default"
+    preserve_raw: true
+
+  - source_field: "Mean Power (dB/Hz)"
+    aliases:
+      - "Max Power"
+    target_level: "event_measurement"
+    canonical_field: "mean_power_spectral_density"
+    data_type: "float"
+    native_unit: "dB/Hz"
+    canonical_unit: "dB/Hz"
+    transform: "identity"
+    derivation_stage: "contour_derived"
+    equivalence_class: "vocalization_power_like_quantity"
+    cross_extractor_relationship: "related_not_equivalent_to_MUPET_energy_or_peak_amplitude"
+    consilience_role: "none_by_default"
+    preserve_raw: true
+    notes:
+      - "Historical documentation/header terminology is version-sensitive."
+      - "Do not collapse power, energy, and amplitude into one canonical metric."
+
+  - source_field: "Tonality"
+    aliases: []
+    target_level: "event_measurement"
+    canonical_field: "tonality"
+    data_type: "float"
+    native_unit: "ratio"
+    canonical_unit: "ratio"
+    transform: "identity"
+    derivation_stage: "contour_derived"
+    equivalence_class: "vocalization_tonality"
+    cross_extractor_relationship: "no_clear_direct_MUPET_event_csv_equivalent"
+    consilience_role: "none_by_default"
+    preserve_raw: true
+
+settings_capture:
+  canonical_level: "extraction_run"
+  preferred_source: "native_detection_metadata"
+  externalize_to: "settings_json"
+  required_status:
+    - "captured"
+    - "not_recoverable"
+  model_identity:
+    detector_network:
+      capture: true
+      checksum_when_available: true
+
+validation:
+  mode: "non_destructive"
+  checks:
+    - id: "event_time_order"
+      expression: "call_end_time >= call_start_time"
+      severity: "error"
+
+    - id: "duration_consistency"
+      expression: "call_duration ~= call_end_time - call_start_time"
+      tolerance_source: "profile_or_project_config"
+      severity: "warning"
+
+    - id: "frequency_order"
+      expression: "frequency_min <= frequency_max"
+      severity: "error"
+
+    - id: "bandwidth_consistency"
+      expression: "frequency_bandwidth ~= frequency_max - frequency_min"
+      tolerance_source: "profile_or_project_config"
+      severity: "warning"
+
+    - id: "native_event_id_uniqueness"
+      uniqueness_scope:
+        - "native_detection_artifact_path"
+        - "native_event_id"
+      severity: "error"
+
+    - id: "review_status_domain"
+      field: "native_review_status"
+      allowed_raw_values: [0, 1]
+      severity: "warning"
+
+    - id: "source_recording_linkage"
+      requirement: "resolve_or_explicitly_mark_unresolved"
+      severity: "error"
+
+provenance:
+  record:
+    - "mapping_profile_id"
+    - "mapping_profile_schema_version"
+    - "extractor_name"
+    - "extractor_version"
+    - "source_artifact_path"
+    - "source_artifact_checksum"
+    - "source_recording_linkage_method"
+    - "settings_artifact_or_status"
+    - "detector_network_identity_when_available"
+    - "native_field_name"
+    - "native_value"
+    - "native_unit"
+    - "canonical_field"
+    - "canonical_value"
+    - "canonical_unit"
+    - "transform_applied"
+  never_overwrite_native_values: true
+
+consilience_defaults:
+  event_matching:
+    primary_equivalence_classes:
+      - "vocalization_start_time"
+      - "vocalization_end_time"
+    supporting_equivalence_classes:
+      - "vocalization_duration"
+      - "vocalization_frequency_min"
+      - "vocalization_frequency_max"
+      - "vocalization_frequency_bandwidth"
+      - "vocalization_frequency_center"
+  empirical_thresholds:
+    source: "project_config_only"

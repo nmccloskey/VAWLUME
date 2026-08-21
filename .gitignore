@@ -1,0 +1,68 @@
+# ----------------------------------------------------------------------
+# VAWLUME local development / scratch
+# ----------------------------------------------------------------------
+.dev/
+
+# ----------------------------------------------------------------------
+# Local runtime data and generated outputs
+# ----------------------------------------------------------------------
+/data/
+/output/
+/outputs/
+/vawlume_data/
+
+# Generated SQLite databases and transient SQLite files.
+# Keep schema/seed/fixture SOURCE files tracked instead.
+*.sqlite
+*.sqlite3
+*.db
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.db-journal
+*.db-wal
+*.db-shm
+
+# ----------------------------------------------------------------------
+# MATLAB autosave / generated artifacts
+# Based on the standard MATLAB ignore categories used by GitHub/MathWorks.
+# ----------------------------------------------------------------------
+*.asv
+*.m~
+*.autosave
+*.slx.r*
+*.mdl.r*
+*.bak
+
+# Derived/compiled/package artifacts
+*.p
+*.mex*
+*.mlappinstall
+*.mltbx
+*.ctf
+
+# Generated help / code generation / caches
+helpsearch*/
+slprj/
+sccprj/
+codegen/
+*.slxc
+.buildtool/
+test-results/
+test-result/
+
+# MATLAB Drive marker
+.MATLABDriveTag
+
+# ----------------------------------------------------------------------
+# OS/editor noise
+# ----------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ----------------------------------------------------------------------
+# IMPORTANT: MATLAB Project metadata is intentionally NOT ignored.
+# Commit resources/project/ and other project-definition files generated
+# by MATLAB so project paths/settings remain reproducible.
+# ----------------------------------------------------------------------

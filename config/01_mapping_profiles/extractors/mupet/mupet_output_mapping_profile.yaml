@@ -1,0 +1,623 @@
+# VAWLUME built-in extractor-output mapping profile: MUPET
+# Drafted from the VAWLUME MUPET design reference and checked against the
+# MUPET v2.1 documentation/wiki and publication.
+#
+# This is a SOURCE-MAPPING profile, not a database schema. It preserves
+# MUPET-native hierarchy (workspace, data set, syllable, repertoire, RU,
+# refinement) while mapping only genuinely equivalent levels into a shared
+# VAWLUME semantic vocabulary.
+
+profile:
+  id: "vawlume.mupet.output.v2_1"
+  name: "MUPET v2.1 extractor-output mapping"
+  kind: "extractor_output"
+  profile_schema_version: "0.1-draft"
+  status: "built_in_template_draft"
+
+extractor:
+  name: "MUPET"
+  full_name: "Mouse Ultrasonic Profile ExTraction"
+  version_scope:
+    preferred: "2.1"
+  implementation_language: "MATLAB"
+  version_required_at_ingest: true
+
+mapping_policy:
+  preserve_native_names: true
+  preserve_raw_values: true
+  preserve_unmapped_fields: true
+  preserve_artifact_hierarchy: true
+  normalize_units_without_overwriting_native_values: true
+  unknown_fields: "preserve_and_warn"
+  missing_expected_fields: "warn_or_fail_by_requiredness"
+  level_equivalence_does_not_imply_metric_equivalence: true
+  class_level_equivalence_does_not_imply_category_identity: true
+  extractor_dataset_is_not_experimental_hierarchy_by_default: true
+
+level_mappings:
+  - native_level: "workspace"
+    native_singular: "workspace"
+    canonical_level: "extractor_workspace"
+    equivalence_class: "extractor_workspace"
+    mapping_strength: "native_provenance_only"
+    notes:
+      - "Workspace organization is software provenance, not biological hierarchy."
+
+  - native_level: "audio_file"
+    native_singular: "audio file"
+    canonical_level: "recording"
+    equivalence_class: "source_recording"
+    mapping_strength: "structural_semantic"
+
+  - native_level: "processing_context"
+    native_singular: "processing run"
+    canonical_level: "extraction_run"
+    equivalence_class: "extractor_processing_run"
+    mapping_strength: "structural_semantic"
+    instantiate_from:
+      - "source recording identity"
+      - "MUPET version"
+      - "config.csv and/or filestats.configpar"
+      - "native processed recording artifact"
+
+  - native_level: "syllable"
+    native_singular: "syllable"
+    canonical_level: "event"
+    canonical_subtype: "vocalization_detection"
+    equivalence_class: "vocalization_event"
+    mapping_strength: "structural_semantic"
+    metric_identity_assumed: false
+    cross_extractor_level_equivalence:
+      DeepSqueak: "call"
+
+  - native_level: "data_set"
+    native_singular: "data set"
+    canonical_level: "extractor_dataset"
+    equivalence_class: "extractor_defined_recording_event_set"
+    mapping_strength: "structural_semantic"
+    map_to_project_study_group_session_automatically: false
+    notes:
+      - "A MUPET data set is a software/user-defined analytical grouping."
+      - "Project-level metadata mapping may separately relate its member recordings to study/group/session/animal."
+
+  - native_level: "repertoire"
+    native_singular: "repertoire"
+    canonical_level: "classification_run"
+    canonical_subtype: "unsupervised_repertoire_model"
+    equivalence_class: "extractor_classification_run"
+    mapping_strength: "structural_semantic"
+    notes:
+      - "A repertoire is model/run scoped."
+
+  - native_level: "repertoire_unit"
+    native_singular: "repertoire unit"
+    canonical_level: "classification_class"
+    equivalence_class: "extractor_native_class"
+    mapping_strength: "structural_only"
+    notes:
+      - "RU identity is repertoire-specific."
+      - "RU 12 in one repertoire is not automatically RU 12 in another."
+      - "No automatic identity with DeepSqueak labels/clusters or biological call taxonomies."
+
+  - native_level: "syllable_to_repertoire_unit_membership"
+    native_singular: "syllable classification assignment"
+    canonical_level: "classification_assignment"
+    equivalence_class: "extractor_native_class_assignment"
+    mapping_strength: "structural_semantic"
+
+  - native_level: "refined_data_set"
+    native_singular: "refined data set"
+    canonical_level: "derived_event_set"
+    equivalence_class: "refined_event_set"
+    mapping_strength: "structural_semantic"
+    lineage_required: true
+
+  - native_level: "refined_repertoire"
+    native_singular: "refined repertoire"
+    canonical_level: "classification_run"
+    canonical_subtype: "refined_unsupervised_repertoire_model"
+    equivalence_class: "extractor_classification_run"
+    mapping_strength: "structural_semantic"
+    lineage_required: true
+
+  - native_level: "data_set_summary_statistic"
+    native_singular: "data set summary statistic"
+    canonical_level: "derived_metric"
+    equivalence_class: "aggregate_metric"
+    mapping_strength: "structural_semantic"
+    scope: "extractor_dataset"
+
+artifact_discovery:
+  root_mode: "user_supplied_workspace_or_output_root"
+  path_separator_normalization: "/"
+
+  artifacts:
+    - artifact_key: "settings_config"
+      canonical_artifact_type: "settings"
+      native_artifact_type: "MUPET config.csv"
+      format: "csv"
+      include:
+        glob:
+          - "**/config.csv"
+      priority: "required_when_available"
+      ingest_phase: "prototype_required_for_provenance"
+
+    - artifact_key: "native_processed_recording"
+      canonical_artifact_type: "native_processed_event_container"
+      native_artifact_type: "MUPET per-recording processed MATLAB state"
+      format: "mat"
+      include:
+        path_regex:
+          - "(?:^|/)audio/(?P<native_dataset_path>[^/]+)/(?P<recording_stem>[^/]+)\\.mat$"
+      priority: "preferred_for_provenance"
+      ingest_phase: "prototype_optional"
+      expected_contents:
+        - "syllable_data"
+        - "syllable_stats"
+        - "filestats"
+      hierarchy_emitted:
+        - "recording"
+        - "extraction_run"
+        - "event"
+      provenance_sources:
+        - "filestats.configpar"
+
+    - artifact_key: "per_syllable_csv"
+      canonical_artifact_type: "event_export"
+      native_artifact_type: "MUPET per-syllable CSV export"
+      format: "csv"
+      include:
+        path_regex:
+          - "(?:^|/)audio/(?P<native_dataset_path>[^/]+)/CSV/(?P<recording_stem>[^/]+)\\.csv$"
+      exclude:
+        filename:
+          - "datasets_file_content.csv"
+          - "datasets_USV_profile_stats.csv"
+      priority: "prototype_primary"
+      ingest_phase: "prototype_required"
+      table:
+        header_row: 1
+        delimiter: ","
+      row_level: "event"
+      hierarchy_emitted:
+        - "recording"
+        - "event"
+        - "event_measurement"
+      path_semantics:
+        native_dataset_path:
+          canonical_level: "extractor_dataset"
+          role: "native_path_grouping"
+          experimental_hierarchy_mapping: "none_by_default"
+        recording_stem:
+          canonical_level: "recording"
+          role: "recording_locator"
+
+    - artifact_key: "dataset_membership_csv"
+      canonical_artifact_type: "dataset_membership"
+      native_artifact_type: "MUPET data-set file-content export"
+      format: "csv"
+      include:
+        path_regex:
+          - "(?:^|/)datasets/CSV/datasets_file_content\\.csv$"
+      priority: "supported"
+      ingest_phase: "prototype_optional"
+      hierarchy_emitted:
+        - "extractor_dataset"
+        - "recording_membership"
+
+    - artifact_key: "dataset_profile_csv"
+      canonical_artifact_type: "dataset_summary"
+      native_artifact_type: "MUPET data-set USV profile statistics"
+      format: "csv"
+      include:
+        path_regex:
+          - "(?:^|/)datasets/CSV/datasets_USV_profile_stats\\.csv$"
+      priority: "supported"
+      ingest_phase: "prototype_optional"
+      row_level: "aggregate_metric_or_dataset"
+      hierarchy_emitted:
+        - "extractor_dataset"
+        - "derived_metric"
+
+    - artifact_key: "repertoire_csv"
+      canonical_artifact_type: "classification_or_repertoire_export"
+      native_artifact_type: "MUPET repertoire CSV"
+      format: "csv"
+      include:
+        path_regex:
+          - "(?:^|/)repertoire/CSV/.*\\.csv$"
+          - "(?:^|/)repertoires/CSV/.*\\.csv$"
+      priority: "future_or_optional"
+      ingest_phase: "discovery_and_lineage_first"
+      parser_contract: "version_scoped_profile_extension_required_for_specific_table_shape"
+      hierarchy_emitted:
+        - "classification_run"
+        - "classification_class"
+        - "classification_assignment_or_class_count"
+      notes:
+        - "MUPET documentation establishes the repertoire/CSV output family but not one universal table shape for all repertoire products."
+
+    - artifact_key: "refined_dataset_or_repertoire"
+      canonical_artifact_type: "derived_artifact"
+      native_artifact_type: "MUPET refined data set/repertoire"
+      format: "version_specific"
+      include:
+        name_semantics:
+          refined_name_marker: "+"
+      priority: "future_or_optional"
+      ingest_phase: "lineage_required_when_supported"
+      lineage:
+        parent_required: true
+        transformation_type: "repertoire_refinement"
+
+recording_linkage:
+  preferred_order:
+    - method: "source_audio_checksum"
+      strength: "strongest"
+    - method: "persistent_vawlume_recording_id"
+      strength: "strong"
+    - method: "native_processed_artifact_source_reference"
+      strength: "strong_if_resolved"
+    - method: "relative_path_and_recording_stem"
+      strength: "moderate"
+    - method: "filename"
+      strength: "weak_fallback"
+  path_pairing_example:
+    source_audio: "audio/<native_dataset>/<recording_stem>.wav"
+    native_processed: "audio/<native_dataset>/<recording_stem>.mat"
+    event_export: "audio/<native_dataset>/CSV/<recording_stem>.csv"
+
+event_identity:
+  canonical_level: "event"
+  native_id:
+    source_field: "Syllable number"
+    canonical_field: "native_event_id"
+    scope:
+      - "recording"
+      - "event_export_artifact"
+  stable_cross_artifact_identifier: false
+  vawlume_id_required: true
+
+field_mappings:
+  - source_field: "Syllable number"
+    aliases:
+      - "syllable number"
+    target_level: "event"
+    canonical_field: "native_event_id"
+    data_type: "integer"
+    semantic_role: "identifier"
+    preserve_raw: true
+
+  # Timing and sequence
+  - source_field: "Syllable start time (sec)"
+    aliases:
+      - "syllable start time (sec)"
+    target_level: "event_measurement"
+    canonical_field: "call_start_time"
+    data_type: "float"
+    native_unit: "s"
+    canonical_unit: "s"
+    transform: "identity"
+    derivation_stage: "segmentation"
+    equivalence_class: "vocalization_start_time"
+    cross_extractor_relationship: "comparable_same_intended_construct"
+    consilience_role: "primary"
+    preserve_raw: true
+
+  - source_field: "Syllable end time (sec)"
+    aliases:
+      - "syllable end time (sec)"
+    target_level: "event_measurement"
+    canonical_field: "call_end_time"
+    data_type: "float"
+    native_unit: "s"
+    canonical_unit: "s"
+    transform: "identity"
+    derivation_stage: "segmentation"
+    equivalence_class: "vocalization_end_time"
+    cross_extractor_relationship: "comparable_same_intended_construct"
+    consilience_role: "primary"
+    preserve_raw: true
+
+  - source_field: "inter-syllable interval (sec)"
+    aliases:
+      - "Inter-syllable interval (sec)"
+    target_level: "event_measurement"
+    canonical_field: "inter_call_interval"
+    data_type: "float_or_missing"
+    native_unit: "s"
+    canonical_unit: "s"
+    transform: "identity"
+    derivation_stage: "native_sequence_derived"
+    operational_definition: "native MUPET inter-syllable interval"
+    equivalence_class: "vocalization_inter_event_interval"
+    cross_extractor_relationship: "no_direct_DeepSqueak_export_field;_rederive_in_VAWLUME"
+    consilience_role: "validation_against_VAWLUME_derived_interval"
+    missing_value_policy:
+      final_event: "convert_native_sentinel_or_blank_to_explicit_missing"
+      preserve_raw_token: true
+    preserve_raw: true
+
+  - source_field: "syllable duration (msec)"
+    aliases:
+      - "Syllable duration (msec)"
+    target_level: "event_measurement"
+    canonical_field: "call_duration"
+    data_type: "float"
+    native_unit: "ms"
+    canonical_unit: "s"
+    transform: "ms_to_s"
+    derivation_stage: "pre_noise_reduction_onset_offset"
+    operational_variant: "pre_noise_reduction"
+    equivalence_class: "vocalization_duration"
+    cross_extractor_relationship: "comparable_not_metric_equivalent"
+    consilience_role: "primary_or_supporting"
+    preserve_raw: true
+
+  # Frequency
+  - source_field: "starting frequency (kHz)"
+    aliases:
+      - "Starting frequency (kHz)"
+    target_level: "event_measurement"
+    canonical_field: "frequency_start"
+    data_type: "float"
+    native_unit: "kHz"
+    canonical_unit: "Hz"
+    transform: "kHz_to_Hz"
+    derivation_stage: "spectral_filterbank"
+    equivalence_class: "vocalization_frequency_start"
+    cross_extractor_relationship: "no_direct_standard_DeepSqueak_excel_equivalent"
+    consilience_role: "none_by_default"
+    preserve_raw: true
+
+  - source_field: "final frequency (kHz)"
+    aliases:
+      - "Final frequency (kHz)"
+    target_level: "event_measurement"
+    canonical_field: "frequency_end"
+    data_type: "float"
+    native_unit: "kHz"
+    canonical_unit: "Hz"
+    transform: "kHz_to_Hz"
+    derivation_stage: "spectral_filterbank"
+    equivalence_class: "vocalization_frequency_end"
+    cross_extractor_relationship: "no_direct_standard_DeepSqueak_excel_equivalent"
+    consilience_role: "none_by_default"
+    preserve_raw: true
+
+  - source_field: "minimum frequency (kHz)"
+    aliases:
+      - "Minimum frequency (kHz)"
+    target_level: "event_measurement"
+    canonical_field: "frequency_min"
+    data_type: "float"
+    native_unit: "kHz"
+    canonical_unit: "Hz"
+    transform: "kHz_to_Hz"
+    derivation_stage: "spectral_filterbank"
+    equivalence_class: "vocalization_frequency_min"
+    cross_extractor_relationship: "comparable_method_specific"
+    consilience_role: "supporting"
+    preserve_raw: true
+
+  - source_field: "maximum frequency (kHz)"
+    aliases:
+      - "Maximum frequency (kHz)"
+    target_level: "event_measurement"
+    canonical_field: "frequency_max"
+    data_type: "float"
+    native_unit: "kHz"
+    canonical_unit: "Hz"
+    transform: "kHz_to_Hz"
+    derivation_stage: "spectral_filterbank"
+    equivalence_class: "vocalization_frequency_max"
+    cross_extractor_relationship: "comparable_method_specific"
+    consilience_role: "supporting"
+    preserve_raw: true
+
+  - source_field: "mean frequency (kHz)"
+    aliases:
+      - "Mean frequency (kHz)"
+    target_level: "event_measurement"
+    canonical_field: "frequency_center"
+    data_type: "float"
+    native_unit: "kHz"
+    canonical_unit: "Hz"
+    transform: "kHz_to_Hz"
+    derivation_stage: "spectral_filterbank"
+    operational_definition: "MUPET mean/weighted central-frequency measure"
+    equivalence_class: "vocalization_frequency_center"
+    cross_extractor_relationship: "comparable_not_equivalent_to_DeepSqueak_contour_median"
+    consilience_role: "supporting"
+    preserve_raw: true
+
+  - source_field: "frequency bandwidth (kHz)"
+    aliases:
+      - "Frequency bandwidth (kHz)"
+    target_level: "event_measurement"
+    canonical_field: "frequency_bandwidth"
+    data_type: "float"
+    native_unit: "kHz"
+    canonical_unit: "Hz"
+    transform: "kHz_to_Hz"
+    derivation_stage: "spectral_filterbank"
+    operational_definition: "maximum minus minimum according to MUPET definitions"
+    equivalence_class: "vocalization_frequency_bandwidth"
+    cross_extractor_relationship: "comparable_method_specific"
+    consilience_role: "supporting"
+    preserve_raw: true
+
+  # Energy / amplitude
+  - source_field: "total syllable energy (dB)"
+    aliases:
+      - "Total syllable energy (dB)"
+    target_level: "event_measurement"
+    canonical_field: "total_energy"
+    data_type: "float"
+    native_unit: "dB"
+    canonical_unit: "dB"
+    transform: "identity"
+    derivation_stage: "spectral"
+    equivalence_class: "vocalization_energy_like_quantity"
+    cross_extractor_relationship: "related_not_equivalent_to_DeepSqueak_mean_PSD"
+    consilience_role: "none_by_default"
+    preserve_raw: true
+
+  - source_field: "peak syllable amplitude (dB)"
+    aliases:
+      - "Peak syllable amplitude (dB)"
+    target_level: "event_measurement"
+    canonical_field: "peak_amplitude"
+    data_type: "float"
+    native_unit: "dB"
+    canonical_unit: "dB"
+    transform: "identity"
+    derivation_stage: "spectral"
+    equivalence_class: "vocalization_amplitude_like_quantity"
+    cross_extractor_relationship: "no_direct_standard_DeepSqueak_export_equivalent"
+    consilience_role: "none_by_default"
+    preserve_raw: true
+
+settings_capture:
+  canonical_level: "extraction_run"
+  sources:
+    - artifact: "settings_config"
+      native_name: "config.csv"
+    - artifact: "native_processed_recording"
+      native_path: "filestats.configpar"
+  externalize_to: "settings_json"
+  compare_when_both_available: true
+
+  native_settings:
+    - native_name: "noise-reduction"
+      canonical_setting: "noise_reduction"
+    - native_name: "minimum-syllable-duration"
+      canonical_setting: "minimum_syllable_duration"
+      native_unit: "ms"
+    - native_name: "maximum-syllable-duration"
+      canonical_setting: "maximum_syllable_duration"
+      native_unit: "ms"
+    - native_name: "minimum-syllable-total-energy"
+      canonical_setting: "minimum_syllable_total_energy"
+      native_unit: "dB"
+    - native_name: "minimum-syllable-peak-amplitude"
+      canonical_setting: "minimum_syllable_peak_amplitude"
+      native_unit: "dB"
+    - native_name: "minimum-syllable-distance"
+      canonical_setting: "minimum_syllable_distance"
+      native_unit: "ms"
+    - native_name: "sample-frequency"
+      canonical_setting: "processing_sample_rate"
+      native_unit: "Hz"
+    - native_name: "minimum-usv-frequency"
+      canonical_setting: "minimum_usv_frequency"
+      native_unit: "Hz"
+    - native_name: "maximum-usv-frequency"
+      canonical_setting: "maximum_usv_frequency"
+      native_unit: "Hz"
+    - native_name: "number-filterbank-filters"
+      canonical_setting: "number_filterbank_filters"
+    - native_name: "filterbank-type"
+      canonical_setting: "filterbank_type"
+
+native_processing_notes:
+  duration_variants:
+    exported_csv:
+      canonical_field: "call_duration"
+      operational_variant: "pre_noise_reduction"
+      source_field: "syllable duration (msec)"
+    native_state_future:
+      canonical_field: "call_duration"
+      operational_variant: "post_noise_reduction"
+      source: "native processed MATLAB state"
+      status: "future_native_parser"
+  resampling:
+    record_native_sample_rate: true
+    record_processing_sample_rate: true
+    infer_resampling_only_when_determinable: true
+
+validation:
+  mode: "non_destructive"
+  checks:
+    - id: "event_time_order"
+      expression: "call_end_time >= call_start_time"
+      severity: "error"
+
+    - id: "duration_consistency"
+      expression: "call_duration ~= call_end_time - call_start_time"
+      tolerance_source: "export_rounding_aware_profile_or_project_config"
+      severity: "warning"
+
+    - id: "native_event_id_uniqueness"
+      uniqueness_scope:
+        - "recording"
+        - "event_export_artifact"
+        - "native_event_id"
+      severity: "error"
+
+    - id: "frequency_order"
+      expression: "frequency_min <= frequency_max"
+      severity: "error"
+
+    - id: "bandwidth_consistency"
+      expression: "frequency_bandwidth ~= frequency_max - frequency_min"
+      tolerance_source: "export_rounding_aware_profile_or_project_config"
+      severity: "warning"
+
+    - id: "final_inter_syllable_interval_missingness"
+      requirement: "preserve_raw_sentinel_and_store_explicit_missing"
+      severity: "warning"
+
+    - id: "source_recording_linkage"
+      requirement: "resolve_or_explicitly_mark_unresolved"
+      severity: "error"
+
+    - id: "settings_consistency"
+      requirement: "compare_config_csv_with_filestats_configpar_when_both_available"
+      severity: "warning"
+
+provenance:
+  record:
+    - "mapping_profile_id"
+    - "mapping_profile_schema_version"
+    - "extractor_name"
+    - "extractor_version"
+    - "source_artifact_path"
+    - "source_artifact_checksum"
+    - "native_workspace_path_when_available"
+    - "native_dataset_name_or_path_when_available"
+    - "source_recording_linkage_method"
+    - "settings_artifact_or_status"
+    - "native_field_name"
+    - "native_value"
+    - "native_unit"
+    - "canonical_field"
+    - "canonical_value"
+    - "canonical_unit"
+    - "transform_applied"
+    - "operational_variant_when_applicable"
+    - "parent_artifact_for_refined_outputs"
+  never_overwrite_native_values: true
+
+consilience_defaults:
+  event_matching:
+    primary_equivalence_classes:
+      - "vocalization_start_time"
+      - "vocalization_end_time"
+    supporting_equivalence_classes:
+      - "vocalization_duration"
+      - "vocalization_frequency_min"
+      - "vocalization_frequency_max"
+      - "vocalization_frequency_bandwidth"
+      - "vocalization_frequency_center"
+  empirical_thresholds:
+    source: "project_config_only"
+
+sequence_policy:
+  preserve_native_inter_syllable_interval: true
+  derive_vawlume_inter_call_interval_from_normalized_times: true
+  compare_native_and_derived_intervals_for_validation: true
+  sequence_event_sets_allowed:
+    - "MUPET detections"
+    - "DeepSqueak detections"
+    - "VAWLUME consensus events"

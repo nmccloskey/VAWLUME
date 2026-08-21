@@ -1,0 +1,103 @@
+# VAWLUME example recording-device profiles
+profiles:
+  - profile:
+      id: "example.device.ultrasonic_usb_primary"
+      name: "Primary ultrasonic USB microphone"
+      kind: "recording_device"
+      profile_schema_version: "0.1-draft"
+      profile_version: "1"
+
+    device:
+      device_class: "ultrasonic_microphone"
+      manufacturer: "<MANUFACTURER>"
+      model: "<MODEL>"
+      serial_number: "<OPTIONAL_SERIAL>"
+      lab_device_id: "USV_MIC_01"
+
+    capabilities:
+      native_channels: 1
+      nominal_sample_rates_hz: [192000, 250000, 384000]
+      nominal_bit_depths: [16, 24]
+      interface: "USB"
+
+    acquisition_defaults:
+      sample_rate_hz: 384000
+      bit_depth: 16
+      channels: 1
+      channel_selection: [1]
+      gain_db: "<CAPTURE_IF_AVAILABLE>"
+      enhancements_enabled: false
+
+    placement:
+      mounting: "fixed"
+      orientation: "toward_behavioral_arena"
+      distance_to_arena_cm: "<MEASURE_PER_SETUP>"
+      position_label: "ceiling_center"
+
+    calibration:
+      calibration_status: "not_specified"
+      calibration_date: null
+      calibration_artifact: null
+
+    arbitrary_attributes:
+      notes: "Example only; device-specific fields remain extensible."
+
+    linkage:
+      may_link_to: ["recording", "extraction_run"]
+      preferred_linkage:
+        recording: "direct"
+        extraction_run: "inherited_through_recording_or_direct_override"
+
+    provenance:
+      preserve_profile_snapshot_at_run_time: true
+      checksum_profile: true
+
+  - profile:
+      id: "example.device.multichannel_legacy"
+      name: "Legacy multichannel ultrasonic acquisition interface"
+      kind: "recording_device"
+      profile_schema_version: "0.1-draft"
+      profile_version: "2"
+
+    device:
+      device_class: "ultrasonic_microphone_interface"
+      manufacturer: "<MANUFACTURER>"
+      model: "<MODEL>"
+      lab_device_id: "USV_IFACE_02"
+
+    capabilities:
+      native_channels: 4
+      nominal_sample_rates_hz: [192000, 200000, 250000]
+      nominal_bit_depths: [16]
+      interface: "USB_or_proprietary"
+
+    acquisition_defaults:
+      sample_rate_hz: 200000
+      bit_depth: 16
+      channels: 2
+      channel_selection: [1, 2]
+      channel_semantics:
+        "1": "left_chamber_microphone"
+        "2": "right_chamber_microphone"
+
+    signal_chain:
+      analog_filtering:
+        high_pass_hz: "<OPTIONAL>"
+        low_pass_hz: "<OPTIONAL>"
+      software_processing:
+        enhancement: false
+        automatic_gain_control: false
+
+    arbitrary_attributes:
+      sync_output_available: false
+      notes: "Example illustrates multichannel/channel-semantic capture."
+
+    linkage:
+      may_link_to: ["recording", "extraction_run"]
+      preferred_linkage:
+        recording: "direct"
+        extraction_run: "inherited_through_recording_or_direct_override"
+
+    provenance:
+      preserve_profile_snapshot_at_run_time: true
+      checksum_profile: true

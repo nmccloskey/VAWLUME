@@ -1,0 +1,118 @@
+# VAWLUME example experimental-setup profiles
+profiles:
+  - profile:
+      id: "example.setup.mouse_courtship_chamber"
+      name: "Mouse courtship recording chamber"
+      kind: "experimental_setup"
+      profile_schema_version: "0.1-draft"
+      profile_version: "1"
+
+    setup:
+      setup_class: "social_interaction_chamber"
+      lab_setup_id: "COURTSHIP_CHAMBER_A"
+      room_id: "<ROOM_ID>"
+      chamber_id: "CHAMBER_A"
+
+    environment:
+      sound_attenuation:
+        enabled: true
+        implementation: "sound-attenuating cabinet"
+      lighting:
+        mode: "house_light"
+        level_lux: "<MEASURE_IF_AVAILABLE>"
+      ambient_noise:
+        white_noise_enabled: false
+
+    behavioral_geometry:
+      arena_shape: "rectangular"
+      dimensions_cm: {length: "<MEASURE>", width: "<MEASURE>", height: "<MEASURE>"}
+      divider: {present: false, type: null}
+      bedding: {present: true, material: "<MATERIAL>"}
+
+    recording_geometry:
+      microphone_positions:
+        - device_ref: "USV_MIC_01"
+          position_label: "ceiling_center"
+          distance_to_floor_cm: "<MEASURE>"
+          orientation: "downward"
+      video:
+        enabled: true
+        camera_count: 1
+        synchronization:
+          ttl_available: false
+          alignment_method: "timestamp_or_external_alignment"
+
+    experimental_elements:
+      social_configuration: "male_female_pair"
+      acclimation_minutes: 5
+      interaction_duration_minutes: "<PROJECT_DEFINED>"
+
+    arbitrary_attributes:
+      cleaning_solution: "<OPTIONAL>"
+      notes: "Open-ended setup metadata."
+
+    linkage:
+      may_link_to: ["session", "recording", "extraction_run"]
+      preferred_linkage:
+        session: "direct_when_setup_constant_for_session"
+        recording: "direct_when_setup_varies_within_session"
+        extraction_run: "inherit_through_recording_or_direct_override"
+
+    provenance:
+      preserve_profile_snapshot_at_run_time: true
+      checksum_profile: true
+
+  - profile:
+      id: "example.setup.operant_usv_chamber"
+      name: "Operant chamber with behavioral event streams"
+      kind: "experimental_setup"
+      profile_schema_version: "0.1-draft"
+      profile_version: "1"
+
+    setup:
+      setup_class: "operant_behavior_chamber"
+      lab_setup_id: "OPERANT_USV_01"
+      room_id: "<ROOM_ID>"
+      chamber_id: "BOX_01"
+
+    environment:
+      sound_attenuation: {enabled: true, implementation: "enclosure"}
+      lighting: {mode: "programmable"}
+      ambient_noise: {white_noise_enabled: true, level_db: "<OPTIONAL>"}
+
+    operant_components:
+      nose_pokes: {left: true, right: true}
+      sipper: {retractable: true}
+      cue_light: true
+      tone_generator: true
+      shock_grid: true
+
+    recording_geometry:
+      microphone_positions:
+        - device_ref: "USV_MIC_01"
+          position_label: "upper_front"
+          distance_to_floor_cm: "<MEASURE>"
+          orientation: "toward_center"
+      video: {enabled: true, camera_count: 1}
+
+    synchronization:
+      direct_ttl_to_audio: false
+      external_event_streams: ["nose_poke", "sipper_extension", "tone_onset", "shock_onset"]
+      recommended_alignment:
+        method: "external_event_sequence_alignment"
+        reference_timebase: "recording_elapsed_time"
+        calibration_marker: "<OPTIONAL_MANUAL_OR_AUDIOVISUAL_MARKER>"
+
+    arbitrary_attributes:
+      controller_software: "<SOFTWARE>"
+      controller_version: "<VERSION>"
+
+    linkage:
+      may_link_to: ["session", "recording", "extraction_run"]
+      preferred_linkage:
+        session: "direct"
+        extraction_run: "inherit_through_recording_and_session_or_direct_override"
+
+    provenance:
+      preserve_profile_snapshot_at_run_time: true
+      checksum_profile: true
