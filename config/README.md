@@ -37,7 +37,7 @@ These names are not globally prescribed.
 Recommended location:
 
 ```text
-config/mapping_profiles/project_inputs/
+config/01_mapping_profiles/project_inputs/
 ```
 
 ### 2. Extractor-output source mapping profile
@@ -54,8 +54,8 @@ MUPET
 Recommended locations:
 
 ```text
-config/mapping_profiles/extractors/deepsqueak/
-config/mapping_profiles/extractors/mupet/
+config/01_mapping_profiles/extractors/deepsqueak/
+config/01_mapping_profiles/extractors/mupet/
 ```
 
 ### 3. Recording-device profile
@@ -74,7 +74,7 @@ Describes acquisition hardware/context, for example:
 Recommended location:
 
 ```text
-config/device_profiles/
+config/02_device_profiles/
 ```
 
 ### 4. Experimental-setup profile
@@ -96,7 +96,7 @@ Describes the physical/behavioral recording context, for example:
 Recommended location:
 
 ```text
-config/setup_profiles/
+config/03_setup_profiles/
 ```
 
 ### 5. Extractor settings profile
@@ -112,7 +112,7 @@ Settings artifacts may remain external to the repository for real projects, with
 Examples that demonstrate how multiple profile kinds are associated can live in:
 
 ```text
-config/examples/
+config/04_examples/
 ```
 
 For example, a linkage example may show how a recording is associated with a device profile and setup profile while an extraction run references settings and an output mapping profile.
