@@ -179,6 +179,9 @@ event_identity:
   stable_cross_artifact_identifier: false
   vawlume_id_required: true
 
+field_mapping_source:
+  artifact_key: "event_stats_excel"
+
 field_mappings:
   # Artifact/event identity and annotation fields
   - source_field: "File"
@@ -279,9 +282,9 @@ field_mappings:
     preserve_raw: true
 
   # Frequency
-  - source_field: "Principal Frequency (kHz)"
+  - source_field: "Principle Frequency (kHz)"
     aliases:
-      - "Principle Frequency (kHz)"
+      - "Principal Frequency (kHz)"
     target_level: "event_measurement"
     canonical_field: "contour_median_frequency"
     broader_canonical_concept: "frequency_center"

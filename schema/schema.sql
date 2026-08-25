@@ -39,9 +39,9 @@ CREATE TABLE schema_info (
 );
 
 INSERT OR IGNORE INTO schema_info(schema_version, description)
-VALUES ('0.1-draft', 'Initial VAWLUME prototype schema');
+VALUES ('0.2-draft', 'Phase 1 relational vocabulary and registration identity freeze');
 
-PRAGMA user_version = 1;
+PRAGMA user_version = 2;
 
 -- ============================================================================
 -- 1. Project and configuration-profile infrastructure
@@ -341,6 +341,11 @@ CREATE TABLE extractor_versions (
     UNIQUE(extractor_id, version_label, source_commit_or_tag)
 );
 
+-- Registration identity is extractor + version label + normalized source commit/tag.
+-- build_identifier and the descriptive fields are conflict-checked values: an
+-- identical registration is accepted, while differing values for the same identity
+-- must be rejected rather than silently creating another semantic version row.
+
 -- Generic immutable/referential artifacts: native output files, detector models,
 -- classifier models, exports, settings copies, transformed audio, etc.
 CREATE TABLE artifacts (
@@ -457,6 +462,13 @@ CREATE TABLE extractor_features (
     notes               TEXT
 );
 
+-- The Phase 1 registration identity for a native feature is:
+-- extractor version + native name + source artifact type + derivation stage +
+-- operational variant. source_artifact_type stores the mapping profile's stable
+-- artifact_key (for example, event_stats_excel or per_syllable_csv). Registration
+-- normalizes absent optional identity components to NULL and rejects a conflicting
+-- definition for an existing identity.
+
 CREATE TABLE feature_mappings (
     feature_mapping_id  INTEGER PRIMARY KEY,
     extractor_feature_id INTEGER NOT NULL REFERENCES extractor_features(extractor_feature_id) ON DELETE CASCADE,
@@ -475,8 +487,22 @@ CREATE TABLE feature_mappings (
     UNIQUE(extractor_feature_id, canonical_feature_id, mapping_profile_version_id)
 );
 
+-- Native-to-canonical mappings use transform_equivalent only when the canonical
+-- value differs from the same operational quantity solely by a declared deterministic
+-- representation/unit transform. Broader construct mappings remain
+-- conceptually_equivalent, comparable, related, or noncomparable as warranted.
+
 -- Pairwise relationships are explicit because a shared canonical name must not imply
 -- interchangeability (e.g. contour median frequency vs MUPET mean frequency).
+-- Profile relationship phrases project into the constrained relational vocabulary:
+--   comparable_same_intended_construct                         -> conceptually_equivalent
+--   comparable_not_metric_equivalent / comparable_method_specific
+--   / comparable_not_equivalent_to_*                           -> comparable
+--   related_not_equivalent_to_*                                -> related
+--   no_direct_* / no_clear_direct_* / extractor_specific       -> noncomparable
+-- A noncomparable row is only required when preserving an explicit assessed pair;
+-- absence of a supported counterpart does not require inventing a pair. The original
+-- profile phrase belongs in justification/source_reference rather than relationship_type.
 CREATE TABLE feature_relationships (
     feature_relationship_id INTEGER PRIMARY KEY,
     feature_a_id        INTEGER NOT NULL REFERENCES extractor_features(extractor_feature_id) ON DELETE CASCADE,
@@ -529,6 +555,8 @@ CREATE TABLE event_measurements (
     canonical_feature_id INTEGER REFERENCES canonical_features(canonical_feature_id) ON DELETE SET NULL,
     source_artifact_id  INTEGER REFERENCES artifacts(artifact_id) ON DELETE SET NULL,
     native_value_type   TEXT NOT NULL CHECK (native_value_type IN ('real','integer','text','boolean','json','missing')),
+    -- Original lexical token, including a sentinel/blank represented as explicit missingness.
+    native_raw_token    TEXT,
     native_value_real   REAL,
     native_value_integer INTEGER,
     native_value_text   TEXT,
@@ -1118,6 +1146,7 @@ SELECT
     xf.derivation_stage,
     xf.operational_variant AS feature_operational_variant,
     cf.canonical_name,
+    em.native_raw_token,
     em.native_value_real,
     em.native_value_integer,
     em.native_value_text,
@@ -1203,9 +1232,29 @@ JOIN sequences s ON s.sequence_id = sm.sequence_id;
 -- SQLite UNIQUE constraints treat NULL values as distinct. These expression/partial
 -- indexes close a few provenance-identity gaps where NULL means "not applicable"
 -- rather than "intentionally different record".
+-- Repeat-registration lookup/conflict rule for shipped semantics:
+--   config_profiles         -> project_id IS NULL + profile_key
+--   config_profile_versions -> profile_id + version_label
+--   extractors              -> extractor_key
+--   extractor_versions      -> extractor_id + version_label + normalized commit/tag
+-- An existing identity is accepted only when all projected definition/provenance
+-- values match; otherwise registration reports a conflict instead of updating it.
 CREATE UNIQUE INDEX idx_config_profiles_builtin_key
     ON config_profiles(profile_key)
     WHERE project_id IS NULL;
+
+-- Close nullable natural-key gaps needed by repeatable semantic registration.
+CREATE UNIQUE INDEX idx_extractor_versions_identity
+    ON extractor_versions(extractor_id, version_label, IFNULL(source_commit_or_tag,''));
+
+CREATE UNIQUE INDEX idx_extractor_features_identity
+    ON extractor_features(
+        extractor_version_id,
+        native_name,
+        IFNULL(source_artifact_type,''),
+        IFNULL(derivation_stage,''),
+        IFNULL(operational_variant,'')
+    );
 
 CREATE UNIQUE INDEX idx_extraction_inputs_unique
     ON extraction_run_inputs(extraction_run_id, recording_id, input_role, IFNULL(recording_channel_id, -1));

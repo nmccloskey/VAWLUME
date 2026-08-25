@@ -278,6 +278,9 @@ event_identity:
   stable_cross_artifact_identifier: false
   vawlume_id_required: true
 
+field_mapping_source:
+  artifact_key: "per_syllable_csv"
+
 field_mappings:
   - source_field: "Syllable number"
     aliases:
