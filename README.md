@@ -39,14 +39,16 @@ Normalization is additive rather than destructive. Native fields, values, units,
 
 The current design includes:
 
-- a first executable `schema.sql` draft;
+- an executable `schema/schema.sql` draft with Phase 1 integrity triggers and query views;
 - DeepSqueak and MUPET extractor design references;
 - draft DeepSqueak and MUPET output-mapping profiles;
 - example project-input, recording-device, experimental-setup, and profile-linkage YAML;
 - a specified source-mapping architecture;
+- semantic seed registration for shipped DeepSqueak/MUPET output-mapping profiles;
+- a deterministic Phase 1 synthetic fixture with representative acceptance queries and MATLAB tests;
 - schema support for experimental hierarchy, extractor-native objects, detections, feature semantics, cross-extractor matching, derived analysis, and external event/timebase alignment.
 
-The next implementation target is the **semantic seed + fixture layer**, followed by `source_mapping` and the first real importers.
+The next implementation target is the reusable `source_mapping` engine, followed by project intake and the first real importers.
 
 ## Configuration policy
 
@@ -76,6 +78,8 @@ The current recommended order is:
 8. implement MUPET import;
 9. implement matching/consensus;
 10. implement one compact sequence/alignment analysis.
+
+Phase 1 completed items 1-4 as a tested relational checkpoint; item 5 is the next active implementation target.
 
 ## Documentation
 

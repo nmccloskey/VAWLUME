@@ -1505,7 +1505,7 @@ The earlier outline proposed beginning with `schema.sql`.
 
 That has now occurred conceptually and as a first executable draft.
 
-The recommended next sequence is therefore:
+Phase 1 has now completed Steps 1-4 as a tested relational checkpoint. The recommended sequence below remains the implementation spine, with Step 5 as the next active target.
 
 ## Step 1 — Stabilize schema vocabulary
 
@@ -1560,6 +1560,13 @@ Examples:
 - Which detections form one consensus event?
 - Which external events align to a recording?
 - Which derived features came from which analysis run?
+
+Current checkpoint:
+
+- clean schema creation is covered by MATLAB unit tests;
+- shipped DeepSqueak/MUPET semantic registration is reproducible and conflict-checked;
+- the synthetic fixture exercises multi-subject hierarchy, shared recordings, scoped native IDs, matching, review, and alignment;
+- Q01-Q14 acceptance queries are tracked under `schema/fixtures/` and asserted by integration tests.
 
 ## Step 5 — Implement `source_mapping`
 
@@ -1690,25 +1697,23 @@ The prototype is successful when it can reproducibly demonstrate:
 
 # 17. Immediate next planning target
 
-With the first `schema.sql` drafted, the next architectural hinge is no longer the schema itself.
+With the schema, semantic seed, synthetic fixture, acceptance queries, and tests in place, the next architectural hinge is no longer the Phase 1 relational foundation.
 
 The recommended next target is:
 
-## **Semantic seed + fixture layer**
+## **`source_mapping` engine**
 
 This should specify:
 
-- built-in canonical feature records;
-- built-in extractor records;
-- DeepSqueak feature registration;
-- MUPET feature registration;
-- level mappings;
-- feature relationships;
-- example project/device/setup profile registration;
-- synthetic fixture data;
-- acceptance queries.
+- profile loading and identity/kind/version validation;
+- project path and filename regex extraction;
+- artifact discovery;
+- field mapping;
+- transform registry;
+- validation reports;
+- importer-facing diagnostics.
 
-Once that layer works, implementation of `source_mapping` and the first real importer can proceed against a concrete, tested relational environment rather than an abstract schema.
+The completed Phase 1 seed/fixture layer should remain the regression target for this work, so the first real importer proceeds against a concrete, tested relational environment rather than an abstract schema.
 
 ---
 
