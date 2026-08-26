@@ -165,6 +165,8 @@ switch string(code)
         identifier = "vawlume:source_mapping:InvalidFieldMappings";
     case "PROFILE_INHERITANCE_UNSUPPORTED"
         identifier = "vawlume:source_mapping:UnsupportedProfileInheritance";
+    case "PROFILE_UNKNOWN_TRANSFORM"
+        identifier = "vawlume:source_mapping:UnknownTransform";
     otherwise
         identifier = "vawlume:source_mapping:ProfileValidationFailed";
 end

@@ -410,6 +410,9 @@ report = finalizeReport(report);
                     '^[A-Za-z][A-Za-z0-9_]*$', 'once'))
                 addIssue("error", "PROFILE_INVALID_FIELD", mappingLocation + ".transform", ...
                     "Transform keys must be simple registry identifiers: " + transform + ".");
+            elseif strlength(transform) > 0 && ~ismember(transform, supportedTransformKeys())
+                addIssue("error", "PROFILE_UNKNOWN_TRANSFORM", mappingLocation + ".transform", ...
+                    "Transform key is not registered for prototype execution: " + transform + ".");
             end
         end
     end
@@ -639,7 +642,7 @@ report.profile_kinds = strings(0, 1);
 report.profile_schema_versions = strings(0, 1);
 report.profile_version_labels = strings(0, 1);
 report.supported_profile_schema_versions = "0.1-draft";
-report.deferred_checks = "transform_registry_existence";
+report.deferred_checks = strings(0, 1);
 report.issues = struct("severity", {}, "code", {}, "profile_location", {}, "message", {});
 report.issue_table = emptyIssueTable();
 report.warning_count = 0;
