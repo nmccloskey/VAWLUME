@@ -1,22 +1,21 @@
 function tests = test_phase1_fixture
 tests = functiontests({ ...
-    @testBuildPhase1FixturePopulatesRequiredShape, ...
-    @testPhase1FixtureRebuildsStably});
+    @testCreatePhase1FixtureDatabasePopulatesRequiredShape, ...
+    @testPhase1FixtureRebuildsStably, ...
+    @testPhase1FixtureRejectsProtectedIntegrityViolations});
 end
 
-function testBuildPhase1FixturePopulatesRequiredShape(testCase)
+function testCreatePhase1FixtureDatabasePopulatesRequiredShape(testCase)
 repoRoot = repoRootForTest();
 addpath(fullfile(repoRoot, "src"));
 cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
 
-[conn, dbFile] = createDisposableDatabase(repoRoot);
+[conn, dbFile, summary] = createFixtureDatabase(repoRoot);
 cleanupDb = onCleanup(@() cleanupDatabase(conn, dbFile));
-
-summary = vawlume.db.buildPhase1Fixture(conn, repoRoot);
 
 verifyEqual(testCase, summary.project_key, "phase1_synthetic_fixture");
 verifyEqual(testCase, summary.foreign_key_violation_count, 0);
-verifyEqual(testCase, tableValue(fetch(conn, "PRAGMA foreign_key_check"), "table"), string.empty(0, 1));
+verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
 verifyCoreCounts(testCase, summary.counts);
 verifyExperimentalShape(testCase, conn);
 verifyProfilesAndRuns(testCase, conn);
@@ -32,18 +31,57 @@ repoRoot = repoRootForTest();
 addpath(fullfile(repoRoot, "src"));
 cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
 
-[connA, dbFileA] = createDisposableDatabase(repoRoot);
+[connA, dbFileA, summaryA] = createFixtureDatabase(repoRoot);
 cleanupDbA = onCleanup(@() cleanupDatabase(connA, dbFileA));
-summaryA = vawlume.db.buildPhase1Fixture(connA, repoRoot);
 
-[connB, dbFileB] = createDisposableDatabase(repoRoot);
+[connB, dbFileB, summaryB] = createFixtureDatabase(repoRoot);
 cleanupDbB = onCleanup(@() cleanupDatabase(connB, dbFileB));
-summaryB = vawlume.db.buildPhase1Fixture(connB, repoRoot);
 
 verifyEqual(testCase, summaryA.counts, summaryB.counts);
 verifyEqual(testCase, summaryA.stability_signature, summaryB.stability_signature);
 
 clear cleanupPath cleanupDbA cleanupDbB summaryA summaryB
+end
+
+function testPhase1FixtureRejectsProtectedIntegrityViolations(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+
+[conn, dbFile] = createFixtureDatabase(repoRoot);
+cleanupDb = onCleanup(@() cleanupDatabase(conn, dbFile));
+ids = fixtureIds(conn);
+countsBefore = protectedCounts(conn);
+
+verifySqlFails(testCase, conn, ...
+    "INSERT INTO detections(extraction_run_id, recording_id, native_event_id, start_time_s, end_time_s) " + ...
+    "VALUES (" + string(ids.dsSocialRun) + ", " + string(ids.socialRecording) + ", 'BAD_TIME', 1.000, 0.500)");
+
+verifySqlFails(testCase, conn, ...
+    "INSERT INTO detections(extraction_run_id, recording_id, native_event_id, start_time_s, end_time_s) " + ...
+    "VALUES (" + string(ids.dsSocialRun) + ", " + string(ids.baselineRecording) + ", 'BAD_RUN_INPUT', 1.000, 1.100)");
+
+[sameRunA, sameRunB] = orderedPair(ids.dsSocial1, ids.dsSocial2);
+verifySqlFails(testCase, conn, candidateInsertSql(ids.matchingAnalysis, ids.socialRecording, sameRunA, sameRunB, "same_run"));
+
+[crossRecordingA, crossRecordingB] = orderedPair(ids.dsSocial1, ids.dsBaseline1);
+verifySqlFails(testCase, conn, candidateInsertSql(ids.matchingAnalysis, ids.socialRecording, crossRecordingA, crossRecordingB, "cross_recording"));
+
+verifySqlFails(testCase, conn, ...
+    "INSERT INTO feature_relationships(feature_a_id, feature_b_id, relationship_type) " + ...
+    "VALUES (" + string(ids.maxFeature) + ", " + string(ids.minFeature) + ", 'comparable')");
+
+existingRelationship = fetch(conn, ...
+    "SELECT feature_a_id, feature_b_id FROM feature_relationships ORDER BY feature_relationship_id LIMIT 1");
+verifySqlFails(testCase, conn, ...
+    "INSERT INTO feature_relationships(feature_a_id, feature_b_id, relationship_type) " + ...
+    "VALUES (" + string(existingRelationship.feature_a_id(1)) + ", " + ...
+    string(existingRelationship.feature_b_id(1)) + ", 'comparable')");
+
+verifyEqual(testCase, protectedCounts(conn), countsBefore);
+verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
+
+clear cleanupPath cleanupDb
 end
 
 function verifyCoreCounts(testCase, counts)
@@ -206,10 +244,60 @@ verifyEqual(testCase, scalar(conn, ...
     " AND ABS((vea.start_time_aligned_s - vea.start_time_native) - 0.55) < 1e-9"), 2);
 end
 
-function [conn, dbFile] = createDisposableDatabase(repoRoot)
+function ids = fixtureIds(conn)
+ids = struct();
+ids.socialRecording = lookupId(conn, "SELECT recording_id AS id FROM recordings WHERE native_recording_id = 'REC_SOCIAL_DYAD_01'");
+ids.baselineRecording = lookupId(conn, "SELECT recording_id AS id FROM recordings WHERE native_recording_id = 'REC_BASELINE_M01'");
+ids.dsSocialRun = lookupId(conn, "SELECT extraction_run_id AS id FROM extraction_runs WHERE run_key = 'fixture_deepsqueak_social_v1'");
+ids.matchingAnalysis = lookupId(conn, "SELECT analysis_run_id AS id FROM analysis_runs WHERE run_key = 'fixture_cross_extractor_matching_v1'");
+ids.dsSocial1 = detectionId(conn, "fixture_deepsqueak_social_v1", "REC_SOCIAL_DYAD_01", "1");
+ids.dsSocial2 = detectionId(conn, "fixture_deepsqueak_social_v1", "REC_SOCIAL_DYAD_01", "2");
+ids.dsBaseline1 = detectionId(conn, "fixture_deepsqueak_baseline_v1", "REC_BASELINE_M01", "1");
+ids.minFeature = lookupId(conn, "SELECT MIN(extractor_feature_id) AS id FROM extractor_features");
+ids.maxFeature = lookupId(conn, "SELECT MAX(extractor_feature_id) AS id FROM extractor_features");
+end
+
+function id = detectionId(conn, runKey, recordingNativeId, nativeEventId)
+id = lookupId(conn, ...
+    "SELECT d.detection_id AS id FROM detections d " + ...
+    "JOIN extraction_runs er ON er.extraction_run_id = d.extraction_run_id " + ...
+    "JOIN recordings r ON r.recording_id = d.recording_id " + ...
+    "WHERE er.run_key = " + sqlText(runKey) + ...
+    " AND r.native_recording_id = " + sqlText(recordingNativeId) + ...
+    " AND d.native_event_id = " + sqlText(nativeEventId));
+end
+
+function sql = candidateInsertSql(analysisRunId, recordingId, detectionAId, detectionBId, status)
+sql = ...
+    "INSERT INTO candidate_pairs(analysis_run_id, recording_id, detection_a_id, detection_b_id, candidate_status) " + ...
+    "VALUES (" + string(analysisRunId) + ", " + string(recordingId) + ", " + ...
+    string(detectionAId) + ", " + string(detectionBId) + ", " + sqlText(status) + ")";
+end
+
+function counts = protectedCounts(conn)
+counts = struct();
+counts.detections = scalar(conn, "SELECT COUNT(*) AS n FROM detections");
+counts.candidate_pairs = scalar(conn, "SELECT COUNT(*) AS n FROM candidate_pairs");
+counts.feature_relationships = scalar(conn, "SELECT COUNT(*) AS n FROM feature_relationships");
+end
+
+function [left, right] = orderedPair(a, b)
+left = min(a, b);
+right = max(a, b);
+end
+
+function [conn, dbFile, summary] = createFixtureDatabase(repoRoot)
 dbFile = string(tempname) + ".sqlite";
-conn = sqlite(char(dbFile), "create");
-vawlume.db.applySchema(conn, fullfile(repoRoot, "schema", "schema.sql"));
+[conn, databaseSummary] = vawlume.db.createPhase1FixtureDatabase(dbFile, repoRoot);
+summary = databaseSummary.fixture;
+end
+
+function id = lookupId(conn, sql)
+rows = fetch(conn, sql);
+if height(rows) ~= 1
+    error("vawlume:test:LookupFailed", "Expected one row for lookup, found %d. SQL: %s", height(rows), sql);
+end
+id = double(rows.id(1));
 end
 
 function value = scalar(conn, sql)
@@ -217,12 +305,14 @@ result = fetch(conn, sql);
 value = double(result.n(1));
 end
 
-function value = tableValue(tableData, variableName)
-if height(tableData) == 0
-    value = string.empty(0, 1);
-else
-    value = string(tableData.(variableName));
+function verifySqlFails(testCase, conn, sql)
+didFail = false;
+try
+    execute(conn, sql);
+catch
+    didFail = true;
 end
+verifyTrue(testCase, didFail, "Expected SQL statement to fail: " + sql);
 end
 
 function text = sqlText(value)
