@@ -209,6 +209,19 @@ validated intermediate representation
 ingest/database layer
 ```
 
+### YAML loader runtime dependency
+
+`vawlume.source_mapping.loadProfile` uses the MATLAB-configured Python
+executable from `pyenv.Executable`, falling back to `python` when MATLAB has no
+configured executable. It runs
+`src/+vawlume/+source_mapping/private/yaml_file_to_json.py` out of process,
+which requires PyYAML in that Python environment.
+
+If PyYAML, the Python executable, or YAML parsing fails, the loader raises
+`vawlume:source_mapping:YamlLoadFailed`. This out-of-process bridge is
+intentional for the prototype because in-process Python/PyYAML import was not
+reliable in the tested MATLAB R2026a environment.
+
 ## 11. Testing conventions
 
 Use MATLAB's unit testing framework.

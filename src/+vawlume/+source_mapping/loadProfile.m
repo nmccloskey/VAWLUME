@@ -1,9 +1,10 @@
-function loaded = loadProfile(profilePath, options)
-%LOADPROFILE Load and lightly validate a VAWLUME mapping/profile YAML file.
+function [loaded, report] = loadProfile(profilePath, options)
+%LOADPROFILE Load and validate a VAWLUME mapping-profile YAML file.
 %
-% This loader is intentionally narrow for the prototype seed-registration
-% path. It centralizes YAML loading and the identity checks future profile
-% readers should share, without attempting to validate every profile feature.
+% The loader preserves the Phase 1 seed-registration contract for
+% extractor-output profiles while also accepting the Phase 2 project-input
+% multi-profile document shape. YAML parsing remains centralized through the
+% established out-of-process PyYAML bridge.
 
 arguments
     profilePath (1,1) string
@@ -19,16 +20,29 @@ if ~isfile(profilePath)
 end
 
 document = loadYamlWithPyYaml(profilePath, options.PythonExecutable);
-validateProfileDocument(document, options.ExpectedKind);
+report = vawlume.source_mapping.validateProfile( ...
+    document, ExpectedKind=options.ExpectedKind, SourcePath=profilePath);
+throwIfValidationFailed(report);
+
+profileDocuments = normalizeProfileDocuments(document);
 
 loaded = struct();
 loaded.document = document;
-loaded.profile = document.profile;
 loaded.source_path = profilePath;
 loaded.relative_path = relativePath(profilePath, options.RepoRoot);
 loaded.checksum_sha256 = sha256File(profilePath);
-loaded.field_mappings = normalizeMappingSequence(document.field_mappings);
-loaded.warnings = profileWarnings(document);
+loaded.profile_documents = profileDocuments;
+loaded.profile_count = numel(profileDocuments);
+loaded.profiles = cellfun(@(item) item.profile, profileDocuments, UniformOutput=false);
+loaded.profile = loaded.profiles{1};
+loaded.profile_ids = report.profile_ids;
+loaded.profile_kinds = report.profile_kinds;
+loaded.profile_schema_versions = report.profile_schema_versions;
+loaded.profile_version_labels = report.profile_version_labels;
+loaded.field_mappings = firstProfileFieldMappings(profileDocuments);
+loaded.issues = report.issues;
+loaded.report = report;
+loaded.warnings = issueMessages(report, "warning");
 end
 
 function document = loadYamlWithPyYaml(profilePath, pythonExecutable)
@@ -73,51 +87,17 @@ if strlength(pythonExecutable) == 0
 end
 end
 
-function validateProfileDocument(document, expectedKind)
-if ~isstruct(document)
-    error("vawlume:source_mapping:InvalidProfile", ...
-        "Profile YAML must decode to a mapping/object.");
+function throwIfValidationFailed(report)
+errors = filterIssues(report.issues, "error");
+if isempty(errors)
+    return
 end
 
-requiredTopLevel = ["profile", "extractor", "field_mapping_source", "field_mappings"];
-for name = requiredTopLevel
-    requireField(document, name, "profile document");
-end
-
-profile = document.profile;
-requireText(profile, "id", "profile");
-requireText(profile, "name", "profile");
-kind = requireText(profile, "kind", "profile");
-requireText(profile, "profile_schema_version", "profile");
-
-if strlength(expectedKind) > 0 && kind ~= expectedKind
-    error("vawlume:source_mapping:UnexpectedProfileKind", ...
-        "Expected profile kind %s but found %s.", expectedKind, kind);
-end
-
-requireText(document.extractor, "name", "extractor");
-requireField(document.extractor, "version_scope", "extractor");
-requireText(document.extractor.version_scope, "preferred", "extractor.version_scope");
-requireText(document.field_mapping_source, "artifact_key", "field_mapping_source");
-
-mappings = normalizeMappingSequence(document.field_mappings);
-if isempty(mappings)
-    error("vawlume:source_mapping:InvalidFieldMappings", ...
-        "field_mappings must be a nonempty sequence of mappings.");
-end
-
-for index = 1:numel(mappings)
-    mapping = mappings{index};
-    if ~isstruct(mapping)
-        error("vawlume:source_mapping:InvalidFieldMappings", ...
-            "field_mappings(%d) must be a mapping/object.", index);
-    end
-    context = "field_mappings(" + index + ")";
-    requireText(mapping, "source_field", context);
-    requireText(mapping, "target_level", context);
-    requireText(mapping, "canonical_field", context);
-    requireText(mapping, "data_type", context);
-end
+issue = errors(1);
+identifier = issueIdentifier(issue.code);
+error(identifier, ...
+    "Profile validation failed for %s: %s [%s at %s].", ...
+    report.source_path, issue.message, issue.code, issue.profile_location);
 end
 
 function mappings = normalizeMappingSequence(rawMappings)
@@ -130,27 +110,63 @@ else
 end
 end
 
-function warnings = profileWarnings(document)
-warnings = strings(0, 1);
-if ~isfield(document.profile, "profile_version") || isempty(document.profile.profile_version)
-    warnings(end + 1, 1) = "Profile " + string(document.profile.id) + ...
-        " has no profile.profile_version; seed registration uses extractor.version_scope.preferred as the profile version label.";
+function profileDocuments = normalizeProfileDocuments(document)
+if isstruct(document) && isfield(document, "profiles")
+    profileDocuments = normalizeMappingSequence(document.profiles);
+else
+    profileDocuments = {document};
 end
 end
 
-function requireField(value, name, context)
-if ~isstruct(value) || ~isfield(value, name) || isempty(value.(name))
-    error("vawlume:source_mapping:MissingProfileField", ...
-        "Missing required %s.%s.", context, name);
+function fieldMappings = firstProfileFieldMappings(profileDocuments)
+firstDocument = profileDocuments{1};
+if isstruct(firstDocument) && isfield(firstDocument, "field_mappings")
+    fieldMappings = normalizeMappingSequence(firstDocument.field_mappings);
+else
+    fieldMappings = {};
 end
 end
 
-function text = requireText(value, name, context)
-requireField(value, name, context);
-text = string(value.(name));
-if numel(text) ~= 1 || ismissing(text) || strlength(text) == 0
-    error("vawlume:source_mapping:InvalidProfileField", ...
-        "Expected %s.%s to be a nonempty text scalar.", context, name);
+function messages = issueMessages(report, severity)
+issues = filterIssues(report.issues, severity);
+messages = strings(numel(issues), 1);
+for index = 1:numel(issues)
+    issue = issues(index);
+    messages(index) = issue.code + ": " + issue.message + " (" + issue.profile_location + ")";
+end
+end
+
+function matches = filterIssues(issues, severity)
+matches = struct("severity", {}, "code", {}, "profile_location", {}, "message", {});
+for index = 1:numel(issues)
+    if string(issues(index).severity) == severity
+        matches(end + 1) = issues(index); %#ok<AGROW>
+    end
+end
+end
+
+function identifier = issueIdentifier(code)
+switch string(code)
+    case "PROFILE_INVALID_DOCUMENT"
+        identifier = "vawlume:source_mapping:InvalidProfile";
+    case "PROFILE_MISSING_FIELD"
+        identifier = "vawlume:source_mapping:MissingProfileField";
+    case "PROFILE_INVALID_FIELD"
+        identifier = "vawlume:source_mapping:InvalidProfileField";
+    case "PROFILE_UNEXPECTED_KIND"
+        identifier = "vawlume:source_mapping:UnexpectedProfileKind";
+    case "PROFILE_UNSUPPORTED_KIND"
+        identifier = "vawlume:source_mapping:UnsupportedProfileKind";
+    case "PROFILE_UNSUPPORTED_SCHEMA_VERSION"
+        identifier = "vawlume:source_mapping:UnsupportedProfileSchemaVersion";
+    case "PROFILE_INVALID_REGEX"
+        identifier = "vawlume:source_mapping:InvalidProfileRegex";
+    case "PROFILE_INVALID_FIELD_MAPPINGS"
+        identifier = "vawlume:source_mapping:InvalidFieldMappings";
+    case "PROFILE_INHERITANCE_UNSUPPORTED"
+        identifier = "vawlume:source_mapping:UnsupportedProfileInheritance";
+    otherwise
+        identifier = "vawlume:source_mapping:ProfileValidationFailed";
 end
 end
 
