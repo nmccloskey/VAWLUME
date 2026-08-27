@@ -3,7 +3,30 @@ tests = functiontests({ ...
     @testFolderDrivenProfileParsesLiteralsPathFilenameAndCorroboration, ...
     @testFilenameDrivenProfileNormalizesCapturedValue, ...
     @testDyadProfileEmitsSubjectRoles, ...
+    @testWindowsAndPosixSeparatorsParseEquivalently, ...
     @testParserReportsNoMatchAmbiguityAndConflicts});
+end
+
+function testWindowsAndPosixSeparatorsParseEquivalently(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+loaded = loadProjectProfiles(repoRoot);
+profile = profileById(loaded, "example.project.mouse_courtship.folder_driven");
+posixSource = syntheticSource( ...
+    "control/mouse_001/baseline/001_baseline_1.wav");
+windowsSource = posixSource;
+windowsSource.relative_path = replace( ...
+    posixSource.relative_path, "/", string(char(92)));
+
+posix = vawlume.source_mapping.parsePath(posixSource, profile);
+windows = vawlume.source_mapping.parsePath(windowsSource, profile);
+
+verifyEqual(testCase, windows.relative_path, posix.relative_path);
+verifyEqual(testCase, windows.record_table, posix.record_table);
+verifyEqual(testCase, windows.issue_table, posix.issue_table);
+
+clear cleanupPath
 end
 
 function testFolderDrivenProfileParsesLiteralsPathFilenameAndCorroboration(testCase)

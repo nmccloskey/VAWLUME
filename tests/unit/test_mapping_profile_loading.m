@@ -1,12 +1,55 @@
 function tests = test_mapping_profile_loading
 tests = functiontests({ ...
     @testLoadsEveryShippedMappingProfile, ...
+    @testProfileChecksumsAreStable, ...
+    @testKindSpecificStructureIsRequired, ...
     @testExtractorProfileVersionFallbackIsReported, ...
     @testRejectsMalformedYaml, ...
     @testRejectsMissingProfileIdentity, ...
     @testRejectsUnsupportedSchemaVersion, ...
     @testRejectsInvalidRegex, ...
     @testRejectsInheritanceDeclarations});
+end
+
+function testProfileChecksumsAreStable(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+profilePath = fullfile(repoRoot, "config", "01_mapping_profiles", ...
+    "project_inputs", "project_input_source_mapping_examples.yaml");
+
+first = vawlume.source_mapping.loadProfile(profilePath, RepoRoot=repoRoot);
+second = vawlume.source_mapping.loadProfile(profilePath, RepoRoot=repoRoot);
+
+verifyEqual(testCase, first.checksum_sha256, second.checksum_sha256);
+verifyEqual(testCase, strlength(first.checksum_sha256), 64);
+
+clear cleanupPath
+end
+
+function testKindSpecificStructureIsRequired(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+
+extractor = struct();
+extractor.profile = profileEnvelope("missing.extractor.mappings", "extractor_output");
+extractor.extractor = struct(name="SyntheticExtractor");
+extractor.field_mapping_source = struct(artifact_key="events");
+extractorReport = vawlume.source_mapping.validateProfile( ...
+    extractor, ExpectedKind="extractor_output");
+verifyFalse(testCase, extractorReport.is_valid);
+verifyTrue(testCase, any(issueCodes(extractorReport) == "PROFILE_MISSING_FIELD"));
+
+project = struct();
+project.profile = profileEnvelope("missing.project.structure", "project_input");
+project.source = struct(root="<PROJECT_ROOT>", include=struct(glob="*.wav"));
+projectReport = vawlume.source_mapping.validateProfile( ...
+    project, ExpectedKind="project_input");
+verifyFalse(testCase, projectReport.is_valid);
+verifyTrue(testCase, any(issueCodes(projectReport) == "PROFILE_MISSING_FIELD"));
+
+clear cleanupPath
 end
 
 function testLoadsEveryShippedMappingProfile(testCase)
@@ -219,6 +262,14 @@ yamlText = join([
     "    canonical_field: value"
     "    data_type: float"
     ], newline);
+end
+
+function profile = profileEnvelope(id, kind)
+profile = struct( ...
+    id=string(id), ...
+    name="Synthetic profile", ...
+    kind=string(kind), ...
+    profile_schema_version="0.1-draft");
 end
 
 function codes = issueCodes(report)

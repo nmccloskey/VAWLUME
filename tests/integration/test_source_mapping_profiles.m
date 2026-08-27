@@ -1,8 +1,37 @@
 function tests = test_source_mapping_profiles
 tests = functiontests({ ...
     @testAllProjectProfilesProduceDeterministicIR, ...
+    @testBuiltinExtractorProfilesMapAtGenericFieldLevel, ...
     @testProjectConflictPreservesBothCandidates, ...
     @testNoDiscoveredSourceInvalidatesIR});
+end
+
+function testBuiltinExtractorProfilesMapAtGenericFieldLevel(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+
+deepSqueak = vawlume.source_mapping.mapTableToIR( ...
+    oneDeepSqueakRow(), extractorProfilePath(repoRoot, "deepsqueak"), ...
+    SourceKey="extractor:deepsqueak:integration", RepoRoot=repoRoot);
+verifyTrue(testCase, deepSqueak.valid_for_ingest);
+verifyEqual(testCase, height(deepSqueak.records), 1);
+frequency = deepSqueak.values( ...
+    deepSqueak.values.canonical_field == "contour_median_frequency", :);
+verifyEqual(testCase, frequency.normalized_value_real, 55000);
+verifyEqual(testCase, frequency.transform_key, "kHz_to_Hz");
+
+mupet = vawlume.source_mapping.mapTableToIR( ...
+    oneMupetRow(), extractorProfilePath(repoRoot, "mupet"), ...
+    SourceKey="extractor:mupet:integration", RepoRoot=repoRoot);
+verifyTrue(testCase, mupet.valid_for_ingest);
+verifyEqual(testCase, height(mupet.records), 1);
+interval = mupet.values(mupet.values.canonical_field == "inter_call_interval", :);
+verifyEqual(testCase, interval.raw_value, "NA");
+verifyEqual(testCase, interval.normalized_value_type, "missing");
+verifyTrue(testCase, any(mupet.issues.code == "MISSING_TOKEN_NORMALIZED"));
+
+clear cleanupPath
 end
 
 function testAllProjectProfilesProduceDeterministicIR(testCase)
@@ -112,6 +141,57 @@ end
 function path = projectProfilePath(repoRoot)
 path = fullfile(repoRoot, "config", "01_mapping_profiles", ...
     "project_inputs", "project_input_source_mapping_examples.yaml");
+end
+
+function path = extractorProfilePath(repoRoot, name)
+path = fullfile(repoRoot, "config", "01_mapping_profiles", ...
+    "extractors", name, name + "_output_mapping_profile.yaml");
+end
+
+function tbl = oneDeepSqueakRow()
+tbl = table( ...
+    "calls_001.mat", 1, "USV", 1, 0.95, 0.100, 0.148, 0.048, ...
+    55, 40, 80, 40, 4.5, 2.1, 76, 1.2, -35, 0.8, ...
+    VariableNames=[
+    "File"
+    "ID"
+    "Label"
+    "Accepted"
+    "Score"
+    "Begin Time (s)"
+    "End Time (s)"
+    "Call Length (s)"
+    "Principal Frequency (kHz)"
+    "Low Freq (kHz)"
+    "High Freq (kHz)"
+    "Delta Freq (kHz)"
+    "Frequency Standard Deviation (kHz)"
+    "Slope (kHz/s)"
+    "Peak Freq (kHz)"
+    "Sinuosity"
+    "Mean Power (dB/Hz)"
+    "Tonality"
+    ]);
+end
+
+function tbl = oneMupetRow()
+tbl = table( ...
+    1, 0.100, 0.148, "NA", 48, 45, 60, 40, 75, 55, 35, 12.5, -18, ...
+    VariableNames=[
+    "Syllable number"
+    "Syllable start time (sec)"
+    "Syllable end time (sec)"
+    "inter-syllable interval (sec)"
+    "syllable duration (msec)"
+    "starting frequency (kHz)"
+    "final frequency (kHz)"
+    "minimum frequency (kHz)"
+    "maximum frequency (kHz)"
+    "mean frequency (kHz)"
+    "frequency bandwidth (kHz)"
+    "total syllable energy (dB)"
+    "peak syllable amplitude (dB)"
+    ]);
 end
 
 function root = temporaryRoot(label)

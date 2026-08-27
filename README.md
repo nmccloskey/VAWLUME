@@ -48,11 +48,12 @@ The current design includes:
 - a deterministic Phase 1 synthetic fixture with representative acceptance queries and MATLAB tests;
 - project-source discovery/path parsing and extractor table-field mapping;
 - one provenance-bearing, validated source-mapping intermediate representation for project files and supplied extractor tables;
+- a structured, human-readable, IR-only source-mapping dry-run preview with explicit readiness verdicts;
 - schema support for experimental hierarchy, extractor-native objects, detections, feature semantics, cross-extractor matching, derived analysis, and external event/timebase alignment.
 
 The reusable `source_mapping` engine now reaches a validated intermediate
-representation. The next target is human-readable dry-run preview and the
-complete Phase 2 test matrix, followed by project intake and the first real
+representation and renders a database-free dry-run preview. The next target is
+the final Phase 2 review, followed by project intake and the first real
 importers.
 
 ## Configuration policy
@@ -92,7 +93,9 @@ The current recommended order is:
 9. implement matching/consensus;
 10. implement one compact sequence/alignment analysis.
 
-Phase 1 completed items 1-4 as a tested relational checkpoint; item 5 is the next active implementation target.
+Phase 1 completed items 1-4 as a tested relational checkpoint. Phase 2 now
+implements item 5 through the validated IR and dry-run boundary; project intake
+remains the next implementation target.
 
 ## Documentation
 

@@ -42,6 +42,26 @@ caller supplies a MATLAB `table`. The lower-level `discoverSources`,
 `parsePath`, and `mapTableFields` functions remain available for focused
 inspection, but downstream ingest should consume the unified IR.
 
+Any unified IR result can be rendered as an inspectable dry-run report:
+
+```matlab
+preview = vawlume.source_mapping.preview(result);
+disp(preview.text)
+```
+
+Set `Print=true` to also print the text while retaining the structured return
+value. The report exposes header/profile provenance, discovery counts,
+role-aware project hierarchy columns, extractor table-mapping summaries,
+issues grouped by severity and code, bounded issue details, and a final
+`READY FOR INGEST` or `NOT READY FOR INGEST` verdict. The verdict is solely a
+readable view of `result.valid_for_ingest`.
+
+`preview` consumes the IR only. It does not rediscover files, rerun mappings,
+read extractor artifacts, accept a database connection, execute SQL, or imply
+that ingestion occurred. The current IR retains selected sources but not the
+full set of ignored discovery candidates, so the preview labels the ignored
+count unavailable instead of fabricating it.
+
 Profile-load and source-root failures that prevent any usable result retain the
 existing exception contract. Mapping and validation problems discovered after
 loading are returned as structured IR issues.
@@ -232,6 +252,10 @@ variants, and raw sentinels needed for detections and
 
 Later ingest must resolve logical keys to database IDs. The source-mapping
 layer does not open SQLite, execute SQL, or mutate a database.
+
+The dry-run test suite enforces this boundary against a disposable Phase 1
+fixture database by comparing every user-table row count and foreign-key check
+before and after parse plus preview.
 
 ## YAML runtime dependency
 

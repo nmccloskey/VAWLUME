@@ -1,8 +1,41 @@
 function tests = test_transform_registry
 tests = functiontests({ ...
     @testRegisteredTransformsApplyExpectedConversions, ...
+    @testEveryShippedTransformReferenceIsExecutable, ...
     @testUnknownAndInvalidTransformsReturnStructuredIssues, ...
     @testProfileValidationRejectsUnknownTransform});
+end
+
+function testEveryShippedTransformReferenceIsExecutable(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+profiles = ["deepsqueak", "mupet"];
+referenced = strings(0, 1);
+
+for profileIndex = 1:numel(profiles)
+    name = profiles(profileIndex);
+    path = fullfile(repoRoot, "config", "01_mapping_profiles", ...
+        "extractors", name, name + "_output_mapping_profile.yaml");
+    loaded = vawlume.source_mapping.loadProfile(path, ...
+        ExpectedKind="extractor_output", RepoRoot=repoRoot);
+    for mappingIndex = 1:numel(loaded.field_mappings)
+        mapping = loaded.field_mappings{mappingIndex};
+        if isfield(mapping, "transform") && strlength(string(mapping.transform)) > 0
+            referenced(end + 1, 1) = string(mapping.transform); %#ok<AGROW>
+        end
+    end
+end
+
+referenced = sort(unique(referenced));
+verifyNotEmpty(testCase, referenced);
+for transformIndex = 1:numel(referenced)
+    [~, report] = vawlume.source_mapping.applyTransform(1, referenced(transformIndex));
+    verifyTrue(testCase, report.is_valid, ...
+        "Shipped transform must be executable: " + referenced(transformIndex));
+end
+
+clear cleanupPath
 end
 
 function testRegisteredTransformsApplyExpectedConversions(testCase)
@@ -43,6 +76,12 @@ verifyEqual(testCase, string(report.issue_table.code), "TRANSFORM_UNKNOWN");
 verifyEmpty(testCase, value);
 verifyFalse(testCase, report.is_valid);
 verifyEqual(testCase, string(report.issue_table.code), "TRANSFORM_INPUT_NOT_NUMERIC");
+
+[value, report] = vawlume.source_mapping.applyTransform(missing, "kHz_to_Hz");
+verifyEmpty(testCase, value);
+verifyTrue(testCase, report.is_valid);
+verifyEqual(testCase, report.status, "missing");
+verifyEqual(testCase, string(report.issue_table.code), "TRANSFORM_INPUT_MISSING");
 
 clear cleanupPath
 end

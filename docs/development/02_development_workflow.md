@@ -206,8 +206,16 @@ source_mapping.parse(...)
         ↓
 validated intermediate representation
         ↓
+source_mapping.preview(...)  [read-only dry run]
+        |
+        v
 ingest/database layer
 ```
+
+`vawlume.source_mapping.preview` returns structured report sections and a text
+view derived solely from the intermediate representation. It accepts no
+database connection and its readiness verdict mirrors IR validity; it does not
+claim that ingestion occurred.
 
 ### YAML loader runtime dependency
 
