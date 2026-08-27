@@ -46,9 +46,14 @@ The current design includes:
 - a specified source-mapping architecture;
 - semantic seed registration for shipped DeepSqueak/MUPET output-mapping profiles;
 - a deterministic Phase 1 synthetic fixture with representative acceptance queries and MATLAB tests;
+- project-source discovery/path parsing and extractor table-field mapping;
+- one provenance-bearing, validated source-mapping intermediate representation for project files and supplied extractor tables;
 - schema support for experimental hierarchy, extractor-native objects, detections, feature semantics, cross-extractor matching, derived analysis, and external event/timebase alignment.
 
-The next implementation target is the reusable `source_mapping` engine, followed by project intake and the first real importers.
+The reusable `source_mapping` engine now reaches a validated intermediate
+representation. The next target is human-readable dry-run preview and the
+complete Phase 2 test matrix, followed by project intake and the first real
+importers.
 
 ## Configuration policy
 
@@ -63,6 +68,14 @@ Tracked configuration artifacts should describe reusable semantics or examples:
 User-specific runtime paths, local data, generated databases, and private project configuration should remain untracked.
 
 See [`config/README.md`](config/README.md).
+
+## Runtime dependency
+
+Mapping-profile loading uses an out-of-process Python 3 interpreter with
+`PyYAML`. MATLAB selects `pyenv.Executable` by default; the public loader
+and source-mapping entry points also accept an explicit `PythonExecutable`.
+See
+[`docs/development/03_source_mapping_intermediate_representation.md`](docs/development/03_source_mapping_intermediate_representation.md).
 
 ## Development order
 
