@@ -28,6 +28,10 @@ loads and validates the profile, discovers sources, parses path and filename
 semantics, assembles records and relationships, consolidates conflicts, and
 derives validity.
 
+Profile regex declarations are MATLAB `regexp` patterns. Named captures use
+MATLAB syntax, `(?<name>...)`; Python-style `(?P<name>...)` captures are
+rejected during profile validation.
+
 Already-loaded extractor tables use:
 
 ```matlab

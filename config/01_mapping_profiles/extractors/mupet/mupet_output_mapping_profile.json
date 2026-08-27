@@ -163,7 +163,7 @@
         "format": "mat",
         "include": {
           "path_regex": [
-            "(?:^|/)audio/(?P<native_dataset_path>[^/]+)/(?P<recording_stem>[^/]+)\\.mat$"
+            "(?:^|/)audio/(?<native_dataset_path>[^/]+)/(?<recording_stem>[^/]+)\\.mat$"
           ]
         },
         "priority": "preferred_for_provenance",
@@ -189,7 +189,7 @@
         "format": "csv",
         "include": {
           "path_regex": [
-            "(?:^|/)audio/(?P<native_dataset_path>[^/]+)/CSV/(?P<recording_stem>[^/]+)\\.csv$"
+            "(?:^|/)audio/(?<native_dataset_path>[^/]+)/CSV/(?<recording_stem>[^/]+)\\.csv$"
           ]
         },
         "exclude": {

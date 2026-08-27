@@ -9,6 +9,7 @@ tests = functiontests({ ...
     @testRejectsMissingProfileIdentity, ...
     @testRejectsUnsupportedSchemaVersion, ...
     @testRejectsInvalidRegex, ...
+    @testRejectsPythonStyleNamedCapture, ...
     @testRejectsInheritanceDeclarations});
 end
 
@@ -93,7 +94,7 @@ verifyTrue(testCase, all(loaded.profile_kinds == "project_input"));
 verifyTrue(testCase, all(loaded.profile_version_labels == "0.1.0"));
 verifyEqual(testCase, loaded.profile_ids(1), ...
     "example.project.mouse_courtship.folder_driven");
-verifyTrue(testCase, any(issueCodes(report) == ...
+verifyFalse(testCase, any(issueCodes(report) == ...
     "PROFILE_REGEX_PYTHON_NAMED_CAPTURE_COMPATIBILITY"));
 
 clear cleanupPath
@@ -208,17 +209,35 @@ verifyError(testCase, ...
 clear cleanupPath cleanupProfile
 end
 
+function testRejectsPythonStyleNamedCapture(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+
+entry = minimalProjectEntry("bad.python.regex.project");
+entry.mappings = {struct( ...
+    target_level="recording", ...
+    source_type="filename", ...
+    filename_regex="^(?P<recording>\d+)\.wav$", ...
+    captures=struct(recording=struct(canonical_field="recording_id")))};
+document = struct(profiles={{entry}});
+profilePath = temporaryJsonDocument(document);
+cleanupProfile = onCleanup(@() deleteIfExists(profilePath));
+
+verifyError(testCase, ...
+    @() vawlume.source_mapping.loadProfile(profilePath, ExpectedKind="project_input"), ...
+    "vawlume:source_mapping:InvalidProfileRegex");
+
+clear cleanupPath cleanupProfile
+end
+
 function testRejectsInheritanceDeclarations(testCase)
 repoRoot = repoRootForTest();
 addpath(fullfile(repoRoot, "src"));
 cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
 
-entry = struct();
-entry.profile = profileEnvelope("bad.inherit.project", "project_input");
+entry = minimalProjectEntry("bad.inherit.project");
 entry.extends = "base.project.profile";
-entry.source = struct(root="<PROJECT_ROOT>", include=struct(glob={{"*.wav"}}));
-entry.hierarchy = struct(levels={{struct( ...
-    native_name="recording", canonical_role="recording")}});
 entry.mappings = {struct( ...
     target_level="recording", source_type="literal", value="rec1")};
 document = struct(profiles={{entry}});
@@ -230,6 +249,14 @@ verifyError(testCase, ...
     "vawlume:source_mapping:UnsupportedProfileInheritance");
 
 clear cleanupPath cleanupProfile
+end
+
+function entry = minimalProjectEntry(id)
+entry = struct();
+entry.profile = profileEnvelope(id, "project_input");
+entry.source = struct(root="<PROJECT_ROOT>", include=struct(glob={{"*.wav"}}));
+entry.hierarchy = struct(levels={{struct( ...
+    native_name="recording", canonical_role="recording")}});
 end
 
 function document = validExtractorDocument(schemaVersion)

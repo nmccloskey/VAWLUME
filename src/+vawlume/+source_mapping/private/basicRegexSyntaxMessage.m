@@ -3,14 +3,17 @@ function message = basicRegexSyntaxMessage(pattern)
 message = "";
 pattern = char(string(pattern));
 
-for tokenPattern = {'\(\?<([^>)]*)>', '\(\?P<([^>)]*)>'}
-    tokens = regexp(pattern, tokenPattern{1}, 'tokens');
-    for index = 1:numel(tokens)
-        name = string(tokens{index}{1});
-        if isempty(regexp(char(name), '^[A-Za-z][A-Za-z0-9_]*$', 'once'))
-            message = "Regex named capture has an invalid name: " + name + ".";
-            return
-        end
+if contains(string(pattern), "(?P<")
+    message = "Python-style named capture syntax is not supported; use MATLAB '(?<name>...)' syntax.";
+    return
+end
+
+tokens = regexp(pattern, '\(\?<([^>)]*)>', 'tokens');
+for index = 1:numel(tokens)
+    name = string(tokens{index}{1});
+    if isempty(regexp(char(name), '^[A-Za-z][A-Za-z0-9_]*$', 'once'))
+        message = "Regex named capture has an invalid name: " + name + ".";
+        return
     end
 end
 

@@ -5,7 +5,7 @@ tests = functiontests({ ...
     @testExecutableJsonProfilesLoadNatively, ...
     @testMultiProfileSelectionAndContentVersions, ...
     @testScalarTypesAndFragileMapsRemainExplicit, ...
-    @testRegexDialectStillAwaitingPass4});
+    @testRegexDialectIsMatlabNative});
 end
 
 function testEveryJsonConfigProfileParsesDeterministically(testCase)
@@ -114,7 +114,7 @@ verifyEqual(testCase, string(phenotype.normalize.PS), "punishment_sensitive");
 verifyTrue(testCase, logical(deepSqueak.mapping_policy.preserve_raw_values));
 end
 
-function testRegexDialectStillAwaitingPass4(testCase)
+function testRegexDialectIsMatlabNative(testCase)
 repoRoot = repoRootForTest();
 profiles = canonicalProfiles(repoRoot);
 
@@ -122,9 +122,38 @@ projectText = string(fileread(profiles(1).json_path));
 deepSqueakText = string(fileread(profiles(2).json_path));
 mupetText = string(fileread(profiles(3).json_path));
 
-verifyEqual(testCase, count(projectText, "(?P<"), 15);
+verifyEqual(testCase, count(projectText, "(?P<"), 0);
 verifyEqual(testCase, count(deepSqueakText, "(?P<"), 0);
-verifyEqual(testCase, count(mupetText, "(?P<"), 4);
+verifyEqual(testCase, count(mupetText, "(?P<"), 0);
+verifyEqual(testCase, count(projectText, "(?<"), 15);
+verifyEqual(testCase, count(deepSqueakText, "(?<"), 0);
+verifyEqual(testCase, count(mupetText, "(?<"), 4);
+
+project = jsondecode(fileread(profiles(1).json_path));
+mupet = jsondecode(fileread(profiles(3).json_path));
+patterns = allRegexPatterns(project);
+patterns = [patterns; allRegexPatterns(mupet)];
+verifyEqual(testCase, numel(patterns), 14);
+for index = 1:numel(patterns)
+    verifyWarningFree(testCase, @() regexp("", char(patterns(index)), "once"));
+end
+
+mousePattern = project.profiles(1).mappings{3}.path_component_regex;
+mouseNames = regexp("mouse_001", mousePattern, "names");
+verifyEqual(testCase, string(mouseNames.animal_id), "001");
+verifyTrue(testCase, contains(mousePattern, "\d"));
+
+ratPattern = project.profiles(2).mappings.filename_regex;
+ratNames = regexp("OXY_PR_R03_SA07_001.wav", ratPattern, "names");
+verifyEqual(testCase, string(ratNames.phenotype), "PR");
+verifyEqual(testCase, string(ratNames.segment), "001");
+verifyTrue(testCase, contains(ratPattern, "\."));
+
+artifactPattern = mupet.artifact_discovery.artifacts{3}.include.path_regex{1};
+artifactNames = regexp("audio/dataset_a/CSV/recording_001.csv", ...
+    artifactPattern, "names");
+verifyEqual(testCase, string(artifactNames.native_dataset_path), "dataset_a");
+verifyEqual(testCase, string(artifactNames.recording_stem), "recording_001");
 end
 
 function mapping = mappingBySourceField(mappings, sourceField)
@@ -134,6 +163,48 @@ if iscell(mappings)
 else
     index = find(string({mappings.source_field}) == sourceField, 1);
     mapping = mappings(index);
+end
+end
+
+function patterns = allRegexPatterns(document)
+patterns = strings(0, 1);
+if isfield(document, "profiles")
+    profiles = normalizeSequence(document.profiles);
+    for profileIndex = 1:numel(profiles)
+        patterns = [patterns; allRegexPatterns(profiles{profileIndex})]; %#ok<AGROW>
+    end
+end
+if isfield(document, "mappings")
+    mappings = normalizeSequence(document.mappings);
+    for mappingIndex = 1:numel(mappings)
+        mapping = mappings{mappingIndex};
+        if isfield(mapping, "path_component_regex")
+            patterns(end + 1, 1) = string(mapping.path_component_regex); %#ok<AGROW>
+        end
+        if isfield(mapping, "filename_regex")
+            patterns(end + 1, 1) = string(mapping.filename_regex); %#ok<AGROW>
+        end
+    end
+end
+if isfield(document, "artifact_discovery") && ...
+        isfield(document.artifact_discovery, "artifacts")
+    artifacts = normalizeSequence(document.artifact_discovery.artifacts);
+    for artifactIndex = 1:numel(artifacts)
+        artifact = artifacts{artifactIndex};
+        if isfield(artifact, "include") && isfield(artifact.include, "path_regex")
+            patterns = [patterns; string(artifact.include.path_regex(:))]; %#ok<AGROW>
+        end
+    end
+end
+end
+
+function items = normalizeSequence(rawValue)
+if iscell(rawValue)
+    items = rawValue(:);
+elseif isstruct(rawValue)
+    items = num2cell(rawValue(:));
+else
+    items = {};
 end
 end
 

@@ -83,9 +83,8 @@ end
 function [records, issues] = parsePathComponentMapping(records, issues, source, ...
         profileEntry, mapping, mappingIndex, mappingLocation, pathComponents)
 profileRegex = string(mapping.path_component_regex);
-matlabRegex = matlabRegexPattern(profileRegex);
 [matchCount, matchIndex, matchNames, matchTokens, issue] = matchPathComponents( ...
-    pathComponents, matlabRegex, mappingLocation + ".path_component_regex");
+    pathComponents, profileRegex, mappingLocation + ".path_component_regex");
 
 if ~isempty(issue)
     issues(end + 1) = issue;
@@ -120,8 +119,7 @@ end
 function [records, issues] = parseFilenameMapping(records, issues, source, ...
         profileEntry, mapping, mappingIndex, mappingLocation, filename)
 profileRegex = string(mapping.filename_regex);
-matlabRegex = matlabRegexPattern(profileRegex);
-[matchCount, matchNames, ~, issue] = matchSubject(filename, matlabRegex, ...
+[matchCount, matchNames, ~, issue] = matchSubject(filename, profileRegex, ...
     mappingLocation + ".filename_regex");
 
 if ~isempty(issue)
