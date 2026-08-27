@@ -1,0 +1,309 @@
+{
+  "profiles": [
+    {
+      "profile": {
+        "id": "example.project.mouse_courtship.folder_driven",
+        "name": "Folder-driven mouse courtship project",
+        "kind": "project_input",
+        "profile_schema_version": "0.1-draft",
+        "profile_version": "0.1.0"
+      },
+      "source": {
+        "root": "<PROJECT_ROOT>",
+        "include": {
+          "glob": [
+            "**/*.wav"
+          ]
+        }
+      },
+      "hierarchy": {
+        "levels": [
+          {
+            "native_name": "study",
+            "canonical_role": "study"
+          },
+          {
+            "native_name": "group",
+            "canonical_role": "experimental_group",
+            "parent": "study"
+          },
+          {
+            "native_name": "animal",
+            "canonical_role": "subject",
+            "parent": "group"
+          },
+          {
+            "native_name": "session",
+            "canonical_role": "session",
+            "parent": "animal"
+          },
+          {
+            "native_name": "recording",
+            "canonical_role": "recording",
+            "parent": "session"
+          }
+        ]
+      },
+      "mappings": [
+        {
+          "target_level": "study",
+          "source_type": "literal",
+          "value": "courtship_pilot"
+        },
+        {
+          "target_level": "group",
+          "source_type": "path_component",
+          "path_component_regex": "^(control|treatment)$",
+          "capture_group": 1
+        },
+        {
+          "target_level": "animal",
+          "source_type": "path_component",
+          "path_component_regex": "^mouse_(?P<animal_id>\\d{3})$",
+          "capture_group": "animal_id",
+          "canonical_field": "subject_id"
+        },
+        {
+          "target_level": "session",
+          "source_type": "path_component",
+          "path_component_regex": "^(baseline|courtship|playback)$",
+          "capture_group": 1
+        },
+        {
+          "target_level": "recording",
+          "source_type": "filename",
+          "filename_regex": "^(?P<animal_id>\\d{3})_(?P<session>baseline|courtship|playback)_(?P<take>\\d+)\\.wav$",
+          "captures": {
+            "animal_id": {
+              "canonical_field": "subject_id"
+            },
+            "session": {
+              "canonical_field": "session_name"
+            },
+            "take": {
+              "canonical_field": "recording_take",
+              "data_type": "integer"
+            }
+          }
+        }
+      ],
+      "validation": {
+        "require_unique_recording_path": true,
+        "crosscheck_repeated_fields": [
+          {
+            "field": "subject_id",
+            "sources": [
+              "animal",
+              "recording"
+            ]
+          },
+          {
+            "field": "session_name",
+            "sources": [
+              "session",
+              "recording"
+            ]
+          }
+        ],
+        "on_conflict": "error"
+      },
+      "example_paths": [
+        "control/mouse_001/baseline/001_baseline_1.wav",
+        "treatment/mouse_014/playback/014_playback_2.wav"
+      ]
+    },
+    {
+      "profile": {
+        "id": "example.project.rat_self_admin.filename_driven",
+        "name": "Filename-driven rat self-administration project",
+        "kind": "project_input",
+        "profile_schema_version": "0.1-draft",
+        "profile_version": "0.1.0"
+      },
+      "source": {
+        "root": "<PROJECT_ROOT>",
+        "include": {
+          "glob": [
+            "*.wav",
+            "**/*.wav"
+          ]
+        }
+      },
+      "hierarchy": {
+        "levels": [
+          {
+            "native_name": "study",
+            "canonical_role": "study"
+          },
+          {
+            "native_name": "phenotype",
+            "canonical_role": "experimental_group",
+            "parent": "study"
+          },
+          {
+            "native_name": "animal",
+            "canonical_role": "subject",
+            "parent": "phenotype"
+          },
+          {
+            "native_name": "session",
+            "canonical_role": "session",
+            "parent": "animal"
+          },
+          {
+            "native_name": "recording",
+            "canonical_role": "recording",
+            "parent": "session"
+          }
+        ]
+      },
+      "mappings": [
+        {
+          "target_level": "recording",
+          "source_type": "filename",
+          "filename_regex": "^(?P<study>[A-Za-z0-9]+)_(?P<phenotype>PR|PS)_(?P<animal>R\\d{2})_(?P<session>SA\\d{2})_(?P<segment>\\d{3})\\.wav$",
+          "captures": {
+            "study": {
+              "target_level": "study",
+              "canonical_field": "study_id"
+            },
+            "phenotype": {
+              "target_level": "phenotype",
+              "canonical_field": "group_id",
+              "normalize": {
+                "PR": "punishment_resistant",
+                "PS": "punishment_sensitive"
+              }
+            },
+            "animal": {
+              "target_level": "animal",
+              "canonical_field": "subject_id"
+            },
+            "session": {
+              "target_level": "session",
+              "canonical_field": "session_id"
+            },
+            "segment": {
+              "target_level": "recording",
+              "canonical_field": "segment_index",
+              "data_type": "integer"
+            }
+          }
+        }
+      ],
+      "validation": {
+        "enforce_subject_group_consistency": true,
+        "on_unmatched_file": "warn"
+      },
+      "example_paths": [
+        "OXY_PR_R03_SA07_001.wav",
+        "OXY_PS_R11_SA09_001.wav"
+      ]
+    },
+    {
+      "profile": {
+        "id": "example.project.social_dyad.multi_subject",
+        "name": "Dyadic social-interaction project with subject roles",
+        "kind": "project_input",
+        "profile_schema_version": "0.1-draft",
+        "profile_version": "0.1.0"
+      },
+      "source": {
+        "root": "<PROJECT_ROOT>",
+        "include": {
+          "glob": [
+            "**/*.wav"
+          ]
+        }
+      },
+      "hierarchy": {
+        "levels": [
+          {
+            "native_name": "study",
+            "canonical_role": "study"
+          },
+          {
+            "native_name": "cohort",
+            "canonical_role": "cohort",
+            "parent": "study"
+          },
+          {
+            "native_name": "dyad",
+            "canonical_role": "interaction_unit",
+            "parent": "cohort"
+          },
+          {
+            "native_name": "session",
+            "canonical_role": "session",
+            "parent": "dyad"
+          },
+          {
+            "native_name": "recording",
+            "canonical_role": "recording",
+            "parent": "session"
+          }
+        ],
+        "membership_levels": [
+          {
+            "native_name": "animal",
+            "canonical_role": "subject",
+            "relation_to": "dyad",
+            "cardinality": "many_per_dyad",
+            "role_field": "interaction_role"
+          }
+        ]
+      },
+      "mappings": [
+        {
+          "target_level": "study",
+          "source_type": "literal",
+          "value": "social_usv_pilot"
+        },
+        {
+          "target_level": "cohort",
+          "source_type": "path_component",
+          "path_component_regex": "^cohort_(?P<cohort>\\d{2})$",
+          "capture_group": "cohort"
+        },
+        {
+          "target_level": "dyad",
+          "source_type": "path_component",
+          "path_component_regex": "^dyad_(?P<dyad>\\d{3})$",
+          "capture_group": "dyad"
+        },
+        {
+          "target_level": "recording",
+          "source_type": "filename",
+          "filename_regex": "^D(?P<dyad>\\d{3})_(?P<male>M\\d{3})_(?P<female>F\\d{3})_(?P<session>[A-Za-z0-9-]+)\\.wav$",
+          "captures": {
+            "dyad": {
+              "target_level": "dyad",
+              "canonical_field": "interaction_unit_id"
+            },
+            "session": {
+              "target_level": "session",
+              "canonical_field": "session_id"
+            },
+            "male": {
+              "membership_level": "animal",
+              "canonical_field": "subject_id",
+              "relation_role": "male_partner"
+            },
+            "female": {
+              "membership_level": "animal",
+              "canonical_field": "subject_id",
+              "relation_role": "female_partner"
+            }
+          }
+        }
+      ],
+      "validation": {
+        "require_distinct_subjects_within_dyad": true,
+        "on_conflict": "error"
+      },
+      "example_paths": [
+        "cohort_01/dyad_004/D004_M012_F031_courtship.wav"
+      ]
+    }
+  ]
+}
