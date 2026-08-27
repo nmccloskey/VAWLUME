@@ -51,10 +51,12 @@ The current design includes:
 - a structured, human-readable, IR-only source-mapping dry-run preview with explicit readiness verdicts;
 - schema support for experimental hierarchy, extractor-native objects, detections, feature semantics, cross-extractor matching, derived analysis, and external event/timebase alignment.
 
-The reusable `source_mapping` engine now reaches a validated intermediate
-representation and renders a database-free dry-run preview. The next target is
-the final Phase 2 review, followed by project intake and the first real
-importers.
+The reusable `source_mapping` engine now completes the Phase 2 checkpoint: it
+loads and validates profiles, discovers and parses project sources, maps
+supplied extractor tables through registered transforms, produces a validated
+intermediate representation, and renders a database-free dry-run preview.
+Project intake is the next architectural implementation target, followed by
+the first real extractor importers.
 
 ## Configuration policy
 
@@ -93,8 +95,8 @@ The current recommended order is:
 9. implement matching/consensus;
 10. implement one compact sequence/alignment analysis.
 
-Phase 1 completed items 1-4 as a tested relational checkpoint. Phase 2 now
-implements item 5 through the validated IR and dry-run boundary; project intake
+Phase 1 completed items 1-4 as a tested relational checkpoint. Phase 2
+completed item 5 through the validated IR and dry-run boundary; project intake
 remains the next implementation target.
 
 ## Documentation

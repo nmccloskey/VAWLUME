@@ -1570,13 +1570,16 @@ Current checkpoint:
 
 ## Step 5 — Implement `source_mapping`
 
-Start with:
+Current checkpoint complete:
 
-- YAML profile loading;
-- project path/filename regex extraction;
-- field mapping;
-- transform registry;
-- validation report.
+- YAML profile loading with identity, kind, version-compatibility, and checksum provenance;
+- deterministic project-source discovery and path/filename semantic extraction;
+- extractor table-field mapping through a closed transform registry;
+- one normalized, provenance-bearing intermediate representation for project
+  sources and supplied extractor tables;
+- structured database-free preview and validation diagnostics;
+- unit and integration coverage for all shipped executable profiles, with no
+  database writes in the `source_mapping` namespace.
 
 ## Step 6 — Implement project intake
 
@@ -1697,23 +1700,27 @@ The prototype is successful when it can reproducibly demonstrate:
 
 # 17. Immediate next planning target
 
-With the schema, semantic seed, synthetic fixture, acceptance queries, and tests in place, the next architectural hinge is no longer the Phase 1 relational foundation.
+With the schema, semantic seed, synthetic fixture, acceptance queries, and the
+Phase 2 `source_mapping` engine in place, the next architectural hinge is
+project intake.
 
 The recommended next target is:
 
-## **`source_mapping` engine**
+## **project intake**
 
-This should specify:
+This should consume the validated source-mapping intermediate representation
+to create:
 
-- profile loading and identity/kind/version validation;
-- project path and filename regex extraction;
-- artifact discovery;
-- field mapping;
-- transform registry;
-- validation reports;
-- importer-facing diagnostics.
+- experimental entities and their relationships;
+- recordings and source provenance;
+- project, device, and experimental-setup profile linkages;
+- an explicit validation-to-insertion boundary without duplicating profile or
+  path-parsing logic in the intake layer.
 
-The completed Phase 1 seed/fixture layer should remain the regression target for this work, so the first real importer proceeds against a concrete, tested relational environment rather than an abstract schema.
+The completed Phase 1 seed/fixture layer and Phase 2 source-mapping test suite
+should remain the regression targets for this work, so the first real importer
+proceeds against a concrete, tested relational environment rather than an
+abstract schema.
 
 ---
 

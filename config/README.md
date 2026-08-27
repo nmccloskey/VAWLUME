@@ -202,7 +202,8 @@ The profile loader should reject or clearly flag:
 - unsupported transformations;
 - incompatible extractor/version declarations.
 
-A dry-run mode should surface mapping conflicts before database insertion.
+The current source-mapping preview surfaces mapping conflicts and readiness
+diagnostics without performing database insertion.
 
 ## Authority rule
 
