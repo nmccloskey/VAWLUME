@@ -3,8 +3,9 @@ tests = functiontests({ ...
     @testLoadsEveryShippedMappingProfile, ...
     @testProfileChecksumsAreStable, ...
     @testKindSpecificStructureIsRequired, ...
-    @testExtractorProfileVersionFallbackIsReported, ...
-    @testRejectsMalformedYaml, ...
+    @testExplicitProfileContentVersionsArePreserved, ...
+    @testRejectsMalformedJson, ...
+    @testRejectsDuplicateJsonMembers, ...
     @testRejectsMissingProfileIdentity, ...
     @testRejectsUnsupportedSchemaVersion, ...
     @testRejectsInvalidRegex, ...
@@ -16,7 +17,7 @@ repoRoot = repoRootForTest();
 addpath(fullfile(repoRoot, "src"));
 cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
 profilePath = fullfile(repoRoot, "config", "01_mapping_profiles", ...
-    "project_inputs", "project_input_source_mapping_examples.yaml");
+    "project_inputs", "project_input_source_mapping_examples.json");
 
 first = vawlume.source_mapping.loadProfile(profilePath, RepoRoot=repoRoot);
 second = vawlume.source_mapping.loadProfile(profilePath, RepoRoot=repoRoot);
@@ -58,8 +59,8 @@ addpath(fullfile(repoRoot, "src"));
 cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
 
 extractorProfiles = [
-    "config/01_mapping_profiles/extractors/deepsqueak/deepsqueak_output_mapping_profile.yaml"
-    "config/01_mapping_profiles/extractors/mupet/mupet_output_mapping_profile.yaml"
+    "config/01_mapping_profiles/extractors/deepsqueak/deepsqueak_output_mapping_profile.json"
+    "config/01_mapping_profiles/extractors/mupet/mupet_output_mapping_profile.json"
 ];
 
 for index = 1:numel(extractorProfiles)
@@ -71,14 +72,16 @@ for index = 1:numel(extractorProfiles)
     verifyEqual(testCase, report.error_count, 0);
     verifyEqual(testCase, loaded.profile_count, 1);
     verifyEqual(testCase, loaded.profile_kinds, "extractor_output");
+    verifyEqual(testCase, loaded.profile_version_labels, "0.1.0");
     verifyEqual(testCase, loaded.relative_path, replace(extractorProfiles(index), filesep, "/"));
     verifyEqual(testCase, strlength(loaded.checksum_sha256), 64);
     verifyGreaterThan(testCase, numel(loaded.field_mappings), 0);
+    verifyFalse(testCase, any(issueCodes(report) == "PROFILE_VERSION_DERIVED_FROM_EXTRACTOR"));
 end
 
 projectPath = fullfile(repoRoot, ...
     "config", "01_mapping_profiles", "project_inputs", ...
-    "project_input_source_mapping_examples.yaml");
+    "project_input_source_mapping_examples.json");
 [loaded, report] = vawlume.source_mapping.loadProfile( ...
     projectPath, ExpectedKind="project_input", RepoRoot=repoRoot);
 
@@ -87,6 +90,7 @@ verifyEqual(testCase, report.error_count, 0);
 verifyEqual(testCase, loaded.profile_count, 3);
 verifyEqual(testCase, numel(loaded.profiles), 3);
 verifyTrue(testCase, all(loaded.profile_kinds == "project_input"));
+verifyTrue(testCase, all(loaded.profile_version_labels == "0.1.0"));
 verifyEqual(testCase, loaded.profile_ids(1), ...
     "example.project.mouse_courtship.folder_driven");
 verifyTrue(testCase, any(issueCodes(report) == ...
@@ -95,37 +99,53 @@ verifyTrue(testCase, any(issueCodes(report) == ...
 clear cleanupPath
 end
 
-function testExtractorProfileVersionFallbackIsReported(testCase)
+function testExplicitProfileContentVersionsArePreserved(testCase)
 repoRoot = repoRootForTest();
 addpath(fullfile(repoRoot, "src"));
 cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
 
 profilePath = fullfile(repoRoot, ...
     "config", "01_mapping_profiles", "extractors", "deepsqueak", ...
-    "deepsqueak_output_mapping_profile.yaml");
+    "deepsqueak_output_mapping_profile.json");
 [loaded, report] = vawlume.source_mapping.loadProfile( ...
     profilePath, ExpectedKind="extractor_output", RepoRoot=repoRoot);
 
-verifyEqual(testCase, loaded.profile_version_labels, "3.2.x");
-verifyTrue(testCase, any(issueCodes(report) == ...
+verifyEqual(testCase, loaded.profile_version_labels, "0.1.0");
+verifyEqual(testCase, string(loaded.document.extractor.version_scope.preferred), "3.2.x");
+verifyFalse(testCase, any(issueCodes(report) == ...
     "PROFILE_VERSION_DERIVED_FROM_EXTRACTOR"));
-verifyTrue(testCase, any(contains(loaded.warnings, ...
-    "extractor.version_scope.preferred")));
+verifyFalse(testCase, any(issueCodes(report) == "PROFILE_VERSION_MISSING"));
+verifyEmpty(testCase, loaded.warnings);
 
 clear cleanupPath
 end
 
-function testRejectsMalformedYaml(testCase)
+function testRejectsMalformedJson(testCase)
 repoRoot = repoRootForTest();
 addpath(fullfile(repoRoot, "src"));
 cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
 
-profilePath = temporaryYaml("profile: [unterminated");
+profilePath = temporaryJsonText('{"profile": [unterminated');
 cleanupProfile = onCleanup(@() deleteIfExists(profilePath));
 
 verifyError(testCase, ...
     @() vawlume.source_mapping.loadProfile(profilePath), ...
-    "vawlume:source_mapping:YamlLoadFailed");
+    "vawlume:source_mapping:ProfileLoadFailed");
+
+clear cleanupPath cleanupProfile
+end
+
+function testRejectsDuplicateJsonMembers(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+
+profilePath = temporaryJsonText('{"profile":{"id":"first","id":"second"}}');
+cleanupProfile = onCleanup(@() deleteIfExists(profilePath));
+
+verifyError(testCase, ...
+    @() vawlume.source_mapping.loadProfile(profilePath), ...
+    "vawlume:source_mapping:ProfileLoadFailed");
 
 clear cleanupPath cleanupProfile
 end
@@ -135,23 +155,9 @@ repoRoot = repoRootForTest();
 addpath(fullfile(repoRoot, "src"));
 cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
 
-profilePath = temporaryYaml(join([
-    "profile:"
-    "  name: Missing identity"
-    "  kind: extractor_output"
-    "  profile_schema_version: 0.1-draft"
-    "extractor:"
-    "  name: SyntheticExtractor"
-    "  version_scope:"
-    "    preferred: '1'"
-    "field_mapping_source:"
-    "  artifact_key: event_table"
-    "field_mappings:"
-    "  - source_field: Value"
-    "    target_level: event_measurement"
-    "    canonical_field: value"
-    "    data_type: float"
-    ], newline));
+document = validExtractorDocument("0.1-draft");
+document.profile = rmfield(document.profile, "id");
+profilePath = temporaryJsonDocument(document);
 cleanupProfile = onCleanup(@() deleteIfExists(profilePath));
 
 verifyError(testCase, ...
@@ -166,7 +172,7 @@ repoRoot = repoRootForTest();
 addpath(fullfile(repoRoot, "src"));
 cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
 
-profilePath = temporaryYaml(validExtractorYaml("9.9-future"));
+profilePath = temporaryJsonDocument(validExtractorDocument("9.9-future"));
 cleanupProfile = onCleanup(@() deleteIfExists(profilePath));
 
 verifyError(testCase, ...
@@ -181,27 +187,18 @@ repoRoot = repoRootForTest();
 addpath(fullfile(repoRoot, "src"));
 cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
 
-profilePath = temporaryYaml(join([
-    "profiles:"
-    "  - profile:"
-    "      id: bad.regex.project"
-    "      name: Bad regex project"
-    "      kind: project_input"
-    "      profile_schema_version: 0.1-draft"
-    "    source:"
-    "      root: <PROJECT_ROOT>"
-    "      include:"
-    "        glob: ['*.wav']"
-    "    hierarchy:"
-    "      levels:"
-    "        - {native_name: recording, canonical_role: recording}"
-    "    mappings:"
-    "      - target_level: recording"
-    "        source_type: filename"
-    "        filename_regex: '['"
-    "        captures:"
-    "          recording: {canonical_field: recording_id}"
-    ], newline));
+entry = struct();
+entry.profile = profileEnvelope("bad.regex.project", "project_input");
+entry.source = struct(root="<PROJECT_ROOT>", include=struct(glob={{"*.wav"}}));
+entry.hierarchy = struct(levels={{struct( ...
+    native_name="recording", canonical_role="recording")}});
+entry.mappings = {struct( ...
+    target_level="recording", ...
+    source_type="filename", ...
+    filename_regex="[", ...
+    captures=struct(recording=struct(canonical_field="recording_id")))};
+document = struct(profiles={{entry}});
+profilePath = temporaryJsonDocument(document);
 cleanupProfile = onCleanup(@() deleteIfExists(profilePath));
 
 verifyError(testCase, ...
@@ -216,24 +213,16 @@ repoRoot = repoRootForTest();
 addpath(fullfile(repoRoot, "src"));
 cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
 
-profilePath = temporaryYaml(join([
-    "profiles:"
-    "  - profile:"
-    "      id: bad.inherit.project"
-    "      name: Unsupported inheritance project"
-    "      kind: project_input"
-    "      profile_schema_version: 0.1-draft"
-    "    extends: base.project.profile"
-    "    source:"
-    "      root: <PROJECT_ROOT>"
-    "      include:"
-    "        glob: ['*.wav']"
-    "    hierarchy:"
-    "      levels:"
-    "        - {native_name: recording, canonical_role: recording}"
-    "    mappings:"
-    "      - {target_level: recording, source_type: literal, value: rec1}"
-    ], newline));
+entry = struct();
+entry.profile = profileEnvelope("bad.inherit.project", "project_input");
+entry.extends = "base.project.profile";
+entry.source = struct(root="<PROJECT_ROOT>", include=struct(glob={{"*.wav"}}));
+entry.hierarchy = struct(levels={{struct( ...
+    native_name="recording", canonical_role="recording")}});
+entry.mappings = {struct( ...
+    target_level="recording", source_type="literal", value="rec1")};
+document = struct(profiles={{entry}});
+profilePath = temporaryJsonDocument(document);
 cleanupProfile = onCleanup(@() deleteIfExists(profilePath));
 
 verifyError(testCase, ...
@@ -243,25 +232,19 @@ verifyError(testCase, ...
 clear cleanupPath cleanupProfile
 end
 
-function yamlText = validExtractorYaml(schemaVersion)
-yamlText = join([
-    "profile:"
-    "  id: synthetic.extractor.output"
-    "  name: Synthetic extractor output"
-    "  kind: extractor_output"
-    "  profile_schema_version: " + schemaVersion
-    "extractor:"
-    "  name: SyntheticExtractor"
-    "  version_scope:"
-    "    preferred: '1'"
-    "field_mapping_source:"
-    "  artifact_key: event_table"
-    "field_mappings:"
-    "  - source_field: Value"
-    "    target_level: event_measurement"
-    "    canonical_field: value"
-    "    data_type: float"
-    ], newline);
+function document = validExtractorDocument(schemaVersion)
+document = struct();
+document.profile = profileEnvelope("synthetic.extractor.output", "extractor_output");
+document.profile.profile_schema_version = schemaVersion;
+document.extractor = struct( ...
+    name="SyntheticExtractor", ...
+    version_scope=struct(preferred="1"));
+document.field_mapping_source = struct(artifact_key="event_table");
+document.field_mappings = {struct( ...
+    source_field="Value", ...
+    target_level="event_measurement", ...
+    canonical_field="value", ...
+    data_type="float")};
 end
 
 function profile = profileEnvelope(id, kind)
@@ -280,8 +263,12 @@ else
 end
 end
 
-function path = temporaryYaml(text)
-path = string(tempname) + ".yaml";
+function path = temporaryJsonDocument(document)
+path = temporaryJsonText(jsonencode(document));
+end
+
+function path = temporaryJsonText(text)
+path = string(tempname) + ".json";
 writeText(path, text);
 end
 

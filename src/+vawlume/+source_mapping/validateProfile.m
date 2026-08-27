@@ -16,7 +16,7 @@ report = emptyReport(options.SourcePath);
 
 if ~isstruct(document)
     addIssue("error", "PROFILE_INVALID_DOCUMENT", "document", ...
-        "Profile YAML must decode to a mapping/object.");
+        "Profile JSON must decode to a mapping/object.");
     report = finalizeReport(report);
     return
 end
@@ -555,7 +555,7 @@ report = finalizeReport(report);
             locations = "profile_document";
         else
             addIssue("error", "PROFILE_MISSING_FIELD", "document.profile", ...
-                "Profile YAML must contain either top-level profile or profiles.");
+                "Profile document must contain either top-level profile or profiles.");
         end
     end
 

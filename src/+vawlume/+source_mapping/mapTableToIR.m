@@ -2,7 +2,7 @@ function result = mapTableToIR(tbl, profileInput, options)
 %MAPTABLETOIR Map an in-memory extractor table into the unified IR contract.
 %
 % PROFILEINPUT may be a loaded profile bundle, one decoded extractor-output
-% profile document, or a YAML profile path. Artifact reading remains outside
+% profile document, or a JSON profile path. Artifact reading remains outside
 % this function; TBL must already be loaded by the caller.
 
 arguments
@@ -15,13 +15,12 @@ arguments
     options.RelativePath (1,1) string = ""
     options.Filename (1,1) string = ""
     options.RepoRoot (1,1) string = ""
-    options.PythonExecutable (1,1) string = ""
 end
 
 if ischar(profileInput) || (isstring(profileInput) && isscalar(profileInput))
     loaded = vawlume.source_mapping.loadProfile( ...
         string(profileInput), ExpectedKind="extractor_output", ...
-        RepoRoot=options.RepoRoot, PythonExecutable=options.PythonExecutable);
+        RepoRoot=options.RepoRoot);
 else
     loaded = profileInput;
 end

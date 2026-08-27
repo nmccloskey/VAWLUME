@@ -10,12 +10,10 @@ arguments
     sourceRoot (1,1) string
     options.ProfileId (1,1) string = ""
     options.RepoRoot (1,1) string = ""
-    options.PythonExecutable (1,1) string = ""
 end
 
 [loaded, ~] = vawlume.source_mapping.loadProfile( ...
-    profilePath, ExpectedKind="project_input", RepoRoot=options.RepoRoot, ...
-    PythonExecutable=options.PythonExecutable);
+    profilePath, ExpectedKind="project_input", RepoRoot=options.RepoRoot);
 [profile, profileEntry, profileLocation] = profileProvenance(loaded, options.ProfileId);
 result = emptyIntermediateRepresentation(profile);
 

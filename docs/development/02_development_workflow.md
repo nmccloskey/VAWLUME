@@ -27,7 +27,7 @@ Recommended initial setup:
 1. Initialize the Git repository, preferably private during early prototyping.
 2. Add the tracked repository structure.
 3. Move `schema.sql` to `schema/schema.sql`.
-4. Promote canonical YAML profiles and design references out of `.dev`.
+4. Promote canonical profiles and design references out of `.dev`.
 5. Create a MATLAB Project from the repository root.
 6. Add only `src/` to the project path.
 7. Commit MATLAB Project definition metadata.
@@ -88,7 +88,7 @@ A batch/CLI wrapper can then call the same backend rather than defining a second
 
 ## 5. Configuration as contract
 
-Treat shipped YAML profiles as versioned semantic contracts.
+Treat shipped JSON profiles as versioned semantic contracts.
 
 A mapping/profile loader should eventually expose, at minimum:
 
@@ -100,7 +100,7 @@ A mapping/profile loader should eventually expose, at minimum:
 - supported extractor/version where applicable;
 - validation status.
 
-Do not let arbitrary code paths interpret a YAML file independently. Centralize loading and validation so configuration behavior has one source of truth.
+Do not let arbitrary code paths interpret a profile file independently. Centralize loading and validation so configuration behavior has one source of truth.
 
 ## 6. Profile responsibilities
 
@@ -186,7 +186,7 @@ If these are awkward to express, revisit the schema or semantic contracts before
 
 Recommended first implementation slice:
 
-1. load YAML;
+1. load JSON;
 2. validate profile identity/kind/version;
 3. compile path/filename regular expressions;
 4. discover source files;
@@ -217,18 +217,14 @@ view derived solely from the intermediate representation. It accepts no
 database connection and its readiness verdict mirrors IR validity; it does not
 claim that ingestion occurred.
 
-### YAML loader runtime dependency
+### JSON loader runtime dependency
 
-`vawlume.source_mapping.loadProfile` uses the MATLAB-configured Python
-executable from `pyenv.Executable`, falling back to `python` when MATLAB has no
-configured executable. It runs
-`src/+vawlume/+source_mapping/private/yaml_file_to_json.py` out of process,
-which requires PyYAML in that Python environment.
+`vawlume.source_mapping.loadProfile` reads tracked JSON profiles with
+MATLAB-native `fileread` and `jsondecode`. Configuration loading does not
+require Python or PyYAML.
 
-If PyYAML, the Python executable, or YAML parsing fails, the loader raises
-`vawlume:source_mapping:YamlLoadFailed`. This out-of-process bridge is
-intentional for the prototype because in-process Python/PyYAML import was not
-reliable in the tested MATLAB R2026a environment.
+Missing files, file-read failures, malformed JSON, and duplicate JSON object
+members are reported as `vawlume:source_mapping:ProfileLoadFailed`.
 
 ## 11. Testing conventions
 

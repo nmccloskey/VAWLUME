@@ -26,15 +26,15 @@ subject and the baseline session.
 ## Referenced Profile Artifacts
 
 - Recording device profile:
-  `config/02_device_profiles/recording_device_profile_examples.yaml`,
+  `config/02_device_profiles/recording_device_profile_examples.json`,
   profile `example.device.ultrasonic_usb_primary`, version `1`
 - Experimental setup profile:
-  `config/03_setup_profiles/experimental_setup_profile_examples.yaml`,
+  `config/03_setup_profiles/experimental_setup_profile_examples.json`,
   profile `example.setup.mouse_courtship_chamber`, version `1`
 
 The fixture stores the selected profile identity, version, source path, and
 whole-file SHA-256 checksum in `config_profiles` and
-`config_profile_versions`. Detailed profile bodies remain in YAML.
+`config_profile_versions`. Detailed profile bodies remain in JSON.
 
 ## Extraction Runs
 

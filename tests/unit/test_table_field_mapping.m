@@ -221,7 +221,7 @@ end
 
 function loaded = loadExtractorProfile(repoRoot, extractorName)
 profilePath = fullfile(repoRoot, "config", "01_mapping_profiles", ...
-    "extractors", extractorName, extractorName + "_output_mapping_profile.yaml");
+    "extractors", extractorName, extractorName + "_output_mapping_profile.json");
 loaded = vawlume.source_mapping.loadProfile(profilePath, ...
     ExpectedKind="extractor_output", RepoRoot=repoRoot);
 end

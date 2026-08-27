@@ -9,7 +9,6 @@ arguments
     conn
     repoRoot (1,1) string = ""
     options.ProfilePaths (1,:) string = strings(1, 0)
-    options.PythonExecutable (1,1) string = ""
 end
 
 if strlength(repoRoot) == 0
@@ -21,14 +20,14 @@ end
 profilePaths = options.ProfilePaths;
 if isempty(profilePaths)
     profilePaths = [
-        fullfile(repoRoot, "config", "01_mapping_profiles", "extractors", "deepsqueak", "deepsqueak_output_mapping_profile.yaml")
-        fullfile(repoRoot, "config", "01_mapping_profiles", "extractors", "mupet", "mupet_output_mapping_profile.yaml")
+        fullfile(repoRoot, "config", "01_mapping_profiles", "extractors", "deepsqueak", "deepsqueak_output_mapping_profile.json")
+        fullfile(repoRoot, "config", "01_mapping_profiles", "extractors", "mupet", "mupet_output_mapping_profile.json")
     ];
 end
 
 summary = emptySummary();
 summary.repo_root = repoRoot;
-summary.yaml_strategy = "External PyYAML subprocess selected because MATLAB R2026a has no built-in YAML reader and PyYAML cannot be safely imported in-process on this machine.";
+summary.configuration_strategy = "Native MATLAB fileread plus jsondecode of tracked JSON profile files.";
 
 oldAutoCommit = conn.AutoCommit;
 conn.AutoCommit = "off";
@@ -40,8 +39,7 @@ try
         loadedProfiles{index} = vawlume.source_mapping.loadProfile( ...
             profilePaths(index), ...
             ExpectedKind="extractor_output", ...
-            RepoRoot=repoRoot, ...
-            PythonExecutable=options.PythonExecutable);
+            RepoRoot=repoRoot);
         summary.warnings = [summary.warnings; loadedProfiles{index}.warnings(:)];
     end
 
@@ -874,9 +872,7 @@ end
 function extension = fileExtension(path)
 [~, ~, extension] = fileparts(path);
 extension = erase(string(extension), ".");
-if extension == "yml"
-    return
-elseif extension == "yaml"
+if extension == "json"
     return
 end
 extension = "other";

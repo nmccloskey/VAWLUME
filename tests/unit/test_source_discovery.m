@@ -112,7 +112,7 @@ end
 
 function loaded = loadProjectProfiles(repoRoot)
 profilePath = fullfile(repoRoot, "config", "01_mapping_profiles", ...
-    "project_inputs", "project_input_source_mapping_examples.yaml");
+    "project_inputs", "project_input_source_mapping_examples.json");
 loaded = vawlume.source_mapping.loadProfile(profilePath, ...
     ExpectedKind="project_input", RepoRoot=repoRoot);
 end

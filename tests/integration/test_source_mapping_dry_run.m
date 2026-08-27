@@ -190,12 +190,12 @@ end
 
 function path = projectProfilePath(repoRoot)
 path = fullfile(repoRoot, "config", "01_mapping_profiles", ...
-    "project_inputs", "project_input_source_mapping_examples.yaml");
+    "project_inputs", "project_input_source_mapping_examples.json");
 end
 
 function path = extractorProfilePath(repoRoot, name)
 path = fullfile(repoRoot, "config", "01_mapping_profiles", ...
-    "extractors", name, name + "_output_mapping_profile.yaml");
+    "extractors", name, name + "_output_mapping_profile.json");
 end
 
 function tbl = deepSqueakTable()

@@ -18,9 +18,9 @@ deepSqueak = vawlume.source_mapping.mapTableToIR( ...
 
 verifyUnifiedShape(testCase, deepSqueak);
 verifyTrue(testCase, deepSqueak.valid_for_ingest);
-verifyEqual(testCase, deepSqueak.profile.profile_version, "3.2.x");
+verifyEqual(testCase, deepSqueak.profile.profile_version, "0.1.0");
 verifyEqual(testCase, deepSqueak.profile.profile_version_source, ...
-    "extractor.version_scope.preferred");
+    "profile.profile_version");
 verifyEqual(testCase, height(deepSqueak.records), 2);
 verifyEqual(testCase, deepSqueak.records.native_identifier, ["1"; "2"]);
 frequency = valueFor(deepSqueak, "contour_median_frequency", 1);
@@ -118,7 +118,7 @@ end
 
 function loaded = loadExtractorProfile(repoRoot, extractorName)
 profilePath = fullfile(repoRoot, "config", "01_mapping_profiles", ...
-    "extractors", extractorName, extractorName + "_output_mapping_profile.yaml");
+    "extractors", extractorName, extractorName + "_output_mapping_profile.json");
 loaded = vawlume.source_mapping.loadProfile(profilePath, ...
     ExpectedKind="extractor_output", RepoRoot=repoRoot);
 end

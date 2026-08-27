@@ -16,7 +16,7 @@ referenced = strings(0, 1);
 for profileIndex = 1:numel(profiles)
     name = profiles(profileIndex);
     path = fullfile(repoRoot, "config", "01_mapping_profiles", ...
-        "extractors", name, name + "_output_mapping_profile.yaml");
+        "extractors", name, name + "_output_mapping_profile.json");
     loaded = vawlume.source_mapping.loadProfile(path, ...
         ExpectedKind="extractor_output", RepoRoot=repoRoot);
     for mappingIndex = 1:numel(loaded.field_mappings)
@@ -91,25 +91,7 @@ repoRoot = repoRootForTest();
 addpath(fullfile(repoRoot, "src"));
 cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
 
-profilePath = temporaryYaml(join([
-    "profile:"
-    "  id: synthetic.unknown.transform"
-    "  name: Synthetic unknown transform"
-    "  kind: extractor_output"
-    "  profile_schema_version: 0.1-draft"
-    "extractor:"
-    "  name: SyntheticExtractor"
-    "  version_scope:"
-    "    preferred: '1'"
-    "field_mapping_source:"
-    "  artifact_key: synthetic_table"
-    "field_mappings:"
-    "  - source_field: Value"
-    "    target_level: event_measurement"
-    "    canonical_field: value"
-    "    data_type: float"
-    "    transform: shell_out"
-    ], newline));
+profilePath = temporaryJsonDocument(syntheticUnknownTransformProfile());
 cleanupProfile = onCleanup(@() deleteIfExists(profilePath));
 
 verifyError(testCase, ...
@@ -119,9 +101,28 @@ verifyError(testCase, ...
 clear cleanupPath cleanupProfile
 end
 
-function path = temporaryYaml(text)
-path = string(tempname) + ".yaml";
-writeText(path, text);
+function document = syntheticUnknownTransformProfile()
+document = struct();
+document.profile = struct( ...
+    id="synthetic.unknown.transform", ...
+    name="Synthetic unknown transform", ...
+    kind="extractor_output", ...
+    profile_schema_version="0.1-draft");
+document.extractor = struct( ...
+    name="SyntheticExtractor", ...
+    version_scope=struct(preferred="1"));
+document.field_mapping_source = struct(artifact_key="synthetic_table");
+document.field_mappings = {struct( ...
+    source_field="Value", ...
+    target_level="event_measurement", ...
+    canonical_field="value", ...
+    data_type="float", ...
+    transform="shell_out")};
+end
+
+function path = temporaryJsonDocument(document)
+path = string(tempname) + ".json";
+writeText(path, jsonencode(document));
 end
 
 function writeText(path, text)

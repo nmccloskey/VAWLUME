@@ -61,7 +61,8 @@ for caseIndex = 1:size(cases, 1)
 
     verifyTrue(testCase, first.valid_for_ingest);
     verifyEqual(testCase, first.profile.profile_key, cases{caseIndex, 1});
-    verifyEqual(testCase, first.profile.profile_version_source, "not_declared");
+    verifyEqual(testCase, first.profile.profile_version, "0.1.0");
+    verifyEqual(testCase, first.profile.profile_version_source, "profile.profile_version");
     verifyEqual(testCase, height(first.sources), 1);
     verifyGreaterThan(testCase, height(first.records), 0);
     verifyGreaterThan(testCase, height(first.values), 0);
@@ -140,12 +141,12 @@ end
 
 function path = projectProfilePath(repoRoot)
 path = fullfile(repoRoot, "config", "01_mapping_profiles", ...
-    "project_inputs", "project_input_source_mapping_examples.yaml");
+    "project_inputs", "project_input_source_mapping_examples.json");
 end
 
 function path = extractorProfilePath(repoRoot, name)
 path = fullfile(repoRoot, "config", "01_mapping_profiles", ...
-    "extractors", name, name + "_output_mapping_profile.yaml");
+    "extractors", name, name + "_output_mapping_profile.json");
 end
 
 function tbl = oneDeepSqueakRow()

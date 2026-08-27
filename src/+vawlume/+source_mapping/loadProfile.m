@@ -1,25 +1,23 @@
 function [loaded, report] = loadProfile(profilePath, options)
-%LOADPROFILE Load and validate a VAWLUME mapping-profile YAML file.
+%LOADPROFILE Load and validate a VAWLUME mapping-profile JSON file.
 %
 % The loader preserves the Phase 1 seed-registration contract for
 % extractor-output profiles while also accepting the Phase 2 project-input
-% multi-profile document shape. YAML parsing remains centralized through the
-% established out-of-process PyYAML bridge.
+% multi-profile document shape. JSON decoding remains centralized here.
 
 arguments
     profilePath (1,1) string
     options.ExpectedKind (1,1) string = ""
     options.RepoRoot (1,1) string = ""
-    options.PythonExecutable (1,1) string = ""
 end
 
 profilePath = normalizePath(profilePath);
 if ~isfile(profilePath)
-    error("vawlume:source_mapping:ProfileNotFound", ...
+    error("vawlume:source_mapping:ProfileLoadFailed", ...
         "Profile file does not exist: %s", profilePath);
 end
 
-document = loadYamlWithPyYaml(profilePath, options.PythonExecutable);
+document = loadJsonProfile(profilePath);
 report = vawlume.source_mapping.validateProfile( ...
     document, ExpectedKind=options.ExpectedKind, SourcePath=profilePath);
 throwIfValidationFailed(report);
@@ -45,45 +43,208 @@ loaded.report = report;
 loaded.warnings = issueMessages(report, "warning");
 end
 
-function document = loadYamlWithPyYaml(profilePath, pythonExecutable)
-pythonExecutable = resolvePythonExecutable(pythonExecutable);
-loaderScript = fullfile(fileparts(mfilename("fullpath")), "private", "yaml_file_to_json.py");
+function document = loadJsonProfile(profilePath)
+try
+    text = fileread(profilePath);
+catch exception
+    error("vawlume:source_mapping:ProfileLoadFailed", ...
+        "Could not read JSON profile %s: %s", profilePath, exception.message);
+end
 
-command = quoteCommandArg(pythonExecutable) + " " + ...
-    quoteCommandArg(loaderScript) + " " + quoteCommandArg(profilePath);
-[status, output] = system(command);
-
-if status ~= 0
-    error("vawlume:source_mapping:YamlLoadFailed", ...
-        "Could not load YAML profile %s using PyYAML subprocess.%s%s", ...
-        profilePath, newline, output);
+duplicate = firstDuplicateJsonMember(text);
+if duplicate.found
+    error("vawlume:source_mapping:ProfileLoadFailed", ...
+        "Could not load JSON profile %s: duplicate object member '%s' at line %d, column %d.", ...
+        profilePath, duplicate.key, duplicate.line, duplicate.column);
 end
 
 try
-    document = jsondecode(output);
+    document = jsondecode(text);
 catch exception
-    error("vawlume:source_mapping:YamlJsonDecodeFailed", ...
-        "PyYAML output for %s was not valid JSON: %s", ...
-        profilePath, exception.message);
+    error("vawlume:source_mapping:ProfileLoadFailed", ...
+        "Could not decode JSON profile %s: %s", profilePath, exception.message);
 end
 end
 
-function pythonExecutable = resolvePythonExecutable(pythonExecutable)
-pythonExecutable = string(pythonExecutable);
-if strlength(pythonExecutable) > 0
-    pythonExecutable = normalizePath(pythonExecutable);
+function duplicate = firstDuplicateJsonMember(text)
+duplicate = struct(found=false, key="", line=NaN, column=NaN);
+text = char(string(text));
+whitespace = [' ', char(9), newline, char(13)];
+stack = struct("kind", {}, "state", {}, "keys", {});
+index = 1;
+while index <= numel(text)
+    character = text(index);
+    if ismember(character, whitespace)
+        index = index + 1;
+        continue
+    end
+
+    switch character
+        case '{'
+            stack(end + 1) = struct( ...
+                kind="object", state="key_or_end", keys=strings(0, 1)); %#ok<AGROW>
+            index = index + 1;
+        case '['
+            stack(end + 1) = struct( ...
+                kind="array", state="value_or_end", keys=strings(0, 1)); %#ok<AGROW>
+            index = index + 1;
+        case '}'
+            if ~isempty(stack) && stack(end).kind == "object"
+                stack(end) = [];
+                stack = markJsonValueConsumed(stack);
+            end
+            index = index + 1;
+        case ']'
+            if ~isempty(stack) && stack(end).kind == "array"
+                stack(end) = [];
+                stack = markJsonValueConsumed(stack);
+            end
+            index = index + 1;
+        case ','
+            if ~isempty(stack)
+                if stack(end).kind == "object"
+                    stack(end).state = "key_or_end";
+                elseif stack(end).kind == "array"
+                    stack(end).state = "value_or_end";
+                end
+            end
+            index = index + 1;
+        case ':'
+            if ~isempty(stack) && stack(end).kind == "object"
+                stack(end).state = "value";
+            end
+            index = index + 1;
+        case '"'
+            [lexeme, nextIndex, ok] = readJsonStringLexeme(text, index);
+            if ~ok
+                return
+            end
+            if ~isempty(stack) && stack(end).kind == "object" && ...
+                    stack(end).state == "key_or_end"
+                key = jsonStringKey(lexeme);
+                if any(stack(end).keys == key)
+                    [line, column] = lineColumnForIndex(text, index);
+                    duplicate = struct( ...
+                        found=true, key=key, line=line, column=column);
+                    return
+                end
+                stack(end).keys(end + 1, 1) = key;
+                stack(end).state = "colon";
+            else
+                stack = markJsonValueConsumed(stack);
+            end
+            index = nextIndex;
+        otherwise
+            index = skipJsonScalar(text, index);
+            stack = markJsonValueConsumed(stack);
+    end
+end
+end
+
+function stack = markJsonValueConsumed(stack)
+if isempty(stack)
+    return
+end
+if stack(end).kind == "object" && stack(end).state == "value"
+    stack(end).state = "comma_or_end";
+elseif stack(end).kind == "array" && stack(end).state == "value_or_end"
+    stack(end).state = "comma_or_end";
+end
+end
+
+function [lexeme, nextIndex, ok] = readJsonStringLexeme(text, startIndex)
+ok = false;
+lexeme = "";
+nextIndex = startIndex + 1;
+escaped = false;
+index = startIndex + 1;
+while index <= numel(text)
+    character = text(index);
+    if escaped
+        escaped = false;
+    elseif character == '\'
+        escaped = true;
+    elseif character == '"'
+        lexeme = text(startIndex:index);
+        nextIndex = index + 1;
+        ok = true;
+        return
+    end
+    index = index + 1;
+end
+end
+
+function key = jsonStringKey(lexeme)
+content = lexeme(2:end - 1);
+if ~contains(string(content), "\")
+    key = string(content);
     return
 end
 
-try
-    environment = pyenv;
-    pythonExecutable = string(environment.Executable);
-catch
-    pythonExecutable = "";
+decoded = strings(0, 1);
+index = 1;
+while index <= numel(content)
+    character = content(index);
+    if character ~= '\'
+        decoded(end + 1, 1) = string(character); %#ok<AGROW>
+        index = index + 1;
+        continue
+    end
+
+    if index == numel(content)
+        break
+    end
+    escape = content(index + 1);
+    switch escape
+        case {'"', '\', '/'}
+            decoded(end + 1, 1) = string(escape); %#ok<AGROW>
+            index = index + 2;
+        case 'b'
+            decoded(end + 1, 1) = string(char(8)); %#ok<AGROW>
+            index = index + 2;
+        case 'f'
+            decoded(end + 1, 1) = string(char(12)); %#ok<AGROW>
+            index = index + 2;
+        case 'n'
+            decoded(end + 1, 1) = string(newline); %#ok<AGROW>
+            index = index + 2;
+        case 'r'
+            decoded(end + 1, 1) = string(char(13)); %#ok<AGROW>
+            index = index + 2;
+        case 't'
+            decoded(end + 1, 1) = string(char(9)); %#ok<AGROW>
+            index = index + 2;
+        case 'u'
+            if index + 5 <= numel(content)
+                code = hex2dec(content(index + 2:index + 5));
+                decoded(end + 1, 1) = string(char(code)); %#ok<AGROW>
+                index = index + 6;
+            else
+                index = index + 2;
+            end
+        otherwise
+            decoded(end + 1, 1) = string(escape); %#ok<AGROW>
+            index = index + 2;
+    end
+end
+key = join(decoded, "");
 end
 
-if strlength(pythonExecutable) == 0
-    pythonExecutable = "python";
+function nextIndex = skipJsonScalar(text, startIndex)
+nextIndex = startIndex;
+while nextIndex <= numel(text) && ~ismember(text(nextIndex), [',', '}', ']'])
+    nextIndex = nextIndex + 1;
+end
+end
+
+function [line, column] = lineColumnForIndex(text, index)
+prefix = text(1:index - 1);
+line = numel(strfind(prefix, newline)) + 1;
+lastNewline = find(prefix == newline, 1, "last");
+if isempty(lastNewline)
+    column = index;
+else
+    column = index - lastNewline;
 end
 end
 
@@ -200,7 +361,7 @@ path = replace(path, filesep, "/");
 end
 
 function hash = sha256File(path)
-fileId = fopen(path, "r");
+fileId = fopen(path, "rb");
 if fileId < 0
     error("vawlume:source_mapping:FileReadFailed", ...
         "Could not open file for hashing: %s", path);
@@ -213,10 +374,4 @@ digest.update(typecast(bytes, "int8"));
 hashBytes = typecast(digest.digest(), "uint8");
 hash = lower(string(reshape(dec2hex(hashBytes, 2).', 1, [])));
 delete(cleaner);
-end
-
-function value = quoteCommandArg(value)
-value = string(value);
-value = replace(value, """", """""");
-value = """" + value + """";
 end

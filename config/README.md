@@ -188,7 +188,7 @@ checksum
 
 Extractor-output profiles should additionally identify the supported extractor/version range.
 
-The database can store profile identity/version/checksum while the YAML remains the detailed source representation.
+The database can store profile identity/version/checksum while the JSON remains the detailed source representation.
 
 ## Validation
 
@@ -211,4 +211,4 @@ For shipped semantic definitions:
 
 > The tracked mapping profile should be the authoritative detailed source; SQL seed registration should import/register that vocabulary rather than maintain a second manually synchronized copy.
 
-This avoids semantic drift between YAML and the relational dictionaries.
+This avoids semantic drift between JSON profiles and the relational dictionaries.

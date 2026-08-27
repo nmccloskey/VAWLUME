@@ -50,12 +50,12 @@ cleanupDb = onCleanup(@() cleanupDatabase(conn, dbFile));
 vawlume.db.registerBuiltinSemantics(conn, repoRoot);
 countsBeforeConflict = semanticCounts(conn);
 
-sourceProfile = fullfile(repoRoot, "config", "01_mapping_profiles", "extractors", "deepsqueak", "deepsqueak_output_mapping_profile.yaml");
-conflictingProfile = fullfile(tempdir, "deepsqueak_output_mapping_profile_conflict.yaml");
+sourceProfile = fullfile(repoRoot, "config", "01_mapping_profiles", "extractors", "deepsqueak", "deepsqueak_output_mapping_profile.json");
+conflictingProfile = fullfile(tempdir, "deepsqueak_output_mapping_profile_conflict.json");
 text = fileread(sourceProfile);
 text = replace(text, ...
-    'name: "DeepSqueak v3.2 extractor-output mapping"', ...
-    'name: "Conflicting DeepSqueak profile name"');
+    '"name": "DeepSqueak v3.2 extractor-output mapping"', ...
+    '"name": "Conflicting DeepSqueak profile name"');
 writeText(conflictingProfile, text);
 cleanupProfile = onCleanup(@() deleteIfExists(conflictingProfile));
 
@@ -74,8 +74,8 @@ end
 
 function verifyProfileChecksums(testCase, conn, repoRoot)
 profiles = [
-    "vawlume.deepsqueak.output.v3_2", "config/01_mapping_profiles/extractors/deepsqueak/deepsqueak_output_mapping_profile.yaml"
-    "vawlume.mupet.output.v2_1", "config/01_mapping_profiles/extractors/mupet/mupet_output_mapping_profile.yaml"
+    "vawlume.deepsqueak.output.v3_2", "config/01_mapping_profiles/extractors/deepsqueak/deepsqueak_output_mapping_profile.json"
+    "vawlume.mupet.output.v2_1", "config/01_mapping_profiles/extractors/mupet/mupet_output_mapping_profile.json"
 ];
 
 for index = 1:size(profiles, 1)
@@ -257,7 +257,7 @@ end
 end
 
 function hash = sha256File(path)
-fileId = fopen(path, "r");
+fileId = fopen(path, "rb");
 if fileId < 0
     error("vawlume:test:FileReadFailed", "Could not open file for hashing: %s", path);
 end

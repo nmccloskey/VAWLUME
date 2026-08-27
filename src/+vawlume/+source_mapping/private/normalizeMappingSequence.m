@@ -1,5 +1,5 @@
 function values = normalizeMappingSequence(rawValue)
-%NORMALIZEMAPPINGSEQUENCE Normalize YAML/JSON sequence-shaped values.
+%NORMALIZEMAPPINGSEQUENCE Normalize decoded JSON sequence-shaped values.
 if iscell(rawValue)
     values = rawValue(:);
 elseif isstruct(rawValue)

@@ -1,44 +1,62 @@
 function tests = test_json_profile_migration
 tests = functiontests({ ...
-    @testEveryJsonCounterpartParsesDeterministically, ...
-    @testExecutablePairsAreSemanticallyEquivalent, ...
+    @testEveryJsonConfigProfileParsesDeterministically, ...
+    @testNoYamlConfigArtifactsRemain, ...
+    @testExecutableJsonProfilesLoadNatively, ...
     @testMultiProfileSelectionAndContentVersions, ...
     @testScalarTypesAndFragileMapsRemainExplicit, ...
-    @testRegexDialectIsUnchanged});
+    @testRegexDialectStillAwaitingPass4});
 end
 
-function testEveryJsonCounterpartParsesDeterministically(testCase)
+function testEveryJsonConfigProfileParsesDeterministically(testCase)
 repoRoot = repoRootForTest();
-pairs = migrationPairs(repoRoot);
+profiles = canonicalProfiles(repoRoot);
 
 jsonFiles = dir(fullfile(repoRoot, "config", "**", "*.json"));
-verifyEqual(testCase, numel(jsonFiles), numel(pairs));
+verifyEqual(testCase, numel(jsonFiles), numel(profiles));
 
-for index = 1:numel(pairs)
-    verifyTrue(testCase, isfile(pairs(index).yaml_path));
-    verifyTrue(testCase, isfile(pairs(index).json_path));
+for index = 1:numel(profiles)
+    verifyTrue(testCase, isfile(profiles(index).json_path));
 
-    first = jsondecode(fileread(pairs(index).json_path));
-    second = jsondecode(fileread(pairs(index).json_path));
+    first = jsondecode(fileread(profiles(index).json_path));
+    second = jsondecode(fileread(profiles(index).json_path));
     verifyEqual(testCase, second, first);
 end
 end
 
-function testExecutablePairsAreSemanticallyEquivalent(testCase)
+function testNoYamlConfigArtifactsRemain(testCase)
+repoRoot = repoRootForTest();
+yamlFiles = [
+    dir(fullfile(repoRoot, "config", "**", "*.yaml"))
+    dir(fullfile(repoRoot, "config", "**", "*.yml"))
+    ];
+verifyEmpty(testCase, yamlFiles);
+end
+
+function testExecutableJsonProfilesLoadNatively(testCase)
 repoRoot = repoRootForTest();
 addpath(fullfile(repoRoot, "src"));
 cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
-pairs = migrationPairs(repoRoot);
+profiles = canonicalProfiles(repoRoot);
 
-for index = find([pairs.executable])
-    [yaml, report] = vawlume.source_mapping.loadProfile( ...
-        pairs(index).yaml_path, ...
-        ExpectedKind=pairs(index).expected_kind, ...
+for index = find([profiles.executable])
+    [loaded, report] = vawlume.source_mapping.loadProfile( ...
+        profiles(index).json_path, ...
+        ExpectedKind=profiles(index).expected_kind, ...
         RepoRoot=repoRoot);
-    jsonDocument = jsondecode(fileread(pairs(index).json_path));
+    repeated = vawlume.source_mapping.loadProfile( ...
+        profiles(index).json_path, ...
+        ExpectedKind=profiles(index).expected_kind, ...
+        RepoRoot=repoRoot);
+    jsonDocument = jsondecode(fileread(profiles(index).json_path));
 
     verifyTrue(testCase, report.is_valid);
-    verifyEqual(testCase, stripContentVersions(jsonDocument), yaml.document);
+    verifyEqual(testCase, report.error_count, 0);
+    verifyEqual(testCase, loaded.document, jsonDocument);
+    verifyEqual(testCase, loaded.relative_path, profiles(index).relative_path);
+    verifyEqual(testCase, loaded.checksum_sha256, repeated.checksum_sha256);
+    verifyEqual(testCase, strlength(loaded.checksum_sha256), 64);
+    verifyTrue(testCase, all(loaded.profile_version_labels == "0.1.0"));
 end
 
 clear cleanupPath
@@ -46,21 +64,21 @@ end
 
 function testMultiProfileSelectionAndContentVersions(testCase)
 repoRoot = repoRootForTest();
-pairs = migrationPairs(repoRoot);
-project = jsondecode(fileread(pairs(1).json_path));
+profiles = canonicalProfiles(repoRoot);
+project = jsondecode(fileread(profiles(1).json_path));
 
 verifyEqual(testCase, numel(project.profiles), 3);
-profiles = [project.profiles.profile];
-verifyEqual(testCase, string({profiles.id})', [
+profileEnvelopes = [project.profiles.profile];
+verifyEqual(testCase, string({profileEnvelopes.id})', [
     "example.project.mouse_courtship.folder_driven"
     "example.project.rat_self_admin.filename_driven"
     "example.project.social_dyad.multi_subject"
     ]);
-verifyEqual(testCase, string({profiles.profile_version})', ...
+verifyEqual(testCase, string({profileEnvelopes.profile_version})', ...
     repmat("0.1.0", 3, 1));
 
-deepSqueak = jsondecode(fileread(pairs(2).json_path));
-mupet = jsondecode(fileread(pairs(3).json_path));
+deepSqueak = jsondecode(fileread(profiles(2).json_path));
+mupet = jsondecode(fileread(profiles(3).json_path));
 verifyEqual(testCase, string(deepSqueak.profile.profile_version), "0.1.0");
 verifyEqual(testCase, string(mupet.profile.profile_version), "0.1.0");
 verifyEqual(testCase, string(deepSqueak.extractor.version_scope.preferred), "3.2.x");
@@ -69,10 +87,10 @@ end
 
 function testScalarTypesAndFragileMapsRemainExplicit(testCase)
 repoRoot = repoRootForTest();
-pairs = migrationPairs(repoRoot);
-deepSqueak = jsondecode(fileread(pairs(2).json_path));
-mupet = jsondecode(fileread(pairs(3).json_path));
-project = jsondecode(fileread(pairs(1).json_path));
+profiles = canonicalProfiles(repoRoot);
+deepSqueak = jsondecode(fileread(profiles(2).json_path));
+mupet = jsondecode(fileread(profiles(3).json_path));
+project = jsondecode(fileread(profiles(1).json_path));
 
 accepted = mappingBySourceField(deepSqueak.field_mappings, "Accepted");
 verifyClass(testCase, accepted.allowed_raw_values, "double");
@@ -96,28 +114,17 @@ verifyEqual(testCase, string(phenotype.normalize.PS), "punishment_sensitive");
 verifyTrue(testCase, logical(deepSqueak.mapping_policy.preserve_raw_values));
 end
 
-function testRegexDialectIsUnchanged(testCase)
+function testRegexDialectStillAwaitingPass4(testCase)
 repoRoot = repoRootForTest();
-pairs = migrationPairs(repoRoot);
+profiles = canonicalProfiles(repoRoot);
 
-projectText = string(fileread(pairs(1).json_path));
-deepSqueakText = string(fileread(pairs(2).json_path));
-mupetText = string(fileread(pairs(3).json_path));
+projectText = string(fileread(profiles(1).json_path));
+deepSqueakText = string(fileread(profiles(2).json_path));
+mupetText = string(fileread(profiles(3).json_path));
 
 verifyEqual(testCase, count(projectText, "(?P<"), 15);
 verifyEqual(testCase, count(deepSqueakText, "(?P<"), 0);
 verifyEqual(testCase, count(mupetText, "(?P<"), 4);
-end
-
-function document = stripContentVersions(document)
-if isfield(document, "profiles")
-    for index = 1:numel(document.profiles)
-        document.profiles(index).profile = rmfield( ...
-            document.profiles(index).profile, "profile_version");
-    end
-else
-    document.profile = rmfield(document.profile, "profile_version");
-end
 end
 
 function mapping = mappingBySourceField(mappings, sourceField)
@@ -130,34 +137,35 @@ else
 end
 end
 
-function pairs = migrationPairs(repoRoot)
-pairs = [
-    pair(repoRoot, ...
+function profiles = canonicalProfiles(repoRoot)
+profiles = [
+    profile(repoRoot, ...
         "config/01_mapping_profiles/project_inputs/project_input_source_mapping_examples", ...
         true, "project_input")
-    pair(repoRoot, ...
+    profile(repoRoot, ...
         "config/01_mapping_profiles/extractors/deepsqueak/deepsqueak_output_mapping_profile", ...
         true, "extractor_output")
-    pair(repoRoot, ...
+    profile(repoRoot, ...
         "config/01_mapping_profiles/extractors/mupet/mupet_output_mapping_profile", ...
         true, "extractor_output")
-    pair(repoRoot, ...
+    profile(repoRoot, ...
         "config/02_device_profiles/recording_device_profile_examples", ...
         false, "")
-    pair(repoRoot, ...
+    profile(repoRoot, ...
         "config/03_setup_profiles/experimental_setup_profile_examples", ...
         false, "")
-    pair(repoRoot, ...
+    profile(repoRoot, ...
         "config/04_examples/profile_linkage_example", ...
         false, "")
     ];
 end
 
-function value = pair(repoRoot, relativeStem, executable, expectedKind)
+function value = profile(repoRoot, relativeStem, executable, expectedKind)
 relativeStem = replace(string(relativeStem), "/", string(filesep));
+relativePath = replace(relativeStem + ".json", filesep, "/");
 value = struct( ...
-    yaml_path=fullfile(repoRoot, relativeStem + ".yaml"), ...
     json_path=fullfile(repoRoot, relativeStem + ".json"), ...
+    relative_path=relativePath, ...
     executable=logical(executable), ...
     expected_kind=string(expectedKind));
 end

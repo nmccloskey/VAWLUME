@@ -42,7 +42,7 @@ The current design includes:
 - an executable `schema/schema.sql` draft with Phase 1 integrity triggers and query views;
 - DeepSqueak and MUPET extractor design references;
 - draft DeepSqueak and MUPET output-mapping profiles;
-- example project-input, recording-device, experimental-setup, and profile-linkage YAML;
+- example project-input, recording-device, experimental-setup, and profile-linkage JSON;
 - a specified source-mapping architecture;
 - semantic seed registration for shipped DeepSqueak/MUPET output-mapping profiles;
 - a deterministic Phase 1 synthetic fixture with representative acceptance queries and MATLAB tests;
@@ -74,10 +74,9 @@ See [`config/README.md`](config/README.md).
 
 ## Runtime dependency
 
-Mapping-profile loading uses an out-of-process Python 3 interpreter with
-`PyYAML`. MATLAB selects `pyenv.Executable` by default; the public loader
-and source-mapping entry points also accept an explicit `PythonExecutable`.
-See
+Mapping-profile loading uses MATLAB-native JSON decoding through
+`fileread` and `jsondecode`. It does not require Python or PyYAML for
+configuration loading. See
 [`docs/development/03_source_mapping_intermediate_representation.md`](docs/development/03_source_mapping_intermediate_representation.md).
 
 ## Development order

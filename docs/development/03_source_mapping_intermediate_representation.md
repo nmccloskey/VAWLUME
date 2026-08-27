@@ -5,7 +5,7 @@
 The source-mapping intermediate representation (IR) is the single
 database-free result contract between source interpretation and later ingest.
 It preserves the evidence needed to create relational rows without asking an
-ingester to re-read YAML, rerun regular expressions, or infer precedence from
+ingester to re-read JSON, rerun regular expressions, or infer precedence from
 iteration order.
 
 The prototype contract version is:
@@ -23,7 +23,7 @@ result = vawlume.source_mapping.parse( ...
     profilePath, sourceRoot, ProfileId=profileId, RepoRoot=repoRoot);
 ```
 
-A multi-profile YAML document requires `ProfileId`. The top-level operation
+A multi-profile JSON document requires `ProfileId`. The top-level operation
 loads and validates the profile, discovers sources, parses path and filename
 semantics, assembles records and relationships, consolidates conflicts, and
 derives validity.
@@ -37,7 +37,7 @@ result = vawlume.source_mapping.mapTableToIR( ...
 ```
 
 `mapTableToIR` accepts a loaded profile bundle, one decoded profile document,
-or a profile YAML path. It does not read DeepSqueak or MUPET artifacts; the
+or a profile JSON path. It does not read DeepSqueak or MUPET artifacts; the
 caller supplies a MATLAB `table`. The lower-level `discoverSources`,
 `parsePath`, and `mapTableFields` functions remain available for focused
 inspection, but downstream ingest should consume the unified IR.
@@ -88,19 +88,18 @@ SQLite surrogate ID.
 
 | Field | Meaning |
 | --- | --- |
-| `profile_key` | Stable `profile.id` from YAML. |
+| `profile_key` | Stable `profile.id` from JSON. |
 | `profile_kind` | `project_input` or `extractor_output`. |
 | `profile_version` | Explicit profile version, compatibility fallback, or blank. |
 | `profile_version_source` | `profile.profile_version`, `extractor.version_scope.preferred`, or `not_declared`. |
 | `profile_schema_version` | Version of the profile language. |
 | `profile_path` | Portable/repository-relative path when `RepoRoot` was supplied. |
 | `profile_runtime_path` | Runtime location used to load the profile. |
-| `profile_checksum` | SHA-256 of a loaded YAML file. Blank for an in-memory profile document. |
+| `profile_checksum` | SHA-256 of a loaded JSON file. Blank for an in-memory profile document. |
 
-The current DeepSqueak and MUPET profiles do not declare
-`profile.profile_version`; their extractor preferred version is retained as
-an explicit compatibility fallback rather than presented as an authored
-profile version. Project-input examples currently report `not_declared`.
+The current executable JSON profiles declare `profile.profile_version =
+0.1.0`. Extractor compatibility remains separate under
+`extractor.version_scope.preferred`.
 
 ### `result.sources`
 
@@ -257,16 +256,13 @@ The dry-run test suite enforces this boundary against a disposable Phase 1
 fixture database by comparing every user-table row count and foreign-key check
 before and after parse plus preview.
 
-## YAML runtime dependency
+## JSON runtime dependency
 
-The central loader retains the established out-of-process PyYAML bridge:
+The central loader reads tracked JSON profile bytes with `fileread`, checks
+for duplicate JSON object members, decodes with MATLAB `jsondecode`, and
+preserves SHA-256 checksums of the exact loaded file bytes.
 
-- Python 3 must be installed;
-- the selected interpreter must provide the `PyYAML` package;
-- MATLAB normally selects `pyenv.Executable`;
-- callers can override it with `PythonExecutable` on `loadProfile`,
-  `parse`, or `mapTableToIR`.
-
-A missing interpreter/package is a preflight failure reported as
-`vawlume:source_mapping:YamlLoadFailed`. VAWLUME does not introduce a second
-YAML parser for this IR layer.
+Malformed JSON, duplicate object members, missing profile files, and file-read
+failures are reported as `vawlume:source_mapping:ProfileLoadFailed`.
+Profile-validation failures after successful decoding continue to use the
+structured source-mapping validation identifiers and IR issue machinery.
