@@ -182,10 +182,10 @@ for index = 1:numel(lines)
     tokens = regexp(char(trimmed), '^-- Q(\d{2}) - (.+)$', 'tokens', 'once');
     if ~isempty(tokens)
         currentIndex = currentIndex + 1;
-        blocks(currentIndex).id = "Q" + string(tokens{1}); %#ok<AGROW>
-        blocks(currentIndex).title = string(tokens{2}); %#ok<AGROW>
-        blocks(currentIndex).lines = strings(0, 1); %#ok<AGROW>
-        blocks(currentIndex).sql = ""; %#ok<AGROW>
+        blocks(currentIndex).id = "Q" + string(tokens{1});
+        blocks(currentIndex).title = string(tokens{2});
+        blocks(currentIndex).lines = strings(0, 1);
+        blocks(currentIndex).sql = "";
     elseif currentIndex > 0
         blocks(currentIndex).lines(end + 1, 1) = lines(index);
     end

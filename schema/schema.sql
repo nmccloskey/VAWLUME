@@ -6,8 +6,9 @@
 -- Design priorities:
 --   * extractor-independent event representation without erasing native semantics
 --   * structure-agnostic experimental hierarchy parsed by source_mapping profiles
---   * YAML/JSON profile artifacts for source mappings, extractor settings,
---     recording devices, experimental setups, and analysis policies
+--   * JSON profile artifacts for source mappings, extractor settings,
+--     recording devices, experimental setups, and analysis policies, while
+--     retaining historical YAML/YML content-format provenance support
 --   * multiple extraction runs per recording with full provenance
 --   * explicit artifact/model/settings lineage
 --   * conservative native-to-canonical feature mapping
@@ -19,8 +20,8 @@
 --   * INTEGER PRIMARY KEY values are VAWLUME-generated surrogate IDs.
 --   * User/extractor-native identifiers remain TEXT and are scoped explicitly.
 --   * Timestamps are UTC ISO-8601 TEXT unless a source-native timestamp is retained.
---   * Detailed profile contents remain external YAML/JSON artifacts; the database
---     stores stable IDs, versions, paths/URIs, and checksums.
+--   * Detailed current profile contents remain external JSON artifacts; the
+--     database stores stable IDs, versions, paths/URIs, and checksums.
 --   * Native values are preserved; canonical values are additive, never destructive.
 
 PRAGMA foreign_keys = ON;
@@ -79,8 +80,9 @@ CREATE TABLE config_profiles (
     UNIQUE(project_id, profile_key)
 );
 
--- Immutable/versioned profile snapshots. The detailed YAML/JSON is referenced,
--- not decomposed into bespoke schema columns.
+-- Immutable/versioned profile snapshots. Detailed profile JSON is referenced,
+-- not decomposed into bespoke schema columns; historical YAML/YML provenance
+-- rows remain legal content-format records.
 CREATE TABLE config_profile_versions (
     profile_version_id  INTEGER PRIMARY KEY,
     profile_id          INTEGER NOT NULL REFERENCES config_profiles(profile_id) ON DELETE CASCADE,
