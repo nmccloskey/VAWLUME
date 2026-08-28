@@ -49,6 +49,9 @@ The current design includes:
 - project-source discovery/path parsing and extractor table-field mapping;
 - one provenance-bearing, validated source-mapping intermediate representation for project files and supplied extractor tables;
 - a structured, human-readable, IR-only source-mapping dry-run preview with explicit readiness verdicts;
+- transactional project intake that materializes portable sources, configurable
+  experimental entity graphs, recordings, profile linkage, and immutable
+  ingestion-attempt provenance from validated project-input IR;
 - schema support for experimental hierarchy, extractor-native objects, detections, feature semantics, cross-extractor matching, derived analysis, and external event/timebase alignment.
 
 The reusable `source_mapping` engine now completes the Phase 2 checkpoint and
@@ -57,8 +60,22 @@ with MATLAB-native decoding, validates explicit profile content and language
 versions, discovers and parses project sources, maps supplied extractor tables
 through registered transforms, produces a validated intermediate
 representation, and renders a database-free dry-run preview. Project intake is
-the next architectural implementation target, followed by the first real
-extractor importers.
+now implemented as the transactional boundary from that IR to the relational
+project/entity/recording graph. The first real extractor importers are the next
+architectural target.
+
+A disposable all-profile demonstration is available at
+[`examples/project_intake_demo.m`](examples/project_intake_demo.m). It runs the
+folder-driven, filename-driven, and dyadic project patterns through profile
+validation, source mapping, preview, intake, and relational read-back; it also
+demonstrates idempotency, root relocation, and tracked device/setup provenance.
+
+From the repository root:
+
+```matlab
+addpath("examples")
+project_intake_demo
+```
 
 ## Configuration policy
 
@@ -99,8 +116,9 @@ The current recommended order is:
 Phase 1 completed items 1-4 as a tested relational checkpoint. Phase 2
 completed item 5 through the validated IR and dry-run boundary. Phase 2.5
 completed the JSON/native-loader/profile-language cleanup without adding a
-Python or PyYAML runtime dependency; project intake remains the next
-implementation target.
+Python or PyYAML runtime dependency. Phase 3 completed project intake through
+transactional application, provenance read-back, and the all-profile
+demonstration; extractor import is next.
 
 ## Documentation
 
