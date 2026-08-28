@@ -35,7 +35,12 @@ for caseIndex = 1:size(cases, 1)
 
     result = vawlume.ingest.project(conn, ir, spec, Apply=true);
 
-    verifyEqual(testCase, result.status, "recording_graph_committed");
+    expectedStatus = "completed";
+    if cases{caseIndex, 1} == ...
+            "example.project.rat_self_admin.filename_driven"
+        expectedStatus = "completed_with_warnings";
+    end
+    verifyEqual(testCase, result.status, expectedStatus);
     verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM entity_types"), ...
         cases{caseIndex, 3});
     verifyEqual(testCase, scalar(conn, ...
@@ -54,7 +59,8 @@ for caseIndex = 1:size(cases, 1)
         "WHERE source_locator IS NULL OR mapping_rule_key IS NULL"), 0);
     verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM source_files"), 1);
     verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM recordings"), 1);
-    verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM ingestion_runs"), 0);
+    verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM ingestion_runs"), 1);
+    verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM ingestion_files"), 1);
     verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
 
     if cases{caseIndex, 1} == "example.project.social_dyad.multi_subject"
@@ -121,6 +127,9 @@ verifyEqual(testCase, second.applied_counts.reused_entity_relationships, 4);
 verifyEqual(testCase, second.applied_counts.reused_source_files, 2);
 verifyEqual(testCase, second.applied_counts.reused_recordings, 2);
 verifyEqual(testCase, second.applied_counts.reused_recording_entity_links, 4);
+verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM ingestion_runs"), 2);
+verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM ingestion_files"), 4);
+verifyNotEqual(testCase, first.ingestion_run_id, second.ingestion_run_id);
 verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
 
 clear cleanupPath cleanupRoot cleanupDb

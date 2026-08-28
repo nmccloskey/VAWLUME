@@ -40,8 +40,9 @@ ir = entityIR();
 first = vawlume.ingest.project(conn, ir, projectSpec(), Apply=true);
 countsAfterFirst = graphCounts(conn);
 second = vawlume.ingest.project(conn, ir, projectSpec(), Apply=true);
+countsAfterSecond = graphCounts(conn);
 
-verifyEqual(testCase, first.status, "recording_graph_committed");
+verifyEqual(testCase, first.status, "completed");
 verifyTrue(testCase, first.committed);
 verifyEqual(testCase, first.project_id, ...
     scalar(conn, "SELECT project_id AS n FROM projects"));
@@ -54,8 +55,7 @@ verifyEqual(testCase, first.applied_counts.recordings, 1);
 verifyEqual(testCase, first.applied_counts.recording_entity_links, 2);
 verifyEqual(testCase, height(first.entity_ids), 3);
 verifyTrue(testCase, all(~isnan(first.entity_ids.entity_id)));
-verifyEqual(testCase, graphCounts(conn), countsAfterFirst);
-verifyEqual(testCase, second.status, "recording_graph_committed");
+verifyEqual(testCase, second.status, "completed");
 verifyTrue(testCase, second.committed);
 verifyEqual(testCase, second.applied_counts.reused_projects, 1);
 verifyEqual(testCase, second.applied_counts.reused_entity_types, 3);
@@ -66,7 +66,10 @@ verifyEqual(testCase, second.applied_counts.reused_recordings, 1);
 verifyEqual(testCase, second.applied_counts.reused_recording_entity_links, 2);
 verifyEqual(testCase, countsAfterFirst, struct( ...
     projects=1, entity_types=3, entities=3, relationships=2, ...
-    source_files=1, recordings=1, recording_links=2, ingestion_runs=0));
+    source_files=1, recordings=1, recording_links=2, ingestion_runs=1));
+verifyEqual(testCase, countsAfterSecond, struct( ...
+    projects=1, entity_types=3, entities=3, relationships=2, ...
+    source_files=1, recordings=1, recording_links=2, ingestion_runs=2));
 verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
 
 clear cleanupDb

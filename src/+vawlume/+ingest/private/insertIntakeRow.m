@@ -1,6 +1,9 @@
 function id = insertIntakeRow(conn, tableName, values, idColumn)
 %INSERTINTAKEROW Insert one scalar structured row and return its SQLite ID.
 
+if nargin < 4
+    idColumn = "";
+end
 values = stripEmptyOptionalText(values);
 names = fieldnames(values);
 rowStruct = struct();
@@ -15,6 +18,10 @@ for index = 1:numel(names)
     end
 end
 sqlwrite(conn, char(tableName), struct2table(rowStruct, "AsArray", true));
+if strlength(idColumn) == 0
+    id = NaN;
+    return
+end
 result = fetch(conn, "SELECT last_insert_rowid() AS " + idColumn);
 id = double(result.(idColumn)(1));
 end

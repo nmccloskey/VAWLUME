@@ -29,7 +29,7 @@ verifyTrue(testCase, contains(participant.entity_key, ...
     "entity_type:animal|native_id:A01"));
 verifyTrue(testCase, contains(context.entity_key, ...
     "entity_type:session|native_id:S01"));
-verifyEqual(testCase, result.plan.ingestion_files.action, "defer");
+verifyEqual(testCase, result.plan.ingestion_files.action, "create");
 verifyEqual(testCase, result.plan.ingestion_files.parse_status, "parsed");
 verifyTrue(testCase, isnan(result.plan.ingestion_files.ingestion_run_id));
 verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM projects"), 0);
@@ -46,16 +46,17 @@ ir = recordingIR();
 first = vawlume.ingest.project(conn, ir, projectSpec(), Apply=true);
 countsAfterFirst = graphCounts(conn);
 second = vawlume.ingest.project(conn, ir, projectSpec(), Apply=true);
+countsAfterSecond = graphCounts(conn);
 
-verifyEqual(testCase, first.status, "recording_graph_committed");
+verifyEqual(testCase, first.status, "completed");
 verifyTrue(testCase, first.committed);
 verifyEqual(testCase, first.applied_counts.source_files, 1);
 verifyEqual(testCase, first.applied_counts.recordings, 1);
 verifyEqual(testCase, first.applied_counts.recording_entity_links, 2);
 verifyTrue(testCase, all(~isnan(first.source_ids.source_file_id)));
 verifyTrue(testCase, all(~isnan(first.recording_ids.recording_id)));
-verifyEqual(testCase, graphCounts(conn), countsAfterFirst);
-verifyEqual(testCase, second.status, "recording_graph_committed");
+verifyEqual(testCase, second.status, "completed");
+verifyNotEqual(testCase, second.ingestion_run_id, first.ingestion_run_id);
 verifyEqual(testCase, second.applied_counts.reused_source_files, 1);
 verifyEqual(testCase, second.applied_counts.reused_recordings, 1);
 verifyEqual(testCase, ...
@@ -63,7 +64,11 @@ verifyEqual(testCase, ...
 verifyEqual(testCase, countsAfterFirst, struct( ...
     projects=1, source_files=1, entity_types=3, entities=3, ...
     entity_relationships=2, recordings=1, recording_entity_links=2, ...
-    ingestion_runs=0, ingestion_files=0, extraction_runs=0, detections=0));
+    ingestion_runs=1, ingestion_files=1, extraction_runs=0, detections=0));
+verifyEqual(testCase, countsAfterSecond, struct( ...
+    projects=1, source_files=1, entity_types=3, entities=3, ...
+    entity_relationships=2, recordings=1, recording_entity_links=2, ...
+    ingestion_runs=2, ingestion_files=2, extraction_runs=0, detections=0));
 verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
 
 clear cleanupDb

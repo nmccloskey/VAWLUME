@@ -37,7 +37,12 @@ for caseIndex = 1:size(cases, 1)
 
     result = vawlume.ingest.project(conn, ir, spec, Apply=true);
 
-    verifyEqual(testCase, result.status, "recording_graph_committed");
+    expectedStatus = "completed";
+    if cases{caseIndex, 1} == ...
+            "example.project.rat_self_admin.filename_driven"
+        expectedStatus = "completed_with_warnings";
+    end
+    verifyEqual(testCase, result.status, expectedStatus);
     verifyEqual(testCase, result.source_ids.source_file_id, ...
         result.plan.sources.existing_source_file_id);
     verifyEqual(testCase, result.recording_ids.recording_id, ...
@@ -84,9 +89,9 @@ for caseIndex = 1:size(cases, 1)
     else
         verifyEqual(testCase, result.plan.ingestion_files.parse_status, "parsed");
     end
-    verifyEqual(testCase, result.plan.ingestion_files.action, "defer");
-    verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM ingestion_runs"), 0);
-    verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM ingestion_files"), 0);
+    verifyEqual(testCase, result.plan.ingestion_files.action, "create");
+    verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM ingestion_runs"), 1);
+    verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM ingestion_files"), 1);
     verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM extraction_runs"), 0);
     verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM detections"), 0);
     verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
@@ -136,7 +141,7 @@ second = vawlume.ingest.project(conn, irTwo, spec, Apply=true);
 verifyEqual(testCase, first.applied_counts.source_files, 1);
 verifyEqual(testCase, first.applied_counts.recordings, 1);
 verifyEqual(testCase, first.applied_counts.recording_entity_links, 2);
-verifyEqual(testCase, second.status, "recording_graph_committed");
+verifyEqual(testCase, second.status, "completed");
 verifyEqual(testCase, second.applied_counts.reused_source_files, 1);
 verifyEqual(testCase, second.applied_counts.reused_recordings, 1);
 verifyEqual(testCase, ...
@@ -145,6 +150,9 @@ verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM source_files"), 1)
 verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM recordings"), 1);
 verifyEqual(testCase, scalar(conn, ...
     "SELECT COUNT(*) AS n FROM recording_entity_links"), 2);
+verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM ingestion_runs"), 2);
+verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM ingestion_files"), 2);
+verifyNotEqual(testCase, first.ingestion_run_id, second.ingestion_run_id);
 verifyEqual(testCase, string(fetch(conn, ...
     "SELECT path_or_uri FROM source_files").path_or_uri), relativePath);
 verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
@@ -173,7 +181,7 @@ spec = struct(project_key="duplicate_filenames", ...
 
 result = vawlume.ingest.project(conn, ir, spec, Apply=true);
 
-verifyEqual(testCase, result.status, "recording_graph_committed");
+verifyEqual(testCase, result.status, "completed_with_warnings");
 verifyEqual(testCase, height(result.plan.sources), 2);
 verifyEqual(testCase, height(result.plan.recordings), 2);
 verifyEqual(testCase, height(result.plan.recording_links), 4);
@@ -185,6 +193,8 @@ verifyEqual(testCase, scalar(conn, ...
     "SELECT COUNT(DISTINCT relative_path) AS n FROM source_files"), 2);
 verifyEqual(testCase, scalar(conn, ...
     "SELECT COUNT(DISTINCT filename) AS n FROM source_files"), 1);
+verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM ingestion_runs"), 1);
+verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM ingestion_files"), 2);
 verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
 
 clear cleanupDb cleanupRoot cleanupPath

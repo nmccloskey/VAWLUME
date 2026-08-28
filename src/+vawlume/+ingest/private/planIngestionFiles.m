@@ -1,12 +1,8 @@
 function ingestionFiles = planIngestionFiles(ir, sources)
-%PLANINGESTIONFILES Preserve structured per-source parse state for Pass 5.
-%
-% An ingestion_files row requires an ingestion_run, whose mapping-profile
-% registration and transaction contract belong to Pass 5. This plan keeps
-% the exact source IDs and structured IR diagnostics ready for that boundary.
+%PLANINGESTIONFILES Preserve structured per-source parse state for audit rows.
 
 count = height(sources);
-actions = repmat("defer", count, 1);
+actions = repmat("create", count, 1);
 actions(ismember(sources.action, ["conflict", "skip"])) = "skip";
 parseStatus = strings(count, 1);
 warningCounts = zeros(count, 1);
