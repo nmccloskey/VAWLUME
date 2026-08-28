@@ -4,17 +4,31 @@ function plan = buildProjectPlan(conn, ir, projectSpec)
 project = resolveProject(conn, projectSpec);
 mappingProfile = resolveMappingProfile(conn, ir.profile);
 sources = resolveSources(conn, ir.sources, project);
+entityTypes = resolveEntityTypes(conn, ir.records, project);
+[entities, entityRecords] = resolveEntities( ...
+    conn, ir.records, project, entityTypes);
+[relationships, relationshipEvidence, deferredRelationships] = ...
+    resolveEntityRelationships( ...
+    conn, ir.relationships, project, entities, entityRecords);
 
 plan = struct();
 plan.plan_version = "0.1-draft";
 plan.project = project;
 plan.mapping_profile = mappingProfile;
 plan.sources = sources;
-plan.issues = collectIssues(project, mappingProfile, sources);
+plan.entity_types = entityTypes;
+plan.entities = entities;
+plan.entity_records = entityRecords;
+plan.relationships = relationships;
+plan.relationship_evidence = relationshipEvidence;
+plan.deferred_relationships = deferredRelationships;
+plan.issues = collectIssues( ...
+    project, mappingProfile, sources, entityTypes, entities, relationships);
 plan.has_conflicts = ~isempty(plan.issues);
 end
 
-function issues = collectIssues(project, mappingProfile, sources)
+function issues = collectIssues( ...
+        project, mappingProfile, sources, entityTypes, entities, relationships)
 issues = emptyIssues();
 if project.action == "conflict"
     issues(end + 1, :) = {"error", "PROJECT_IDENTITY_CONFLICT", ...
@@ -36,6 +50,27 @@ for index = find(conflicts)'
     issues(end + 1, :) = {"error", "SOURCE_IDENTITY_CONFLICT", ...
         "source_file", sources.source_key(index), ...
         sources.conflict_message(index)}; %#ok<AGROW>
+end
+conflicts = entityTypes.action == "conflict";
+for index = find(conflicts)'
+    issues(end + 1, :) = {"error", "ENTITY_TYPE_CONFLICT", ...
+        "entity_type", entityTypes.entity_type_key(index), ...
+        entityTypes.conflict_message(index)}; %#ok<AGROW>
+end
+conflicts = entities.action == "conflict";
+for index = find(conflicts)'
+    issues(end + 1, :) = {"error", "ENTITY_CONFLICT", ...
+        "entity", entities.entity_key(index), ...
+        entities.conflict_message(index)}; %#ok<AGROW>
+end
+conflicts = relationships.action == "conflict";
+for index = find(conflicts)'
+    issues(end + 1, :) = {"error", "ENTITY_RELATIONSHIP_CONFLICT", ...
+        "entity_relationship", relationships.relationship_key(index), ...
+        relationships.conflict_message(index)}; %#ok<AGROW>
+end
+if ~isempty(issues)
+    issues = sortrows(issues, ["category", "logical_key", "code"]);
 end
 end
 

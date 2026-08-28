@@ -57,9 +57,11 @@ function validateTables(ir)
 sourceFields = ["source_key", "runtime_path", "relative_path", "filename", ...
     "source_type", "artifact_type", "status", "checksum_sha256"];
 recordFields = ["record_key", "source_key", "native_level", ...
-    "canonical_level", "native_identifier", "record_scope", "status"];
+    "canonical_level", "native_identifier", "record_scope", "role_label", ...
+    "mapping_rule", "status"];
 relationshipFields = ["relationship_key", "source_key", ...
-    "from_record_key", "to_record_key", "canonical_relationship", "status"];
+    "from_record_key", "to_record_key", "native_relationship", ...
+    "canonical_relationship", "role_label", "mapping_rule", "status"];
 requireTableFields(ir.sources, sourceFields, "IR sources");
 requireTableFields(ir.records, recordFields, "IR records");
 requireTableFields(ir.relationships, relationshipFields, "IR relationships");
@@ -82,8 +84,21 @@ if any(strlength(string(ir.records.native_level)) == 0) || ...
         any(strlength(string(ir.records.native_identifier)) == 0)
     intakeError("InvalidIR", "IR records lack logical identity required by intake.");
 end
+allowedScopes = ["entity", "membership", "source_recording"];
+if any(~ismember(string(ir.records.record_scope), allowedScopes))
+    intakeError("InvalidIR", ...
+        "Project IR records contain unsupported record_scope values.");
+end
+if any(strlength(string(ir.relationships.canonical_relationship)) == 0)
+    intakeError("InvalidIR", ...
+        "IR relationships require canonical_relationship values.");
+end
 
 relationshipSourceKeys = string(ir.relationships.source_key);
+if ~isempty(ir.relationships)
+    requiredUniqueColumn(ir.relationships.relationship_key, ...
+        "IR relationship_key");
+end
 if any(~ismember(relationshipSourceKeys, sourceKeys))
     intakeError("InvalidIR", "IR relationships reference unknown source keys.");
 end
