@@ -1,8 +1,8 @@
 # VAWLUME Prototype Development Outline
 
 **Status:** Revised working development plan  
-**Updated:** 2026-08-21  
-**Project stage:** Relational foundation drafted; configuration/source-mapping architecture substantially specified  
+**Updated:** 2026-08-28
+**Project stage:** Relational foundation and source mapping implemented through the Phase 2.5 native-configuration cleanup
 **Primary implementation environment:** MATLAB + SQLite  
 **Prototype objective:** Poster-ready, vertically integrated demonstration
 
@@ -116,7 +116,7 @@ Examples already drafted:
 
 ## 3.4 Recording-device profiles
 
-Flexible YAML profiles representing acquisition hardware and recording-chain context.
+Flexible JSON profiles representing acquisition hardware and recording-chain context.
 
 Examples of profile content:
 
@@ -129,11 +129,11 @@ Examples of profile content:
 - calibration state;
 - placement/orientation where appropriate.
 
-Detailed fields remain in YAML rather than becoming a large set of schema columns.
+Detailed fields remain in JSON rather than becoming a large set of schema columns.
 
 ## 3.5 Experimental-setup profiles
 
-Flexible YAML profiles describing the physical/behavioral recording context.
+Flexible JSON profiles describing the physical/behavioral recording context.
 
 Examples:
 
@@ -179,7 +179,7 @@ extractor-output mapping profile
     = how the extractor's artifacts/fields are interpreted
 ```
 
-These profiles should have stable IDs, versions, and checksums in the database while their detailed YAML/JSON content remains external.
+These profiles should have stable IDs, versions, and checksums in the database while their detailed JSON content remains external.
 
 ---
 
@@ -669,7 +669,7 @@ canonical features:
   frequency_center
 ```
 
-The database should not duplicate detailed YAML definitions manually where the profile can be the authoritative source.
+The database should not duplicate detailed profile definitions manually where the profile can be the authoritative source.
 
 ### Deliverable
 
@@ -1572,7 +1572,7 @@ Current checkpoint:
 
 Current checkpoint complete:
 
-- YAML profile loading with identity, kind, version-compatibility, and checksum provenance;
+- JSON profile loading with identity, kind, explicit content version, MATLAB regexp syntax, and checksum provenance;
 - deterministic project-source discovery and path/filename semantic extraction;
 - extractor table-field mapping through a closed transform registry;
 - one normalized, provenance-bearing intermediate representation for project

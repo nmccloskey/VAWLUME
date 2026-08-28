@@ -216,7 +216,7 @@ fixture definitions
 
 ### Built-in mapping profiles
 
-The DeepSqueak and MUPET mapping YAML files should be tracked under:
+The DeepSqueak and MUPET mapping JSON files should be tracked under:
 
 ```text
 config/01_mapping_profiles/extractors/
@@ -227,9 +227,9 @@ Suggested organization:
 ```text
 config/01_mapping_profiles/extractors/
 ├── deepsqueak/
-│   └── deepsqueak_output_mapping_profile.yaml
+│   └── deepsqueak_output_mapping_profile.json
 └── mupet/
-    └── mupet_output_mapping_profile.yaml
+    └── mupet_output_mapping_profile.json
 ```
 
 Version-specific profiles can later use explicit filenames or version subdirectories if multiple profiles coexist.
@@ -310,8 +310,8 @@ Recommended moves:
 | --- | --- |
 | `schema.sql` | `schema/schema.sql` |
 | `.dev/.../01_outline/01_VAWLUME_prototype_development_outline_002.md` | `docs/design/01_prototype_development_outline.md` |
-| DeepSqueak output mapping YAML | `config/01_mapping_profiles/extractors/deepsqueak/` |
-| MUPET output mapping YAML | `config/01_mapping_profiles/extractors/mupet/` |
+| DeepSqueak output mapping JSON | `config/01_mapping_profiles/extractors/deepsqueak/` |
+| MUPET output mapping JSON | `config/01_mapping_profiles/extractors/mupet/` |
 | DeepSqueak design reference | `docs/reference/extractors/` |
 | MUPET design reference | `docs/reference/extractors/` |
 | project-input mapping examples | `config/01_mapping_profiles/project_inputs/` |

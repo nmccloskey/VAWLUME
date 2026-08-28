@@ -1,7 +1,9 @@
 function tests = test_seed_registration
 tests = functiontests({ ...
     @testRegisterBuiltinSemanticsIsIdempotent, ...
-    @testRegisterBuiltinSemanticsRejectsConflicts});
+    @testRegisterBuiltinSemanticsRejectsConflicts, ...
+    @testSameVersionChangedProfileBytesRejectAsConflict, ...
+    @testDeliberateProfileVersionRevisionCanCoexist});
 end
 
 function testRegisterBuiltinSemanticsIsIdempotent(testCase)
@@ -19,6 +21,7 @@ countsAfterSecond = semanticCounts(conn);
 
 verifyEqual(testCase, countsAfterFirst, countsAfterSecond);
 verifyGreaterThan(testCase, first.inserted, 0);
+verifyTrue(testCase, contains(first.configuration_strategy, "jsondecode"));
 verifyEqual(testCase, second.inserted, 0);
 verifyGreaterThan(testCase, second.reused_existing, 0);
 verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
@@ -72,6 +75,80 @@ verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
 clear cleanupPath cleanupDb cleanupProfile
 end
 
+function testSameVersionChangedProfileBytesRejectAsConflict(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+
+[conn, dbFile] = createDisposableDatabase(repoRoot);
+cleanupDb = onCleanup(@() cleanupDatabase(conn, dbFile));
+
+sourceProfile = fullfile(repoRoot, "config", "01_mapping_profiles", "extractors", "deepsqueak", "deepsqueak_output_mapping_profile.json");
+temporaryProfile = string(tempname) + ".json";
+writeText(temporaryProfile, fileread(sourceProfile));
+cleanupProfile = onCleanup(@() deleteIfExists(temporaryProfile));
+
+vawlume.db.registerBuiltinSemantics(conn, repoRoot, ProfilePaths=temporaryProfile);
+countsBeforeConflict = semanticCounts(conn);
+versionBefore = profileVersionRows(conn, "vawlume.deepsqueak.output.v3_2");
+
+text = fileread(temporaryProfile);
+text = replace(text, ...
+    '"operational_definition": "median frequency of the DeepSqueak contour"', ...
+    '"operational_definition": "changed test definition for checksum conflict"');
+writeText(temporaryProfile, text);
+
+verifyError(testCase, ...
+    @() vawlume.db.registerBuiltinSemantics(conn, repoRoot, ProfilePaths=temporaryProfile), ...
+    "vawlume:db:SemanticConflict");
+verifyEqual(testCase, semanticCounts(conn), countsBeforeConflict);
+verifyEqual(testCase, profileVersionRows(conn, "vawlume.deepsqueak.output.v3_2"), versionBefore);
+verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
+
+clear cleanupPath cleanupDb cleanupProfile
+end
+
+function testDeliberateProfileVersionRevisionCanCoexist(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+
+[conn, dbFile] = createDisposableDatabase(repoRoot);
+cleanupDb = onCleanup(@() cleanupDatabase(conn, dbFile));
+
+sourceProfile = fullfile(repoRoot, "config", "01_mapping_profiles", "extractors", "deepsqueak", "deepsqueak_output_mapping_profile.json");
+temporaryProfile = string(tempname) + ".json";
+writeText(temporaryProfile, fileread(sourceProfile));
+cleanupProfile = onCleanup(@() deleteIfExists(temporaryProfile));
+
+vawlume.db.registerBuiltinSemantics(conn, repoRoot, ProfilePaths=temporaryProfile);
+countsAfterFirst = semanticCounts(conn);
+
+text = fileread(temporaryProfile);
+text = replace(text, '"profile_version": "0.1.0"', '"profile_version": "0.1.1"');
+writeText(temporaryProfile, text);
+
+vawlume.db.registerBuiltinSemantics(conn, repoRoot, ProfilePaths=temporaryProfile);
+countsAfterRevision = semanticCounts(conn);
+versionRows = profileVersionRows(conn, "vawlume.deepsqueak.output.v3_2");
+
+verifyEqual(testCase, string(versionRows.version_label), ["0.1.0"; "0.1.1"]);
+verifyEqual(testCase, string(versionRows.content_format), ["json"; "json"]);
+verifyEqual(testCase, string(versionRows.profile_schema_version), ["0.2-draft"; "0.2-draft"]);
+verifyEqual(testCase, countsAfterRevision.config_profiles, countsAfterFirst.config_profiles);
+verifyEqual(testCase, countsAfterRevision.extractors, countsAfterFirst.extractors);
+verifyEqual(testCase, countsAfterRevision.extractor_versions, countsAfterFirst.extractor_versions);
+verifyEqual(testCase, countsAfterRevision.canonical_features, countsAfterFirst.canonical_features);
+verifyEqual(testCase, countsAfterRevision.extractor_features, countsAfterFirst.extractor_features);
+verifyEqual(testCase, countsAfterRevision.config_profile_versions, countsAfterFirst.config_profile_versions + 1);
+verifyEqual(testCase, countsAfterRevision.feature_mappings, countsAfterFirst.feature_mappings * 2);
+verifyEqual(testCase, featureMappingCountForProfileVersion(conn, "vawlume.deepsqueak.output.v3_2", "0.1.0"), countsAfterFirst.feature_mappings);
+verifyEqual(testCase, featureMappingCountForProfileVersion(conn, "vawlume.deepsqueak.output.v3_2", "0.1.1"), countsAfterFirst.feature_mappings);
+verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
+
+clear cleanupPath cleanupDb cleanupProfile
+end
+
 function verifyProfileChecksums(testCase, conn, repoRoot)
 profiles = [
     "vawlume.deepsqueak.output.v3_2", "config/01_mapping_profiles/extractors/deepsqueak/deepsqueak_output_mapping_profile.json"
@@ -82,12 +159,14 @@ for index = 1:size(profiles, 1)
     profileKey = profiles(index, 1);
     relativePath = profiles(index, 2);
     rows = fetch(conn, ...
-        "SELECT cpv.profile_schema_version, cpv.content_uri, " + ...
-        "cpv.checksum_sha256 FROM config_profile_versions cpv " + ...
+        "SELECT cpv.version_label, cpv.profile_schema_version, cpv.content_format, " + ...
+        "cpv.content_uri, cpv.checksum_sha256 FROM config_profile_versions cpv " + ...
         "JOIN config_profiles cp ON cp.profile_id = cpv.profile_id " + ...
         "WHERE cp.profile_key = " + sqlText(profileKey));
     verifyEqual(testCase, height(rows), 1);
+    verifyEqual(testCase, string(rows.version_label(1)), "0.1.0");
     verifyEqual(testCase, string(rows.profile_schema_version(1)), "0.2-draft");
+    verifyEqual(testCase, string(rows.content_format(1)), "json");
     verifyEqual(testCase, string(rows.content_uri(1)), relativePath);
     verifyEqual(testCase, string(rows.checksum_sha256(1)), sha256File(fullfile(repoRoot, relativePath)));
     verifyEqual(testCase, strlength(string(rows.checksum_sha256(1))), 64);
@@ -223,6 +302,24 @@ counts = struct();
 for tableName = tables'
     counts.(tableName) = scalar(conn, "SELECT COUNT(*) AS n FROM " + tableName);
 end
+end
+
+function rows = profileVersionRows(conn, profileKey)
+rows = fetch(conn, ...
+    "SELECT cpv.version_label, cpv.profile_schema_version, cpv.content_format, " + ...
+    "cpv.content_uri, cpv.checksum_sha256 FROM config_profile_versions cpv " + ...
+    "JOIN config_profiles cp ON cp.profile_id = cpv.profile_id " + ...
+    "WHERE cp.profile_key = " + sqlText(profileKey) + ...
+    " ORDER BY cpv.version_label");
+end
+
+function count = featureMappingCountForProfileVersion(conn, profileKey, versionLabel)
+count = scalar(conn, ...
+    "SELECT COUNT(*) AS n FROM feature_mappings fm " + ...
+    "JOIN config_profile_versions cpv ON cpv.profile_version_id = fm.mapping_profile_version_id " + ...
+    "JOIN config_profiles cp ON cp.profile_id = cpv.profile_id " + ...
+    "WHERE cp.profile_key = " + sqlText(profileKey) + ...
+    " AND cpv.version_label = " + sqlText(versionLabel));
 end
 
 function value = scalar(conn, sql)

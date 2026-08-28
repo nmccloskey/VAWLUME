@@ -102,6 +102,10 @@ A mapping/profile loader should eventually expose, at minimum:
 
 Do not let arbitrary code paths interpret a profile file independently. Centralize loading and validation so configuration behavior has one source of truth.
 
+Profile regular expressions use MATLAB `regexp` syntax. Named captures are
+written as `(?<name>...)` in the MATLAB pattern and with escaped backslashes in
+JSON strings, for example `(?<animal_id>\\d{3})`.
+
 ## 6. Profile responsibilities
 
 Keep the following distinct:
@@ -188,7 +192,7 @@ Recommended first implementation slice:
 
 1. load JSON;
 2. validate profile identity/kind/version;
-3. compile path/filename regular expressions;
+3. compile MATLAB `regexp` path/filename regular expressions;
 4. discover source files;
 5. parse level/field values;
 6. apply declared transformations;

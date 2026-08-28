@@ -6,6 +6,28 @@ VAWLUME uses tracked configuration/profile artifacts to interpret heterogeneous 
 
 The configuration layer is part of the software contract, not merely user convenience.
 
+## Canonical format
+
+Tracked VAWLUME configuration examples are canonical JSON. Runtime
+source-mapping profile loading uses MATLAB `fileread` and `jsondecode`; Python
+and PyYAML are not configuration runtime dependencies.
+
+Executable source-mapping profiles use MATLAB `regexp` syntax directly.
+Named captures use `(?<name>...)`, and JSON strings must escape backslashes.
+For example, a MATLAB pattern such as:
+
+```text
+^(?<animal_id>\d{3})$
+```
+
+is authored in JSON as:
+
+```json
+"^(?<animal_id>\\d{3})$"
+```
+
+A literal dot is similarly escaped as `\\.` in JSON profile strings.
+
 ## Profile categories
 
 ### 1. Project-input source mapping profile
@@ -184,12 +206,17 @@ profile_id
 profile_kind
 profile_version
 profile_schema_version
-file_path_or_uri
-checksum
+content_uri
+checksum_sha256
 ```
 
-`profile_version` is the authored VAWLUME mapping contract version.
-`profile_schema_version` is the VAWLUME profile-language version.
+`profile_version` is the authored VAWLUME mapping contract version, currently
+`0.1.0` for the shipped executable source-mapping profiles.
+`profile_schema_version` is the VAWLUME profile-language version, currently
+`0.2-draft` for executable source-mapping profiles. Recording-device and
+experimental-setup examples are separate profile languages and currently keep
+their own `0.1-draft` schema declarations.
+
 Extractor-output profiles additionally identify the supported extractor
 version range under `extractor.version_scope`; that compatibility scope is not
 the profile content version.
@@ -197,9 +224,33 @@ the profile content version.
 Profile value maps use ordered-insensitive `value_map` records with explicit
 `native_value` and `canonical_value` fields. Source-specific lexical
 missing-token behavior is declared in `missing_value_policy` rather than in
-runtime code.
+runtime code. For example, the current MUPET inter-syllable interval mapping
+declares `NA` as an explicit missing token while preserving the raw token.
 
 The database can store profile identity/version/checksum while the JSON remains the detailed source representation.
+
+## Authoring workflow
+
+Profile authoring should follow a validate-before-ingest rhythm:
+
+1. Draft or edit the JSON profile.
+2. Load it with `vawlume.source_mapping.loadProfile`.
+3. Run the relevant `source_mapping` parse or table-mapping workflow.
+4. Inspect `vawlume.source_mapping.preview` before any database ingest step.
+
+The dry-run preview is the main safety mechanism for unsupported project
+structures or extractor outputs. It should expose missing columns, regex
+misses, ambiguous fields, value conflicts, and readiness before records are
+inserted.
+
+## AI-assisted profile authoring
+
+Researchers may use a generative-AI assistant to help draft a profile for an
+unsupported extractor or project structure, especially when they can provide
+extractor documentation, source examples, and field definitions. The assistant
+is not a semantic authority: generated profiles must pass VAWLUME validation
+and dry-run preview, and researcher review remains required before ingest.
+VAWLUME does not require an AI service at runtime.
 
 ## Validation
 
