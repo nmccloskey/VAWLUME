@@ -48,10 +48,12 @@ end
 
 profile = struct();
 profile.profile_key = string(envelope.id);
+profile.profile_name = string(envelope.name);
 profile.profile_kind = string(envelope.kind);
 profile.profile_version = version;
 profile.profile_version_source = versionSource;
 profile.profile_schema_version = string(envelope.profile_schema_version);
+profile.profile_content_format = inputText(profileInput, "content_format");
 profile.profile_path = portablePath;
 profile.profile_runtime_path = runtimePath;
 profile.profile_checksum = inputText(profileInput, "checksum_sha256");

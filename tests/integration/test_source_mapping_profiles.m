@@ -65,9 +65,11 @@ for caseIndex = 1:size(cases, 1)
 
     verifyTrue(testCase, first.valid_for_ingest);
     verifyEqual(testCase, first.profile.profile_key, cases{caseIndex, 1});
+    verifyGreaterThan(testCase, strlength(first.profile.profile_name), 0);
     verifyEqual(testCase, first.profile.profile_version, "0.1.0");
     verifyEqual(testCase, first.profile.profile_version_source, "profile.profile_version");
     verifyEqual(testCase, first.profile.profile_schema_version, "0.2-draft");
+    verifyEqual(testCase, first.profile.profile_content_format, "json");
     verifyEqual(testCase, height(first.sources), 1);
     verifyGreaterThan(testCase, height(first.records), 0);
     verifyGreaterThan(testCase, height(first.values), 0);

@@ -105,10 +105,12 @@ SQLite surrogate ID.
 | Field | Meaning |
 | --- | --- |
 | `profile_key` | Stable `profile.id` from JSON. |
+| `profile_name` | Authored display name from `profile.name`; retained so intake does not reopen the profile document. |
 | `profile_kind` | `project_input` or `extractor_output`. |
 | `profile_version` | Explicit authored `profile.profile_version`. |
 | `profile_version_source` | `profile.profile_version` for validated executable profiles; `not_declared` only for unvalidated in-memory documents. |
 | `profile_schema_version` | Version of the profile language. |
+| `profile_content_format` | Loaded artifact format (`json` for the current executable profiles). |
 | `profile_path` | Portable/repository-relative path when `RepoRoot` was supplied. |
 | `profile_runtime_path` | Runtime location used to load the profile. |
 | `profile_checksum` | SHA-256 of a loaded JSON file. Blank for an in-memory profile document. |

@@ -28,6 +28,7 @@ loaded = struct();
 loaded.document = document;
 loaded.source_path = profilePath;
 loaded.relative_path = relativePath(profilePath, options.RepoRoot);
+loaded.content_format = "json";
 loaded.checksum_sha256 = sha256File(profilePath);
 loaded.profile_documents = profileDocuments;
 loaded.profile_count = numel(profileDocuments);
