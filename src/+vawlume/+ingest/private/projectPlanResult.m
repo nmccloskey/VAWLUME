@@ -39,7 +39,7 @@ result.plan = plan;
 end
 
 function value = resolvedId(action, id)
-if action == "reuse"
+if action == "reuse" || (action == "create" && ~isnan(id))
     value = id;
 else
     value = NaN;

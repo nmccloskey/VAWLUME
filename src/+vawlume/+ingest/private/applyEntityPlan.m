@@ -12,6 +12,14 @@ if oldAutoCommit ~= "on"
 end
 
 counts = emptyCounts();
+if ~hasCreates(plan)
+    [plan, counts] = applyProject(conn, plan, counts);
+    [plan, counts] = applyEntityTypes(conn, plan, counts);
+    [plan, counts] = applyEntities(conn, plan, counts);
+    [plan, counts] = applyRelationships(conn, plan, counts);
+    return
+end
+
 conn.AutoCommit = "off";
 try
     [plan, counts] = applyProject(conn, plan, counts);
@@ -28,6 +36,13 @@ catch exception
     rethrow(exception);
 end
 conn.AutoCommit = oldAutoCommit;
+end
+
+function value = hasCreates(plan)
+value = plan.project.action == "create" || ...
+    any(plan.entity_types.action == "create") || ...
+    any(plan.entities.action == "create") || ...
+    any(plan.relationships.action == "create");
 end
 
 function [plan, counts] = applyProject(conn, plan, counts)
