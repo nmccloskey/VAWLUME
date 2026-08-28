@@ -68,7 +68,7 @@ report = finalizeReport(report);
             end
         end
 
-        if hasSchemaVersion && schemaVersion ~= "0.1-draft"
+        if hasSchemaVersion && schemaVersion ~= "0.2-draft"
             addIssue("error", "PROFILE_UNSUPPORTED_SCHEMA_VERSION", ...
                 location + ".profile.profile_schema_version", ...
                 "Unsupported mapping-profile schema version: " + schemaVersion + ".");
@@ -287,6 +287,7 @@ report = finalizeReport(report);
                     "Each capture declaration must be a mapping/object.");
                 continue
             end
+            validateValueMapDeclaration(declaration, captureLocation);
 
             targetLevel = optionalText(declaration, "target_level");
             membershipLevel = optionalText(declaration, "membership_level");
@@ -414,6 +415,120 @@ report = finalizeReport(report);
                 addIssue("error", "PROFILE_UNKNOWN_TRANSFORM", mappingLocation + ".transform", ...
                     "Transform key is not registered for prototype execution: " + transform + ".");
             end
+            validateValueMapDeclaration(mapping, mappingLocation);
+            validateMissingValuePolicy(mapping, mappingLocation);
+        end
+    end
+
+    function validateValueMapDeclaration(container, location)
+        if hasField(container, "value_mapping")
+            addIssue("error", "PROFILE_INVALID_VALUE_MAP", ...
+                location + ".value_mapping", ...
+                "value_mapping object declarations are not supported; use value_map records.");
+        end
+        if hasField(container, "normalize")
+            addIssue("error", "PROFILE_INVALID_VALUE_MAP", ...
+                location + ".normalize", ...
+                "normalize object declarations are not supported; use value_map records.");
+        end
+        if ~hasField(container, "value_map")
+            return
+        end
+
+        entries = normalizeSequence(container.value_map);
+        if isempty(entries)
+            addIssue("error", "PROFILE_INVALID_VALUE_MAP", location + ".value_map", ...
+                "value_map must be a nonempty sequence of mapping records.");
+            return
+        end
+
+        nativeTokens = strings(0, 1);
+        for entryIndex = 1:numel(entries)
+            entry = entries{entryIndex};
+            entryLocation = location + ".value_map(" + entryIndex + ")";
+            if ~isstruct(entry)
+                addIssue("error", "PROFILE_INVALID_VALUE_MAP", entryLocation, ...
+                    "Each value_map entry must be a mapping/object.");
+                continue
+            end
+
+            hasNative = requireField(entry, "native_value", ...
+                entryLocation + ".native_value");
+            requiredText(entry, "canonical_value", ...
+                entryLocation + ".canonical_value");
+            if ~hasNative
+                continue
+            end
+
+            [nativeToken, nativeOk] = scalarToken(entry.native_value);
+            if ~nativeOk
+                addIssue("error", "PROFILE_INVALID_VALUE_MAP", ...
+                    entryLocation + ".native_value", ...
+                    "value_map.native_value must be a scalar JSON value.");
+                continue
+            end
+            if any(nativeTokens == nativeToken)
+                addIssue("error", "PROFILE_INVALID_VALUE_MAP", ...
+                    entryLocation + ".native_value", ...
+                    "value_map native_value entries must be unique: " + nativeToken + ".");
+            end
+            nativeTokens(end + 1, 1) = nativeToken; %#ok<AGROW>
+        end
+    end
+
+    function validateMissingValuePolicy(mapping, location)
+        dataType = optionalText(mapping, "data_type");
+        hasPolicy = hasField(mapping, "missing_value_policy");
+        if dataType == "float_or_missing" && ~hasPolicy
+            addIssue("error", "PROFILE_MISSING_FIELD", ...
+                location + ".missing_value_policy", ...
+                "float_or_missing mappings must declare missing_value_policy.");
+            return
+        end
+        if ~hasPolicy
+            return
+        end
+        if ~isstruct(mapping.missing_value_policy)
+            addIssue("error", "PROFILE_INVALID_FIELD", ...
+                location + ".missing_value_policy", ...
+                "missing_value_policy must be a mapping/object.");
+            return
+        end
+
+        policy = mapping.missing_value_policy;
+        hasTokens = hasField(policy, "missing_tokens");
+        hasBlankPolicy = requireLogical(policy, "blank_is_missing", ...
+            location + ".missing_value_policy.blank_is_missing");
+        [blankIsMissing, blankOk] = optionalLogical(policy, "blank_is_missing", false);
+        requireLogical(policy, "case_sensitive", ...
+            location + ".missing_value_policy.case_sensitive");
+        [caseSensitive, caseOk] = optionalLogical(policy, "case_sensitive", true);
+        requireLogical(policy, "preserve_raw_token", ...
+            location + ".missing_value_policy.preserve_raw_token");
+
+        if hasTokens
+            tokens = normalizeTextSequence(policy.missing_tokens);
+            if isempty(tokens)
+                addIssue("error", "PROFILE_INVALID_FIELD", ...
+                    location + ".missing_value_policy.missing_tokens", ...
+                    "missing_tokens must contain at least one nonempty text token when declared.");
+            elseif caseOk
+                comparisonTokens = tokens;
+                if ~caseSensitive
+                    comparisonTokens = lower(comparisonTokens);
+                end
+                if numel(unique(comparisonTokens)) ~= numel(comparisonTokens)
+                    addIssue("error", "PROFILE_INVALID_FIELD", ...
+                        location + ".missing_value_policy.missing_tokens", ...
+                        "missing_tokens entries must be unique under their case-sensitivity policy.");
+                end
+            end
+        end
+
+        if ~hasTokens && hasBlankPolicy && blankOk && ~blankIsMissing
+            addIssue("error", "PROFILE_INVALID_FIELD", ...
+                location + ".missing_value_policy", ...
+                "missing_value_policy must declare missing_tokens or set blank_is_missing=true.");
         end
     end
 
@@ -434,28 +549,15 @@ report = finalizeReport(report);
         end
     end
 
-    function versionLabel = profileVersionLabel(entry, profile, kind, location)
+    function versionLabel = profileVersionLabel(~, profile, ~, location)
         versionLabel = optionalText(profile, "profile_version");
         if strlength(versionLabel) > 0
             return
         end
 
-        if kind == "extractor_output" && hasField(entry, "extractor") && ...
-                isstruct(entry.extractor) && hasField(entry.extractor, "version_scope") && ...
-                isstruct(entry.extractor.version_scope)
-            preferred = optionalText(entry.extractor.version_scope, "preferred");
-            if strlength(preferred) > 0
-                versionLabel = preferred;
-                addIssue("warning", "PROFILE_VERSION_DERIVED_FROM_EXTRACTOR", ...
-                    location + ".profile.profile_version", ...
-                    "profile.profile_version is absent; extractor.version_scope.preferred is used as the prototype compatibility version label.");
-                return
-            end
-        end
-
-        addIssue("warning", "PROFILE_VERSION_MISSING", ...
+        addIssue("error", "PROFILE_VERSION_MISSING", ...
             location + ".profile.profile_version", ...
-            "profile.profile_version is absent; no profile-content version label was declared.");
+            "profile.profile_version is required and must be distinct from extractor version scope.");
     end
 
     function validateTopLevelKeys(entry, kind, location)
@@ -616,6 +718,63 @@ report = finalizeReport(report);
         end
     end
 
+    function ok = requireLogical(container, field, location)
+        ok = requireField(container, field, location);
+        if ~ok
+            return
+        end
+        [~, ok] = optionalLogical(container, field, false);
+        if ~ok
+            addIssue("error", "PROFILE_INVALID_FIELD", location, ...
+                "Expected a logical scalar.");
+        end
+    end
+
+    function [value, ok] = optionalLogical(container, field, defaultValue)
+        value = logical(defaultValue);
+        ok = false;
+        if ~hasField(container, field)
+            return
+        end
+        try
+            raw = container.(char(field));
+            if islogical(raw) && isscalar(raw)
+                value = raw;
+                ok = true;
+            end
+        catch
+        end
+    end
+
+    function [token, ok] = scalarToken(value)
+        token = "";
+        ok = true;
+        if iscell(value)
+            if ~isscalar(value)
+                ok = false;
+                return
+            end
+            [token, ok] = scalarToken(value{1});
+            return
+        end
+        if isstring(value) || ischar(value) || iscellstr(value)
+            text = string(value);
+            if ~isscalar(text) || ismissing(text)
+                ok = false;
+                return
+            end
+            token = text;
+        elseif isnumeric(value) || islogical(value)
+            if ~isscalar(value)
+                ok = false;
+                return
+            end
+            token = string(sprintf("%.15g", double(value)));
+        else
+            ok = false;
+        end
+    end
+
     function addIssue(severity, code, profileLocation, message)
         issue = struct( ...
             severity=string(severity), ...
@@ -634,7 +793,7 @@ report.profile_ids = strings(0, 1);
 report.profile_kinds = strings(0, 1);
 report.profile_schema_versions = strings(0, 1);
 report.profile_version_labels = strings(0, 1);
-report.supported_profile_schema_versions = "0.1-draft";
+report.supported_profile_schema_versions = "0.2-draft";
 report.deferred_checks = strings(0, 1);
 report.issues = struct("severity", {}, "code", {}, "profile_location", {}, "message", {});
 report.issue_table = emptyIssueTable();

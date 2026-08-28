@@ -153,7 +153,7 @@ for captureIndex = 1:numel(captureNames)
     declaration = mapping.captures.(char(captureName));
     rawValue = string(matchNames.(char(captureName)));
     [normalizedValue, normalizationSource] = normalizedCaptureValue(rawValue, declaration, ...
-        captureLocation + ".normalize");
+        captureLocation + ".value_map");
     record = baseRecord(source, profileEntry, mapping, mappingIndex, mappingLocation, ...
         "filename", profileRegex, captureName, filename, rawValue, normalizedValue);
     record.target_level = fallbackText(declaration, "target_level", record.target_level);
@@ -330,18 +330,48 @@ end
 function [value, source] = normalizedCaptureValue(rawValue, declaration, location)
 value = string(rawValue);
 source = "";
-if ~hasProfileField(declaration, "normalize") || ~isstruct(declaration.normalize)
+if ~hasProfileField(declaration, "value_map")
     return
 end
 
-normalizeKeys = string(fieldnames(declaration.normalize));
-for index = 1:numel(normalizeKeys)
-    key = normalizeKeys(index);
-    if key == rawValue
-        value = string(declaration.normalize.(char(key)));
-        source = location + "." + key;
+entries = normalizeMappingSequence(declaration.value_map);
+for index = 1:numel(entries)
+    entry = entries{index};
+    if isstruct(entry) && hasProfileField(entry, "native_value") && ...
+            hasProfileField(entry, "canonical_value") && ...
+            rawToken(entry.native_value) == rawValue
+        value = string(entry.canonical_value);
+        source = location + "(" + index + ")";
         return
     end
+end
+end
+
+function token = rawToken(value)
+if isempty(value)
+    token = "";
+elseif iscell(value)
+    token = rawToken(value{1});
+elseif isstring(value) || ischar(value) || iscellstr(value)
+    token = string(value);
+    if ~isscalar(token)
+        token = strjoin(token, " ");
+    end
+elseif isnumeric(value) || islogical(value)
+    if isscalar(value)
+        token = string(sprintf("%.15g", double(value)));
+    else
+        token = string(mat2str(double(value)));
+    end
+else
+    try
+        token = string(value);
+    catch
+        token = "<unsupported>";
+    end
+end
+if ismissing(token)
+    token = "";
 end
 end
 

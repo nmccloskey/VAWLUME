@@ -15,6 +15,10 @@ deepSqueak = vawlume.source_mapping.mapTableToIR( ...
     oneDeepSqueakRow(), extractorProfilePath(repoRoot, "deepsqueak"), ...
     SourceKey="extractor:deepsqueak:integration", RepoRoot=repoRoot);
 verifyTrue(testCase, deepSqueak.valid_for_ingest);
+verifyEqual(testCase, deepSqueak.profile.profile_version, "0.1.0");
+verifyEqual(testCase, deepSqueak.profile.profile_version_source, "profile.profile_version");
+verifyEqual(testCase, deepSqueak.profile.profile_schema_version, "0.2-draft");
+verifyEqual(testCase, deepSqueak.profile.extractor_version_scope_preferred, "3.2.x");
 verifyEqual(testCase, height(deepSqueak.records), 1);
 frequency = deepSqueak.values( ...
     deepSqueak.values.canonical_field == "contour_median_frequency", :);
@@ -63,6 +67,7 @@ for caseIndex = 1:size(cases, 1)
     verifyEqual(testCase, first.profile.profile_key, cases{caseIndex, 1});
     verifyEqual(testCase, first.profile.profile_version, "0.1.0");
     verifyEqual(testCase, first.profile.profile_version_source, "profile.profile_version");
+    verifyEqual(testCase, first.profile.profile_schema_version, "0.2-draft");
     verifyEqual(testCase, height(first.sources), 1);
     verifyGreaterThan(testCase, height(first.records), 0);
     verifyGreaterThan(testCase, height(first.values), 0);

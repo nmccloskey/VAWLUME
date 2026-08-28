@@ -633,7 +633,9 @@ function label = getProfileVersionLabel(document)
 if isfield(document.profile, "profile_version") && ~isempty(document.profile.profile_version)
     label = string(document.profile.profile_version);
 else
-    label = string(document.extractor.version_scope.preferred);
+    error("vawlume:db:MissingProfileVersion", ...
+        "Built-in mapping profile %s does not declare profile.profile_version.", ...
+        string(document.profile.id));
 end
 end
 

@@ -5,7 +5,7 @@
         "id": "example.project.mouse_courtship.folder_driven",
         "name": "Folder-driven mouse courtship project",
         "kind": "project_input",
-        "profile_schema_version": "0.1-draft",
+        "profile_schema_version": "0.2-draft",
         "profile_version": "0.1.0"
       },
       "source": {
@@ -117,7 +117,7 @@
         "id": "example.project.rat_self_admin.filename_driven",
         "name": "Filename-driven rat self-administration project",
         "kind": "project_input",
-        "profile_schema_version": "0.1-draft",
+        "profile_schema_version": "0.2-draft",
         "profile_version": "0.1.0"
       },
       "source": {
@@ -170,10 +170,16 @@
             "phenotype": {
               "target_level": "phenotype",
               "canonical_field": "group_id",
-              "normalize": {
-                "PR": "punishment_resistant",
-                "PS": "punishment_sensitive"
-              }
+              "value_map": [
+                {
+                  "native_value": "PR",
+                  "canonical_value": "punishment_resistant"
+                },
+                {
+                  "native_value": "PS",
+                  "canonical_value": "punishment_sensitive"
+                }
+              ]
             },
             "animal": {
               "target_level": "animal",
@@ -205,7 +211,7 @@
         "id": "example.project.social_dyad.multi_subject",
         "name": "Dyadic social-interaction project with subject roles",
         "kind": "project_input",
-        "profile_schema_version": "0.1-draft",
+        "profile_schema_version": "0.2-draft",
         "profile_version": "0.1.0"
       },
       "source": {

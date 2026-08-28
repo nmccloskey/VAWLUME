@@ -2,6 +2,8 @@ function tests = test_table_field_mapping
 tests = functiontests({ ...
     @testMapsDeepSqueakTableWithAliasesAndValueMappings, ...
     @testMapsMupetTableWithSentinelAndOperationalMetadata, ...
+    @testValueMapDoesNotDependOnMatlabFieldNames, ...
+    @testMissingTokenPolicyIsExplicitAndDeterministic, ...
     @testColumnResolutionReportsAmbiguityAndMissingRequiredness, ...
     @testInvalidNumericValuePreservesRawToken});
 end
@@ -34,7 +36,57 @@ accepted = recordFor(mapped, "native_review_status", 1);
 verifyEqual(testCase, accepted.native_value_integer, 1);
 verifyEqual(testCase, accepted.canonical_value_type, "text");
 verifyEqual(testCase, accepted.canonical_value_text, "accepted");
-verifyEqual(testCase, accepted.transform_status, "value_mapping");
+verifyEqual(testCase, accepted.transform_status, "value_map");
+
+clear cleanupPath
+end
+
+function testValueMapDoesNotDependOnMatlabFieldNames(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+
+loaded = loadExtractorProfile(repoRoot, "deepsqueak");
+acceptedMapping = mappingBySourceField(loaded.field_mappings, "Accepted");
+verifyTrue(testCase, isfield(acceptedMapping, "value_map"));
+verifyFalse(testCase, isfield(acceptedMapping, "value_mapping"));
+
+tbl = table([1; 0], VariableNames="Accepted");
+profile = loaded.document;
+profile.field_mappings = {acceptedMapping};
+mapped = vawlume.source_mapping.mapTableFields(tbl, profile, SourceKey="ds:review");
+
+verifyTrue(testCase, mapped.is_valid);
+verifyEqual(testCase, recordFor(mapped, "native_review_status", 1).canonical_value_text, ...
+    "accepted");
+verifyEqual(testCase, recordFor(mapped, "native_review_status", 2).canonical_value_text, ...
+    "rejected");
+
+clear cleanupPath
+end
+
+function testMissingTokenPolicyIsExplicitAndDeterministic(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+
+profile = syntheticMissingTokenProfile();
+tbl = table(["na"; "N/A"; ""], VariableNames="Interval");
+
+first = vawlume.source_mapping.mapTableFields(tbl, profile);
+second = vawlume.source_mapping.mapTableFields(tbl, profile);
+
+verifyEqual(testCase, first.record_table, second.record_table);
+verifyFalse(testCase, first.is_valid);
+missingRecord = first.records(1);
+verifyEqual(testCase, missingRecord.status, "missing");
+verifyEqual(testCase, missingRecord.native_raw_token, "na");
+verifyEqual(testCase, string(first.issue_table.code(1)), "FIELD_VALUE_EXPLICIT_MISSING");
+
+invalid = first.record_table(first.record_table.source_row > 1, :);
+verifyTrue(testCase, all(string(invalid.status) == "invalid"));
+verifyEqual(testCase, sum(string(first.issue_table.code) == ...
+    "FIELD_VALUE_COERCION_FAILED"), 2);
 
 clear cleanupPath
 end
@@ -213,10 +265,48 @@ profile.profile = struct( ...
     id="synthetic.table.profile", ...
     name="Synthetic table profile", ...
     kind="extractor_output", ...
-    profile_schema_version="0.1-draft");
+    profile_schema_version="0.2-draft", ...
+    profile_version="0.1.0");
 profile.extractor = struct(name="SyntheticExtractor");
 profile.field_mapping_source = struct(artifact_key="synthetic_table");
 profile.field_mappings = {mapping};
+end
+
+function profile = syntheticMissingTokenProfile()
+mapping = struct( ...
+    source_field="Interval", ...
+    aliases={{}}, ...
+    target_level="event_measurement", ...
+    canonical_field="inter_call_interval", ...
+    data_type="float_or_missing", ...
+    native_unit="s", ...
+    canonical_unit="s", ...
+    transform="identity", ...
+    missing_value_policy=struct( ...
+        semantic_reason="synthetic_interval_sentinel", ...
+        missing_tokens={{"NA"}}, ...
+        case_sensitive=false, ...
+        blank_is_missing=false, ...
+        preserve_raw_token=true), ...
+    preserve_raw=true);
+profile = struct();
+profile.profile = struct( ...
+    id="synthetic.missing.profile", ...
+    name="Synthetic missing profile", ...
+    kind="extractor_output", ...
+    profile_schema_version="0.2-draft", ...
+    profile_version="0.1.0");
+profile.extractor = struct(name="SyntheticExtractor");
+profile.field_mapping_source = struct(artifact_key="synthetic_table");
+profile.field_mappings = {mapping};
+end
+
+function mapping = mappingBySourceField(mappings, sourceField)
+fields = strings(numel(mappings), 1);
+for index = 1:numel(mappings)
+    fields(index) = string(mappings{index}.source_field);
+end
+mapping = mappings{find(fields == sourceField, 1)};
 end
 
 function loaded = loadExtractorProfile(repoRoot, extractorName)

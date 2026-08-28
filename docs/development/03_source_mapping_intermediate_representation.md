@@ -8,10 +8,16 @@ It preserves the evidence needed to create relational rows without asking an
 ingester to re-read JSON, rerun regular expressions, or infer precedence from
 iteration order.
 
-The prototype contract version is:
+The prototype IR contract version is:
 
 ```text
 0.1-draft
+```
+
+Executable source-mapping profiles use profile language version:
+
+```text
+0.2-draft
 ```
 
 ## Public entry points
@@ -31,6 +37,12 @@ derives validity.
 Profile regex declarations are MATLAB `regexp` patterns. Named captures use
 MATLAB syntax, `(?<name>...)`; Python-style `(?P<name>...)` captures are
 rejected during profile validation.
+
+Profile value normalization uses list-shaped `value_map` records with
+`native_value` and `canonical_value` fields. Lexical missing-token behavior is
+declared per mapping through `missing_value_policy`, including
+`missing_tokens`, `case_sensitive`, `blank_is_missing`, and
+`preserve_raw_token`.
 
 Already-loaded extractor tables use:
 
@@ -94,16 +106,19 @@ SQLite surrogate ID.
 | --- | --- |
 | `profile_key` | Stable `profile.id` from JSON. |
 | `profile_kind` | `project_input` or `extractor_output`. |
-| `profile_version` | Explicit profile version, compatibility fallback, or blank. |
-| `profile_version_source` | `profile.profile_version`, `extractor.version_scope.preferred`, or `not_declared`. |
+| `profile_version` | Explicit authored `profile.profile_version`. |
+| `profile_version_source` | `profile.profile_version` for validated executable profiles; `not_declared` only for unvalidated in-memory documents. |
 | `profile_schema_version` | Version of the profile language. |
 | `profile_path` | Portable/repository-relative path when `RepoRoot` was supplied. |
 | `profile_runtime_path` | Runtime location used to load the profile. |
 | `profile_checksum` | SHA-256 of a loaded JSON file. Blank for an in-memory profile document. |
+| `extractor_name` | Extractor name for extractor-output profiles, otherwise blank. |
+| `extractor_version_scope_preferred` | Preferred supported extractor version/range for extractor-output profiles. |
+| `extractor_version_scope_compatible_family` | Broader compatible extractor family when declared. |
 
 The current executable JSON profiles declare `profile.profile_version =
-0.1.0`. Extractor compatibility remains separate under
-`extractor.version_scope.preferred`.
+0.1.0` and `profile.profile_schema_version = 0.2-draft`. Extractor
+compatibility remains separate under `extractor.version_scope`.
 
 ### `result.sources`
 

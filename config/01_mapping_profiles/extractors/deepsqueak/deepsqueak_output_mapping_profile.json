@@ -3,7 +3,7 @@
     "id": "vawlume.deepsqueak.output.v3_2",
     "name": "DeepSqueak v3.2 extractor-output mapping",
     "kind": "extractor_output",
-    "profile_schema_version": "0.1-draft",
+    "profile_schema_version": "0.2-draft",
     "status": "built_in_template_draft",
     "profile_version": "0.1.0"
   },
@@ -256,10 +256,16 @@
         0,
         1
       ],
-      "value_mapping": {
-        "0": "rejected",
-        "1": "accepted"
-      },
+      "value_map": [
+        {
+          "native_value": 0,
+          "canonical_value": "rejected"
+        },
+        {
+          "native_value": 1,
+          "canonical_value": "accepted"
+        }
+      ],
       "semantic_role": "curation_state",
       "treat_as_ground_truth": false,
       "preserve_raw": true

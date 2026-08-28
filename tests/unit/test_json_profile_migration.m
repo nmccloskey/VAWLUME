@@ -4,7 +4,7 @@ tests = functiontests({ ...
     @testNoYamlConfigArtifactsRemain, ...
     @testExecutableJsonProfilesLoadNatively, ...
     @testMultiProfileSelectionAndContentVersions, ...
-    @testScalarTypesAndFragileMapsRemainExplicit, ...
+    @testSemanticCleanupUsesExplicitDeclarations, ...
     @testRegexDialectIsMatlabNative});
 end
 
@@ -76,16 +76,20 @@ verifyEqual(testCase, string({profileEnvelopes.id})', [
     ]);
 verifyEqual(testCase, string({profileEnvelopes.profile_version})', ...
     repmat("0.1.0", 3, 1));
+verifyEqual(testCase, string({profileEnvelopes.profile_schema_version})', ...
+    repmat("0.2-draft", 3, 1));
 
 deepSqueak = jsondecode(fileread(profiles(2).json_path));
 mupet = jsondecode(fileread(profiles(3).json_path));
 verifyEqual(testCase, string(deepSqueak.profile.profile_version), "0.1.0");
 verifyEqual(testCase, string(mupet.profile.profile_version), "0.1.0");
+verifyEqual(testCase, string(deepSqueak.profile.profile_schema_version), "0.2-draft");
+verifyEqual(testCase, string(mupet.profile.profile_schema_version), "0.2-draft");
 verifyEqual(testCase, string(deepSqueak.extractor.version_scope.preferred), "3.2.x");
 verifyEqual(testCase, string(mupet.extractor.version_scope.preferred), "2.1");
 end
 
-function testScalarTypesAndFragileMapsRemainExplicit(testCase)
+function testSemanticCleanupUsesExplicitDeclarations(testCase)
 repoRoot = repoRootForTest();
 profiles = canonicalProfiles(repoRoot);
 deepSqueak = jsondecode(fileread(profiles(2).json_path));
@@ -95,22 +99,29 @@ project = jsondecode(fileread(profiles(1).json_path));
 accepted = mappingBySourceField(deepSqueak.field_mappings, "Accepted");
 verifyClass(testCase, accepted.allowed_raw_values, "double");
 verifyEqual(testCase, accepted.allowed_raw_values, [0; 1]);
-verifyTrue(testCase, isfield(accepted.value_mapping, "x0"));
-verifyTrue(testCase, isfield(accepted.value_mapping, "x1"));
-verifyEqual(testCase, string(accepted.value_mapping.x0), "rejected");
-verifyEqual(testCase, string(accepted.value_mapping.x1), "accepted");
+verifyTrue(testCase, isfield(accepted, "value_map"));
+verifyFalse(testCase, isfield(accepted, "value_mapping"));
+verifyEqual(testCase, valueMapCanonicalValue(accepted.value_map, 0), "rejected");
+verifyEqual(testCase, valueMapCanonicalValue(accepted.value_map, 1), "accepted");
 
 interval = mappingBySourceField(mupet.field_mappings, ...
     "inter-syllable interval (sec)");
 verifyEqual(testCase, string(interval.data_type), "float_or_missing");
 verifyTrue(testCase, isfield(interval, "missing_value_policy"));
-verifyFalse(testCase, isfield(interval.missing_value_policy, "missing_tokens"));
+verifyEqual(testCase, normalizeTextSequence( ...
+    interval.missing_value_policy.missing_tokens), "NA");
+verifyFalse(testCase, logical(interval.missing_value_policy.case_sensitive));
+verifyFalse(testCase, logical(interval.missing_value_policy.blank_is_missing));
 verifyTrue(testCase, logical(interval.missing_value_policy.preserve_raw_token));
 
 filenameProfile = project.profiles(2);
 phenotype = filenameProfile.mappings.captures.phenotype;
-verifyEqual(testCase, string(phenotype.normalize.PR), "punishment_resistant");
-verifyEqual(testCase, string(phenotype.normalize.PS), "punishment_sensitive");
+verifyTrue(testCase, isfield(phenotype, "value_map"));
+verifyFalse(testCase, isfield(phenotype, "normalize"));
+verifyEqual(testCase, valueMapCanonicalValue(phenotype.value_map, "PR"), ...
+    "punishment_resistant");
+verifyEqual(testCase, valueMapCanonicalValue(phenotype.value_map, "PS"), ...
+    "punishment_sensitive");
 verifyTrue(testCase, logical(deepSqueak.mapping_policy.preserve_raw_values));
 end
 
@@ -205,6 +216,58 @@ elseif isstruct(rawValue)
     items = num2cell(rawValue(:));
 else
     items = {};
+end
+end
+
+function values = normalizeTextSequence(rawValue)
+if iscell(rawValue)
+    values = strings(numel(rawValue), 1);
+    for index = 1:numel(rawValue)
+        values(index) = string(rawValue{index});
+    end
+elseif isstring(rawValue) || ischar(rawValue) || iscellstr(rawValue)
+    values = string(rawValue(:));
+else
+    values = strings(0, 1);
+end
+values(ismissing(values)) = "";
+values = values(strlength(values) > 0);
+end
+
+function canonicalValue = valueMapCanonicalValue(valueMap, nativeValue)
+entries = normalizeSequence(valueMap);
+nativeToken = rawToken(nativeValue);
+canonicalValue = "";
+for index = 1:numel(entries)
+    entry = entries{index};
+    if rawToken(entry.native_value) == nativeToken
+        canonicalValue = string(entry.canonical_value);
+        return
+    end
+end
+end
+
+function token = rawToken(value)
+if isempty(value)
+    token = "";
+elseif iscell(value)
+    token = rawToken(value{1});
+elseif isstring(value) || ischar(value) || iscellstr(value)
+    token = string(value);
+    if ~isscalar(token)
+        token = strjoin(token, " ");
+    end
+elseif isnumeric(value) || islogical(value)
+    if isscalar(value)
+        token = string(sprintf("%.15g", double(value)));
+    else
+        token = string(mat2str(double(value)));
+    end
+else
+    token = string(value);
+end
+if ismissing(token)
+    token = "";
 end
 end
 

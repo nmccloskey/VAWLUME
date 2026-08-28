@@ -97,7 +97,7 @@ elseif mappedByValue
     record.status = "mapped";
     record.canonical_value_type = "text";
     record.canonical_value_text = mappingValue;
-    record.transform_status = "value_mapping";
+    record.transform_status = "value_map";
     return
 end
 
@@ -230,15 +230,48 @@ if isMissingValue
     return
 end
 
-if ~(hasProfileField(mapping, "missing_value_policy") || optionalText(mapping, "data_type") == "float_or_missing")
+if ~hasProfileField(mapping, "missing_value_policy")
     return
 end
 
-token = lower(strtrim(rawToken(value)));
-sentinels = ["", "na", "n/a", "nan", "missing", "null", "none"];
-isMissingValue = ismember(token, sentinels);
+policy = mapping.missing_value_policy;
+token = strtrim(rawToken(value));
+if isBlankMissingToken(token, policy)
+    isMissingValue = true;
+elseif hasProfileField(policy, "missing_tokens")
+    missingTokens = normalizeTextSequence(policy.missing_tokens);
+    if ~missingPolicyCaseSensitive(policy)
+        token = lower(token);
+        missingTokens = lower(missingTokens);
+    end
+    isMissingValue = ismember(token, missingTokens);
+end
 if isMissingValue
     code = "FIELD_VALUE_EXPLICIT_MISSING";
+end
+end
+
+function tf = isBlankMissingToken(token, policy)
+tf = strlength(strtrim(string(token))) == 0 && missingPolicyBlankIsMissing(policy);
+end
+
+function tf = missingPolicyBlankIsMissing(policy)
+tf = false;
+if hasProfileField(policy, "blank_is_missing")
+    try
+        tf = logical(policy.blank_is_missing);
+    catch
+    end
+end
+end
+
+function tf = missingPolicyCaseSensitive(policy)
+tf = true;
+if hasProfileField(policy, "case_sensitive")
+    try
+        tf = logical(policy.case_sensitive);
+    catch
+    end
 end
 end
 
@@ -262,30 +295,25 @@ function [mappedByValue, mappingValue, issue] = declaredValueMapping(nativeRawTo
 mappedByValue = false;
 mappingValue = "";
 issue = [];
-if ~hasProfileField(mapping, "value_mapping") || ~isstruct(mapping.value_mapping)
+if ~hasProfileField(mapping, "value_map")
     return
 end
 
-fieldName = valueMappingField(nativeRawToken);
-if isfield(mapping.value_mapping, fieldName)
-    mappedByValue = true;
-    mappingValue = string(mapping.value_mapping.(fieldName));
-else
-    issue = makeIssue("error", "FIELD_VALUE_MAPPING_UNMATCHED", ...
-        mappingLocation + ".value_mapping", ...
-        "Source value has no declared value_mapping entry: " + nativeRawToken + ".");
-end
+entries = normalizeMappingSequence(mapping.value_map);
+for entryIndex = 1:numel(entries)
+    entry = entries{entryIndex};
+    if isstruct(entry) && hasProfileField(entry, "native_value") && ...
+            hasProfileField(entry, "canonical_value") && ...
+            rawToken(entry.native_value) == nativeRawToken
+        mappedByValue = true;
+        mappingValue = string(entry.canonical_value);
+        return
+    end
 end
 
-function fieldName = valueMappingField(value)
-value = string(value);
-number = str2double(value);
-if ~isnan(number) && fix(number) == number
-    fieldName = "x" + string(number);
-else
-    fieldName = matlab.lang.makeValidName(char(value));
-end
-fieldName = char(fieldName);
+issue = makeIssue("error", "FIELD_VALUE_MAPPING_UNMATCHED", ...
+    mappingLocation + ".value_map", ...
+    "Source value has no declared value_map entry: " + nativeRawToken + ".");
 end
 
 function scalar = nativeScalar(record)

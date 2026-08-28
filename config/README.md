@@ -176,17 +176,28 @@ Normally keep these out of Git:
 
 ## Versioning and provenance
 
-Each profile type should eventually support stable identity and provenance fields such as:
+Executable source-mapping profiles declare stable identity and provenance
+fields:
 
 ```text
 profile_id
 profile_kind
 profile_version
+profile_schema_version
 file_path_or_uri
 checksum
 ```
 
-Extractor-output profiles should additionally identify the supported extractor/version range.
+`profile_version` is the authored VAWLUME mapping contract version.
+`profile_schema_version` is the VAWLUME profile-language version.
+Extractor-output profiles additionally identify the supported extractor
+version range under `extractor.version_scope`; that compatibility scope is not
+the profile content version.
+
+Profile value maps use ordered-insensitive `value_map` records with explicit
+`native_value` and `canonical_value` fields. Source-specific lexical
+missing-token behavior is declared in `missing_value_policy` rather than in
+runtime code.
 
 The database can store profile identity/version/checksum while the JSON remains the detailed source representation.
 
@@ -197,9 +208,12 @@ The profile loader should reject or clearly flag:
 - missing required profile identity;
 - unsupported profile kind;
 - duplicate keys with ambiguous meaning;
+- missing source-mapping profile content versions;
 - malformed regular expressions;
+- duplicate or malformed value-map entries;
 - required field mappings that cannot be resolved;
 - unsupported transformations;
+- missing-token mappings without explicit token/blank behavior;
 - incompatible extractor/version declarations.
 
 The current source-mapping preview surfaces mapping conflicts and readiness

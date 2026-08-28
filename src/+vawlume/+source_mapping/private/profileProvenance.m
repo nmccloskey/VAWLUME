@@ -36,14 +36,6 @@ envelope = entry.profile;
 
 version = optionalText(envelope, "profile_version");
 versionSource = "profile.profile_version";
-if strlength(version) == 0 && hasProfileField(entry, "extractor") && ...
-        isstruct(entry.extractor) && hasProfileField(entry.extractor, "version_scope") && ...
-        isstruct(entry.extractor.version_scope)
-    version = optionalText(entry.extractor.version_scope, "preferred");
-    if strlength(version) > 0
-        versionSource = "extractor.version_scope.preferred";
-    end
-end
 if strlength(version) == 0
     versionSource = "not_declared";
 end
@@ -63,6 +55,19 @@ profile.profile_schema_version = string(envelope.profile_schema_version);
 profile.profile_path = portablePath;
 profile.profile_runtime_path = runtimePath;
 profile.profile_checksum = inputText(profileInput, "checksum_sha256");
+profile.extractor_name = "";
+profile.extractor_version_scope_preferred = "";
+profile.extractor_version_scope_compatible_family = "";
+if hasProfileField(entry, "extractor") && isstruct(entry.extractor)
+    profile.extractor_name = optionalText(entry.extractor, "name");
+    if hasProfileField(entry.extractor, "version_scope") && ...
+            isstruct(entry.extractor.version_scope)
+        profile.extractor_version_scope_preferred = optionalText( ...
+            entry.extractor.version_scope, "preferred");
+        profile.extractor_version_scope_compatible_family = optionalText( ...
+            entry.extractor.version_scope, "compatible_family");
+    end
+end
 end
 
 function [documents, locations] = profileDocuments(profileInput)

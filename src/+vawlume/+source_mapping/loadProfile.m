@@ -312,8 +312,12 @@ switch string(code)
         identifier = "vawlume:source_mapping:InvalidProfile";
     case "PROFILE_MISSING_FIELD"
         identifier = "vawlume:source_mapping:MissingProfileField";
+    case "PROFILE_VERSION_MISSING"
+        identifier = "vawlume:source_mapping:MissingProfileVersion";
     case "PROFILE_INVALID_FIELD"
         identifier = "vawlume:source_mapping:InvalidProfileField";
+    case "PROFILE_INVALID_VALUE_MAP"
+        identifier = "vawlume:source_mapping:InvalidProfileValueMap";
     case "PROFILE_UNEXPECTED_KIND"
         identifier = "vawlume:source_mapping:UnexpectedProfileKind";
     case "PROFILE_UNSUPPORTED_KIND"

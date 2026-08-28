@@ -74,7 +74,7 @@ verifyTrue(testCase, parsed.is_valid);
 verifyEqual(testCase, valueFor(records, "phenotype", "group_id"), "punishment_resistant");
 verifyEqual(testCase, rawValueFor(records, "phenotype", "group_id"), "PR");
 verifyTrue(testCase, contains(normalizationFor(records, "phenotype", "group_id"), ...
-    ".normalize.PR"));
+    ".value_map(1)"));
 verifyEqual(testCase, valueFor(records, "recording", "segment_index"), "001");
 
 clear cleanupPath cleanupRoot

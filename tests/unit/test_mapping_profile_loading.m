@@ -4,10 +4,13 @@ tests = functiontests({ ...
     @testProfileChecksumsAreStable, ...
     @testKindSpecificStructureIsRequired, ...
     @testExplicitProfileContentVersionsArePreserved, ...
+    @testRequiresExplicitProfileContentVersion, ...
     @testRejectsMalformedJson, ...
     @testRejectsDuplicateJsonMembers, ...
     @testRejectsMissingProfileIdentity, ...
+    @testRejectsMissingProfileSchemaVersion, ...
     @testRejectsUnsupportedSchemaVersion, ...
+    @testRejectsDuplicateValueMapEntries, ...
     @testRejectsInvalidRegex, ...
     @testRejectsPythonStyleNamedCapture, ...
     @testRejectsInheritanceDeclarations});
@@ -73,11 +76,11 @@ for index = 1:numel(extractorProfiles)
     verifyEqual(testCase, report.error_count, 0);
     verifyEqual(testCase, loaded.profile_count, 1);
     verifyEqual(testCase, loaded.profile_kinds, "extractor_output");
+    verifyEqual(testCase, loaded.profile_schema_versions, "0.2-draft");
     verifyEqual(testCase, loaded.profile_version_labels, "0.1.0");
     verifyEqual(testCase, loaded.relative_path, replace(extractorProfiles(index), filesep, "/"));
     verifyEqual(testCase, strlength(loaded.checksum_sha256), 64);
     verifyGreaterThan(testCase, numel(loaded.field_mappings), 0);
-    verifyFalse(testCase, any(issueCodes(report) == "PROFILE_VERSION_DERIVED_FROM_EXTRACTOR"));
 end
 
 projectPath = fullfile(repoRoot, ...
@@ -91,6 +94,7 @@ verifyEqual(testCase, report.error_count, 0);
 verifyEqual(testCase, loaded.profile_count, 3);
 verifyEqual(testCase, numel(loaded.profiles), 3);
 verifyTrue(testCase, all(loaded.profile_kinds == "project_input"));
+verifyTrue(testCase, all(loaded.profile_schema_versions == "0.2-draft"));
 verifyTrue(testCase, all(loaded.profile_version_labels == "0.1.0"));
 verifyEqual(testCase, loaded.profile_ids(1), ...
     "example.project.mouse_courtship.folder_driven");
@@ -112,13 +116,29 @@ profilePath = fullfile(repoRoot, ...
     profilePath, ExpectedKind="extractor_output", RepoRoot=repoRoot);
 
 verifyEqual(testCase, loaded.profile_version_labels, "0.1.0");
+verifyEqual(testCase, loaded.profile_schema_versions, "0.2-draft");
 verifyEqual(testCase, string(loaded.document.extractor.version_scope.preferred), "3.2.x");
-verifyFalse(testCase, any(issueCodes(report) == ...
-    "PROFILE_VERSION_DERIVED_FROM_EXTRACTOR"));
 verifyFalse(testCase, any(issueCodes(report) == "PROFILE_VERSION_MISSING"));
 verifyEmpty(testCase, loaded.warnings);
 
 clear cleanupPath
+end
+
+function testRequiresExplicitProfileContentVersion(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+
+document = validExtractorDocument("0.2-draft");
+document.profile = rmfield(document.profile, "profile_version");
+profilePath = temporaryJsonDocument(document);
+cleanupProfile = onCleanup(@() deleteIfExists(profilePath));
+
+verifyError(testCase, ...
+    @() vawlume.source_mapping.loadProfile(profilePath, ExpectedKind="extractor_output"), ...
+    "vawlume:source_mapping:MissingProfileVersion");
+
+clear cleanupPath cleanupProfile
 end
 
 function testRejectsMalformedJson(testCase)
@@ -156,8 +176,25 @@ repoRoot = repoRootForTest();
 addpath(fullfile(repoRoot, "src"));
 cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
 
-document = validExtractorDocument("0.1-draft");
+document = validExtractorDocument("0.2-draft");
 document.profile = rmfield(document.profile, "id");
+profilePath = temporaryJsonDocument(document);
+cleanupProfile = onCleanup(@() deleteIfExists(profilePath));
+
+verifyError(testCase, ...
+    @() vawlume.source_mapping.loadProfile(profilePath, ExpectedKind="extractor_output"), ...
+    "vawlume:source_mapping:MissingProfileField");
+
+clear cleanupPath cleanupProfile
+end
+
+function testRejectsMissingProfileSchemaVersion(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+
+document = validExtractorDocument("0.2-draft");
+document.profile = rmfield(document.profile, "profile_schema_version");
 profilePath = temporaryJsonDocument(document);
 cleanupProfile = onCleanup(@() deleteIfExists(profilePath));
 
@@ -179,6 +216,29 @@ cleanupProfile = onCleanup(@() deleteIfExists(profilePath));
 verifyError(testCase, ...
     @() vawlume.source_mapping.loadProfile(profilePath, ExpectedKind="extractor_output"), ...
     "vawlume:source_mapping:UnsupportedProfileSchemaVersion");
+
+clear cleanupPath cleanupProfile
+end
+
+function testRejectsDuplicateValueMapEntries(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+
+document = validExtractorDocument("0.2-draft");
+mapping = document.field_mappings{1};
+mapping.data_type = "integer";
+mapping.value_map = [
+    struct(native_value=1, canonical_value="one")
+    struct(native_value=1, canonical_value="uno")
+    ];
+document.field_mappings = {mapping};
+profilePath = temporaryJsonDocument(document);
+cleanupProfile = onCleanup(@() deleteIfExists(profilePath));
+
+verifyError(testCase, ...
+    @() vawlume.source_mapping.loadProfile(profilePath, ExpectedKind="extractor_output"), ...
+    "vawlume:source_mapping:InvalidProfileValueMap");
 
 clear cleanupPath cleanupProfile
 end
@@ -279,7 +339,8 @@ profile = struct( ...
     id=string(id), ...
     name="Synthetic profile", ...
     kind=string(kind), ...
-    profile_schema_version="0.1-draft");
+    profile_schema_version="0.2-draft", ...
+    profile_version="0.1.0");
 end
 
 function codes = issueCodes(report)

@@ -192,7 +192,7 @@ if strlength(nativeField) == 0
 end
 transformKey = "";
 if strlength(string(semanticRow.normalization_source)) > 0
-    transformKey = "value_mapping";
+    transformKey = "value_map";
 end
 
 evidenceGroup = projectEvidenceGroup(source.source_key, semanticRow);

@@ -3,7 +3,7 @@
     "id": "vawlume.mupet.output.v2_1",
     "name": "MUPET v2.1 extractor-output mapping",
     "kind": "extractor_output",
-    "profile_schema_version": "0.1-draft",
+    "profile_schema_version": "0.2-draft",
     "status": "built_in_template_draft",
     "profile_version": "0.1.0"
   },
@@ -407,7 +407,12 @@
       "cross_extractor_relationship": "no_direct_DeepSqueak_export_field;_rederive_in_VAWLUME",
       "consilience_role": "validation_against_VAWLUME_derived_interval",
       "missing_value_policy": {
-        "final_event": "convert_native_sentinel_or_blank_to_explicit_missing",
+        "semantic_reason": "final_event_no_following_syllable",
+        "missing_tokens": [
+          "NA"
+        ],
+        "case_sensitive": false,
+        "blank_is_missing": false,
         "preserve_raw_token": true
       },
       "preserve_raw": true
