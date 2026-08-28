@@ -1121,6 +1121,10 @@ CREATE VIEW v_recording_entity_context AS
 SELECT
     r.recording_id,
     p.project_key,
+    sf.source_file_id,
+    sf.path_or_uri AS source_path_or_uri,
+    sf.relative_path AS source_relative_path,
+    sf.filename AS source_filename,
     r.native_recording_id,
     et.native_name AS entity_type,
     et.canonical_role,
@@ -1133,6 +1137,7 @@ SELECT
     rel.end_time_s
 FROM recordings r
 JOIN projects p ON p.project_id = r.project_id
+JOIN source_files sf ON sf.source_file_id = r.source_file_id
 JOIN recording_entity_links rel ON rel.recording_id = r.recording_id
 JOIN experimental_entities ee ON ee.entity_id = rel.entity_id
 JOIN entity_types et ON et.entity_type_id = ee.entity_type_id;

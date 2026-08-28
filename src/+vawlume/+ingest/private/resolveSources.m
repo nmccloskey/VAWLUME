@@ -24,12 +24,15 @@ if project.action ~= "reuse"
 end
 
 rows = fetch(conn, "SELECT source_file_id, project_id, file_role, path_or_uri, " + ...
-    "IFNULL(relative_path, '') AS relative_path, IFNULL(filename, '') AS filename, " + ...
-    "IFNULL(file_format, '') AS file_format, " + ...
-    "IFNULL(checksum_sha256, '') AS checksum_sha256 FROM source_files");
+    nullableTextSql("relative_path") + ", " + ...
+    nullableTextSql("filename") + ", " + ...
+    nullableTextSql("file_format") + ", " + ...
+    nullableTextSql("checksum_sha256") + " FROM source_files");
 if isempty(rows)
     return
 end
+rows = normalizeNullableText(rows, ...
+    ["relative_path", "filename", "file_format", "checksum_sha256"]);
 rows = rows(double(rows.project_id) == project.existing_project_id, :);
 for index = 1:height(sources)
     match = rows(string(rows.path_or_uri) == sources.path_or_uri(index), :);
@@ -61,4 +64,18 @@ end
 
 function value = compatibleOptional(stored, proposed)
 value = strlength(stored) == 0 || strlength(proposed) == 0 || stored == proposed;
+end
+
+function value = nullableTextSql(column)
+value = "CASE WHEN " + column + " IS NULL OR length(" + column + ...
+    ") = 0 THEN '<empty-text>' ELSE " + column + " END AS " + column + ...
+    ", " + column + " IS NULL OR length(" + column + ") = 0 AS " + ...
+    column + "_is_empty";
+end
+
+function rows = normalizeNullableText(rows, columns)
+for column = columns
+    maskName = column + "_is_empty";
+    rows.(column)(double(rows.(maskName)) == 1) = "";
+end
 end

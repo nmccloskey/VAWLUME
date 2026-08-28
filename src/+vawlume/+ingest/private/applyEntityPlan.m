@@ -1,5 +1,5 @@
 function [plan, counts] = applyEntityPlan(conn, plan)
-%APPLYENTITYPLAN Atomically create the project and planned experimental graph.
+%APPLYENTITYPLAN Atomically apply the project graph through recording context.
 
 if plan.has_conflicts
     error("vawlume:ingest:PlanConflict", ...
@@ -8,24 +8,30 @@ end
 oldAutoCommit = string(conn.AutoCommit);
 if oldAutoCommit ~= "on"
     error("vawlume:ingest:TransactionState", ...
-        "Entity graph apply requires a connection with AutoCommit enabled.");
+        "Project graph apply requires a connection with AutoCommit enabled.");
 end
 
 counts = emptyCounts();
 if ~hasCreates(plan)
     [plan, counts] = applyProject(conn, plan, counts);
+    [plan, counts] = applySources(conn, plan, counts);
     [plan, counts] = applyEntityTypes(conn, plan, counts);
     [plan, counts] = applyEntities(conn, plan, counts);
     [plan, counts] = applyRelationships(conn, plan, counts);
+    [plan, counts] = applyRecordings(conn, plan, counts);
+    [plan, counts] = applyRecordingLinks(conn, plan, counts);
     return
 end
 
 conn.AutoCommit = "off";
 try
     [plan, counts] = applyProject(conn, plan, counts);
+    [plan, counts] = applySources(conn, plan, counts);
     [plan, counts] = applyEntityTypes(conn, plan, counts);
     [plan, counts] = applyEntities(conn, plan, counts);
     [plan, counts] = applyRelationships(conn, plan, counts);
+    [plan, counts] = applyRecordings(conn, plan, counts);
+    [plan, counts] = applyRecordingLinks(conn, plan, counts);
     commit(conn);
 catch exception
     try
@@ -40,9 +46,12 @@ end
 
 function value = hasCreates(plan)
 value = plan.project.action == "create" || ...
+    any(plan.sources.action == "create") || ...
     any(plan.entity_types.action == "create") || ...
     any(plan.entities.action == "create") || ...
-    any(plan.relationships.action == "create");
+    any(plan.relationships.action == "create") || ...
+    any(plan.recordings.action == "create") || ...
+    any(plan.recording_links.action == "create");
 end
 
 function [plan, counts] = applyProject(conn, plan, counts)
@@ -64,6 +73,39 @@ plan.sources.project_id(:) = projectId;
 plan.entity_types.project_id(:) = projectId;
 plan.entities.project_id(:) = projectId;
 plan.relationships.project_id(:) = projectId;
+plan.recordings.project_id(:) = projectId;
+plan.recording_links.project_id(:) = projectId;
+end
+
+function [plan, counts] = applySources(conn, plan, counts)
+for index = 1:height(plan.sources)
+    action = plan.sources.action(index);
+    if action == "create"
+        id = insertIntakeRow(conn, "source_files", struct( ...
+            project_id=plan.project.existing_project_id, ...
+            file_role=plan.sources.file_role(index), ...
+            path_or_uri=plan.sources.path_or_uri(index), ...
+            relative_path=plan.sources.relative_path(index), ...
+            filename=plan.sources.filename(index), ...
+            file_format=plan.sources.file_format(index), ...
+            checksum_sha256=plan.sources.checksum_sha256(index)), ...
+            "source_file_id");
+        counts.source_files = counts.source_files + 1;
+    elseif action == "reuse"
+        id = plan.sources.existing_source_file_id(index);
+        counts.reused_source_files = counts.reused_source_files + 1;
+    else
+        error("vawlume:ingest:PlanConflict", ...
+            "Source action '%s' cannot be applied.", action);
+    end
+    plan.sources.existing_source_file_id(index) = id;
+    recordingMatches = plan.recordings.source_key == ...
+        plan.sources.source_key(index);
+    plan.recordings.source_file_id(recordingMatches) = id;
+    ingestionMatches = plan.ingestion_files.source_key == ...
+        plan.sources.source_key(index);
+    plan.ingestion_files.source_file_id(ingestionMatches) = id;
+end
 end
 
 function [plan, counts] = applyEntityTypes(conn, plan, counts)
@@ -116,6 +158,9 @@ for index = 1:height(plan.entities)
         plan.entities.entity_key(index);
     plan.relationships.parent_entity_id(parentMatches) = id;
     plan.relationships.child_entity_id(childMatches) = id;
+    linkMatches = plan.recording_links.entity_key == ...
+        plan.entities.entity_key(index);
+    plan.recording_links.entity_id(linkMatches) = id;
 end
 end
 
@@ -145,8 +190,58 @@ for index = 1:height(plan.relationships)
 end
 end
 
+function [plan, counts] = applyRecordings(conn, plan, counts)
+for index = 1:height(plan.recordings)
+    action = plan.recordings.action(index);
+    if action == "create"
+        id = insertIntakeRow(conn, "recordings", struct( ...
+            project_id=plan.project.existing_project_id, ...
+            source_file_id=plan.recordings.source_file_id(index), ...
+            native_recording_id=plan.recordings.native_recording_id(index), ...
+            checksum_sha256=plan.recordings.checksum_sha256(index)), ...
+            "recording_id");
+        counts.recordings = counts.recordings + 1;
+    elseif action == "reuse"
+        id = plan.recordings.existing_recording_id(index);
+        counts.reused_recordings = counts.reused_recordings + 1;
+    else
+        error("vawlume:ingest:PlanConflict", ...
+            "Recording action '%s' cannot be applied.", action);
+    end
+    plan.recordings.existing_recording_id(index) = id;
+    matches = plan.recording_links.recording_key == ...
+        plan.recordings.record_key(index);
+    plan.recording_links.recording_id(matches) = id;
+end
+end
+
+function [plan, counts] = applyRecordingLinks(conn, plan, counts)
+for index = 1:height(plan.recording_links)
+    action = plan.recording_links.action(index);
+    if action == "create"
+        id = insertIntakeRow(conn, "recording_entity_links", struct( ...
+            recording_id=plan.recording_links.recording_id(index), ...
+            entity_id=plan.recording_links.entity_id(index), ...
+            link_type=plan.recording_links.link_type(index), ...
+            role_label=plan.recording_links.role_label(index)), ...
+            "recording_entity_link_id");
+        counts.recording_entity_links = counts.recording_entity_links + 1;
+    elseif action == "reuse"
+        id = plan.recording_links.existing_recording_entity_link_id(index);
+        counts.reused_recording_entity_links = ...
+            counts.reused_recording_entity_links + 1;
+    else
+        error("vawlume:ingest:PlanConflict", ...
+            "Recording-link action '%s' cannot be applied.", action);
+    end
+    plan.recording_links.existing_recording_entity_link_id(index) = id;
+end
+end
+
 function value = emptyCounts()
-value = struct(projects=0, entity_types=0, entities=0, ...
-    entity_relationships=0, reused_projects=0, reused_entity_types=0, ...
-    reused_entities=0, reused_entity_relationships=0);
+value = struct(projects=0, source_files=0, entity_types=0, entities=0, ...
+    entity_relationships=0, recordings=0, recording_entity_links=0, ...
+    reused_projects=0, reused_source_files=0, reused_entity_types=0, ...
+    reused_entities=0, reused_entity_relationships=0, reused_recordings=0, ...
+    reused_recording_entity_links=0);
 end

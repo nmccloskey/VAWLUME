@@ -10,6 +10,10 @@ entityTypes = resolveEntityTypes(conn, ir.records, project);
 [relationships, relationshipEvidence, deferredRelationships] = ...
     resolveEntityRelationships( ...
     conn, ir.relationships, project, entities, entityRecords);
+recordings = resolveRecordings(conn, ir.records, project, sources);
+[recordingLinks, recordingLinkEvidence] = resolveRecordingLinks( ...
+    conn, ir.relationships, project, recordings, entities, entityRecords);
+ingestionFiles = planIngestionFiles(ir, sources);
 
 plan = struct();
 plan.plan_version = "0.1-draft";
@@ -22,13 +26,19 @@ plan.entity_records = entityRecords;
 plan.relationships = relationships;
 plan.relationship_evidence = relationshipEvidence;
 plan.deferred_relationships = deferredRelationships;
+plan.recordings = recordings;
+plan.recording_links = recordingLinks;
+plan.recording_link_evidence = recordingLinkEvidence;
+plan.ingestion_files = ingestionFiles;
 plan.issues = collectIssues( ...
-    project, mappingProfile, sources, entityTypes, entities, relationships);
+    project, mappingProfile, sources, entityTypes, entities, relationships, ...
+    recordings, recordingLinks);
 plan.has_conflicts = ~isempty(plan.issues);
 end
 
 function issues = collectIssues( ...
-        project, mappingProfile, sources, entityTypes, entities, relationships)
+        project, mappingProfile, sources, entityTypes, entities, relationships, ...
+        recordings, recordingLinks)
 issues = emptyIssues();
 if project.action == "conflict"
     issues(end + 1, :) = {"error", "PROJECT_IDENTITY_CONFLICT", ...
@@ -68,6 +78,18 @@ for index = find(conflicts)'
     issues(end + 1, :) = {"error", "ENTITY_RELATIONSHIP_CONFLICT", ...
         "entity_relationship", relationships.relationship_key(index), ...
         relationships.conflict_message(index)}; %#ok<AGROW>
+end
+conflicts = recordings.action == "conflict";
+for index = find(conflicts)'
+    issues(end + 1, :) = {"error", "RECORDING_CONFLICT", ...
+        "recording", recordings.record_key(index), ...
+        recordings.conflict_message(index)}; %#ok<AGROW>
+end
+conflicts = recordingLinks.action == "conflict";
+for index = find(conflicts)'
+    issues(end + 1, :) = {"error", "RECORDING_LINK_CONFLICT", ...
+        "recording_link", recordingLinks.recording_link_key(index), ...
+        recordingLinks.conflict_message(index)}; %#ok<AGROW>
 end
 if ~isempty(issues)
     issues = sortrows(issues, ["category", "logical_key", "code"]);

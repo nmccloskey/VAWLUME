@@ -41,7 +41,7 @@ first = vawlume.ingest.project(conn, ir, projectSpec(), Apply=true);
 countsAfterFirst = graphCounts(conn);
 second = vawlume.ingest.project(conn, ir, projectSpec(), Apply=true);
 
-verifyEqual(testCase, first.status, "entity_graph_committed");
+verifyEqual(testCase, first.status, "recording_graph_committed");
 verifyTrue(testCase, first.committed);
 verifyEqual(testCase, first.project_id, ...
     scalar(conn, "SELECT project_id AS n FROM projects"));
@@ -49,18 +49,24 @@ verifyEqual(testCase, first.applied_counts.projects, 1);
 verifyEqual(testCase, first.applied_counts.entity_types, 3);
 verifyEqual(testCase, first.applied_counts.entities, 3);
 verifyEqual(testCase, first.applied_counts.entity_relationships, 2);
+verifyEqual(testCase, first.applied_counts.source_files, 1);
+verifyEqual(testCase, first.applied_counts.recordings, 1);
+verifyEqual(testCase, first.applied_counts.recording_entity_links, 2);
 verifyEqual(testCase, height(first.entity_ids), 3);
 verifyTrue(testCase, all(~isnan(first.entity_ids.entity_id)));
 verifyEqual(testCase, graphCounts(conn), countsAfterFirst);
-verifyEqual(testCase, second.status, "entity_graph_committed");
+verifyEqual(testCase, second.status, "recording_graph_committed");
 verifyTrue(testCase, second.committed);
 verifyEqual(testCase, second.applied_counts.reused_projects, 1);
 verifyEqual(testCase, second.applied_counts.reused_entity_types, 3);
 verifyEqual(testCase, second.applied_counts.reused_entities, 3);
 verifyEqual(testCase, second.applied_counts.reused_entity_relationships, 2);
+verifyEqual(testCase, second.applied_counts.reused_source_files, 1);
+verifyEqual(testCase, second.applied_counts.reused_recordings, 1);
+verifyEqual(testCase, second.applied_counts.reused_recording_entity_links, 2);
 verifyEqual(testCase, countsAfterFirst, struct( ...
     projects=1, entity_types=3, entities=3, relationships=2, ...
-    source_files=0, recordings=0, ingestion_runs=0));
+    source_files=1, recordings=1, recording_links=2, ingestion_runs=0));
 verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
 
 clear cleanupDb
@@ -87,7 +93,7 @@ verifyTrue(testCase, didThrow);
 verifyEqual(testCase, string(conn.AutoCommit), "on");
 verifyEqual(testCase, graphCounts(conn), struct( ...
     projects=0, entity_types=0, entities=0, relationships=0, ...
-    source_files=0, recordings=0, ingestion_runs=0));
+    source_files=0, recordings=0, recording_links=0, ingestion_runs=0));
 verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
 
 clear cleanupDb
@@ -217,6 +223,8 @@ counts = struct( ...
     relationships=scalar(conn, "SELECT COUNT(*) AS n FROM entity_relationships"), ...
     source_files=scalar(conn, "SELECT COUNT(*) AS n FROM source_files"), ...
     recordings=scalar(conn, "SELECT COUNT(*) AS n FROM recordings"), ...
+    recording_links=scalar(conn, ...
+    "SELECT COUNT(*) AS n FROM recording_entity_links"), ...
     ingestion_runs=scalar(conn, "SELECT COUNT(*) AS n FROM ingestion_runs"));
 end
 
