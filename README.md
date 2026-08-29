@@ -65,9 +65,13 @@ project/entity/recording graph.
 
 DeepSqueak import is **in progress**. `vawlume.ingest.deepsqueakExport` reads a
 DeepSqueak Excel call-statistics export and routes it through the tracked
-DeepSqueak output-mapping profile to a validated extractor-output IR. It
-performs no database access; the relational importer that consumes that IR is
-still under construction.
+DeepSqueak output-mapping profile to a validated extractor-output IR, without
+any database access. `vawlume.ingest.deepsqueak` then plans or atomically
+applies the run and provenance graph for that export: it resolves an
+established recording, the seeded DeepSqueak extractor, and the exact
+output-mapping profile version, and registers the extraction run with its
+export, settings, model, and native artifacts. Detections and event
+measurements are not inserted yet.
 
 A disposable all-profile demonstration is available at
 [`examples/project_intake_demo.m`](examples/project_intake_demo.m). It runs the
@@ -123,9 +127,9 @@ completed item 5 through the validated IR and dry-run boundary. Phase 2.5
 completed the JSON/native-loader/profile-language cleanup without adding a
 Python or PyYAML runtime dependency. Phase 3 completed project intake through
 transactional application, provenance read-back, and the all-profile
-demonstration. Phase 4 is under way on item 7: the DeepSqueak artifact adapter
-and its Excel-to-IR boundary are implemented, and the relational importer is
-not yet.
+demonstration. Phase 4 is under way on item 7: the DeepSqueak artifact adapter,
+its Excel-to-IR boundary, and the transactional run/artifact provenance graph
+are implemented; detections and event measurements are not yet.
 
 ## Documentation
 

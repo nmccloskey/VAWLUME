@@ -99,15 +99,18 @@ end
 end
 
 function tbl = readSheet(artifactPath, sheetName, spec)
-assertDistinctHeaderLabels(artifactPath, sheetName, spec);
-
 try
     options = detectImportOptions(artifactPath, Sheet=char(sheetName), ...
         VariableNamingRule="preserve");
     options.VariableNamesRange = "A" + string(spec.header_row);
     options.DataRange = "A" + string(spec.header_row + 1);
+    assertDistinctHeaderLabels(artifactPath, sheetName, spec, ...
+        numel(options.VariableNames));
     tbl = readtable(artifactPath, options);
 catch exception
+    if startsWith(string(exception.identifier), "vawlume:")
+        rethrow(exception);
+    end
     error("vawlume:ingest:DeepSqueakArtifactUnreadable", ...
         "Could not read sheet '%s' of %s: %s", ...
         sheetName, artifactPath, exception.message);
@@ -121,15 +124,23 @@ if width(tbl) == 0
 end
 end
 
-function assertDistinctHeaderLabels(artifactPath, sheetName, spec)
+function assertDistinctHeaderLabels(artifactPath, sheetName, spec, columnCount)
 %ASSERTDISTINCTHEADERLABELS Reject repeated header labels at the source.
 %
-% MATLAB silently uniquifies repeated table variable names, which would hide a
-% genuinely ambiguous export behind a fabricated column label. The header row is
-% therefore inspected as written before the table is built.
+% MATLAB silently uniquifies repeated table variable names, so a genuinely
+% ambiguous export would otherwise be hidden behind a fabricated label such as
+% "Tonality_1". The header row is therefore inspected as written.
+%
+% The range is bounded by the detected column count. Reading an open-ended row
+% costs an order of magnitude more time, and a full-width range costs two, so
+% the bound is load-bearing rather than cosmetic.
+
+if columnCount < 2
+    return
+end
 
 headerRange = "A" + string(spec.header_row) + ":" + ...
-    "XFD" + string(spec.header_row);
+    columnLetters(columnCount) + string(spec.header_row);
 try
     headerCells = readcell(artifactPath, Sheet=char(sheetName), Range=char(headerRange));
 catch
@@ -161,4 +172,13 @@ end
 error("vawlume:ingest:DeepSqueakArtifactUnsupported", ...
     "Sheet '%s' of %s repeats source column label(s): %s.", ...
     sheetName, artifactPath, strjoin(repeated, ", "));
+end
+
+function letters = columnLetters(columnIndex)
+letters = "";
+while columnIndex > 0
+    remainder = mod(columnIndex - 1, 26);
+    letters = string(char('A' + remainder)) + letters;
+    columnIndex = floor((columnIndex - remainder - 1) / 26);
+end
 end

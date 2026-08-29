@@ -160,37 +160,8 @@ end
 end
 
 function location = artifactLocation(artifactPath, options)
-runtimePath = string(java.io.File(char(artifactPath)).getAbsolutePath());
-[~, stem, extension] = fileparts(runtimePath);
-
-location = struct();
-location.runtime_path = runtimePath;
-location.filename = string(stem) + string(extension);
-location.relative_path = "";
-location.relative_path_source = "unavailable";
-
-if strlength(options.RelativePath) > 0
-    location.relative_path = replace(options.RelativePath, "\", "/");
-    location.relative_path_source = "declared";
-    return
-end
-
-roots = [ ...
-    struct(path=options.ArtifactRoot, label="artifact_root"), ...
-    struct(path=options.RepoRoot, label="repo_root")];
-for index = 1:numel(roots)
-    root = roots(index);
-    if strlength(root.path) == 0
-        continue
-    end
-    info = vawlume.source_mapping.normalizeRelativePath(runtimePath, root.path, ...
-        MustBeInsideRoot=false);
-    if info.is_inside_root
-        location.relative_path = info.relative_path;
-        location.relative_path_source = root.label;
-        return
-    end
-end
+location = deepsqueakPortableLocation(artifactPath, options.RelativePath, ...
+    [options.ArtifactRoot, options.RepoRoot]);
 end
 
 function sourceKey = resolveSourceKey(explicitKey, spec, location)
