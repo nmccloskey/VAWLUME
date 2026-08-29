@@ -82,10 +82,13 @@ tbl = table(1, VariableNames="Other");
 
 result = vawlume.source_mapping.mapTableToIR(tbl, profile);
 
+% The supplied "Other" column is claimed by no mapping, so the unmapped-column
+% diagnostic accompanies the optional-column one. Neither may invalidate.
 verifyTrue(testCase, result.valid_for_ingest);
-verifyEqual(testCase, string(result.issues.code), "OPTIONAL_COLUMN_MISSING");
-verifyEqual(testCase, string(result.issues.severity), "info");
-verifyFalse(testCase, result.issues.affects_validity);
+verifyEqual(testCase, sort(string(result.issues.code)), ...
+    sort(["OPTIONAL_COLUMN_MISSING"; "SOURCE_COLUMN_UNMAPPED"]));
+verifyEqual(testCase, unique(string(result.issues.severity)), "info");
+verifyFalse(testCase, any(result.issues.affects_validity));
 verifyEmpty(testCase, result.values);
 verifyEqual(testCase, height(result.records), 1);
 

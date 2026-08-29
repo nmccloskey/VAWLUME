@@ -67,6 +67,8 @@ switch code
         code = "OPTIONAL_COLUMN_MISSING";
     case "FIELD_MAPPING_COLUMN_AMBIGUOUS"
         code = "COLUMN_AMBIGUOUS";
+    case "FIELD_MAPPING_SOURCE_COLUMN_UNMAPPED"
+        code = "SOURCE_COLUMN_UNMAPPED";
     case "FIELD_VALUE_COERCION_FAILED"
         code = "TYPE_COERCION_FAILED";
     case {"FIELD_VALUE_EXPLICIT_MISSING", "FIELD_VALUE_MISSING"}
@@ -87,6 +89,10 @@ errorCodes = [ ...
 warningCodes = "SOURCE_DUPLICATE_DISCOVERY";
 infoCodes = ["MISSING_TOKEN_NORMALIZED", "OPTIONAL_COLUMN_MISSING", ...
     "OPTIONAL_REGEX_NO_MATCH", "VALUE_CORROBORATED"];
+
+% SOURCE_COLUMN_UNMAPPED is deliberately absent from all three lists so that the
+% profile's declared mapping_policy.unknown_fields decides its severity instead
+% of a fixed central rule.
 
 if ismember(code, errorCodes)
     severity = "error";

@@ -42,6 +42,10 @@ for mappingIndex = 1:numel(fieldMappings)
 end
 records = records(1:recordCount);
 
+[unmappedFields, unmappedIssues] = unmappedSourceColumns(tbl, fieldMappings, ...
+    profileEntry, profileLocation);
+issues = appendIssues(issues, unmappedIssues);
+
 mapped = struct();
 mapped.profile_id = string(profileEntry.profile.id);
 mapped.profile_kind = string(profileEntry.profile.kind);
@@ -52,6 +56,8 @@ mapped.row_count = rowCount;
 mapped.mapped_record_count = numel(records);
 mapped.records = records;
 mapped.record_table = mappedRecordsToTable(records);
+mapped.unmapped_source_fields = unmappedFields;
+mapped.unknown_field_policy = unknownFieldPolicy(profileEntry);
 mapped.issues = issues;
 mapped.issue_table = sourceMappingIssuesToTable(issues);
 mapped.error_count = issueCount(issues, "error");
@@ -412,6 +418,69 @@ issue = makeIssue(severity, code, mappingLocation + ".source_field", ...
     "Mapped source field is absent from the supplied table: " + sourceField + ".");
 end
 
+function [unmappedFields, issues] = unmappedSourceColumns(tbl, fieldMappings, ...
+        profileEntry, profileLocation)
+%UNMAPPEDSOURCECOLUMNS Report supplied columns that no declared mapping claims.
+%
+% A column is "claimed" when some mapping declares it as a source field or an
+% alias, whether or not that mapping resolved successfully. A mapping that
+% failed with an ambiguity or coercion problem already reports its own issue,
+% and calling its columns unmapped as well would double-report one fault.
+%
+% The profile's mapping_policy.unknown_fields decides the reported severity, so
+% the "which fields are known" judgement stays with the mapping contract rather
+% than moving into an extractor adapter.
+
+issues = emptyIssueArray();
+variableNames = string(tbl.Properties.VariableNames);
+unmappedFields = variableNames(~ismember(variableNames, declaredSourceLabels(fieldMappings)));
+unmappedFields = unmappedFields(:);
+if isempty(unmappedFields)
+    return
+end
+
+policy = unknownFieldPolicy(profileEntry);
+severity = unknownFieldSeverity(policy);
+for index = 1:numel(unmappedFields)
+    issues = appendIssue(issues, makeIssue(severity, ...
+        "FIELD_MAPPING_SOURCE_COLUMN_UNMAPPED", ...
+        profileLocation + ".mapping_policy.unknown_fields", ...
+        "Supplied source column is not claimed by any declared field mapping: " + ...
+        unmappedFields(index) + "."));
+end
+end
+
+function labels = declaredSourceLabels(fieldMappings)
+labels = strings(0, 1);
+for index = 1:numel(fieldMappings)
+    mapping = fieldMappings{index};
+    labels(end + 1, 1) = string(mapping.source_field); %#ok<AGROW>
+    if hasProfileField(mapping, "aliases")
+        aliases = normalizeTextSequence(mapping.aliases);
+        labels = [labels; aliases(:)]; %#ok<AGROW>
+    end
+end
+labels = unique(labels);
+end
+
+function policy = unknownFieldPolicy(profileEntry)
+policy = "";
+if hasProfileField(profileEntry, "mapping_policy")
+    policy = lower(optionalText(profileEntry.mapping_policy, "unknown_fields"));
+end
+end
+
+function severity = unknownFieldSeverity(policy)
+switch policy
+    case {"preserve_and_warn", "warn", "warn_and_preserve"}
+        severity = "warning";
+    case {"error", "fail", "reject"}
+        severity = "error";
+    otherwise
+        severity = "info";
+end
+end
+
 function value = tableValue(tbl, columnName, rowIndex)
 column = tbl.(char(columnName));
 if iscell(column)
@@ -435,7 +504,13 @@ elseif isstring(value) || ischar(value) || iscellstr(value)
         token = strjoin(token, " ");
     end
 elseif isnumeric(value) || islogical(value)
-    if isscalar(value)
+    if isscalar(value) && isnumeric(value) && isnan(value)
+        % A numeric NaN is MATLAB's representation of an absent cell, not a
+        % lexical token the source actually contained. Reporting "NaN" here
+        % would fabricate source evidence, so the raw token stays empty.
+        % Profile-declared textual sentinels arrive as text and are unaffected.
+        token = "";
+    elseif isscalar(value)
         token = string(sprintf("%.15g", double(value)));
     else
         token = string(mat2str(double(value)));

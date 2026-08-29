@@ -61,8 +61,13 @@ versions, discovers and parses project sources, maps supplied extractor tables
 through registered transforms, produces a validated intermediate
 representation, and renders a database-free dry-run preview. Project intake is
 now implemented as the transactional boundary from that IR to the relational
-project/entity/recording graph. The first real extractor importers are the next
-architectural target.
+project/entity/recording graph.
+
+DeepSqueak import is **in progress**. `vawlume.ingest.deepsqueakExport` reads a
+DeepSqueak Excel call-statistics export and routes it through the tracked
+DeepSqueak output-mapping profile to a validated extractor-output IR. It
+performs no database access; the relational importer that consumes that IR is
+still under construction.
 
 A disposable all-profile demonstration is available at
 [`examples/project_intake_demo.m`](examples/project_intake_demo.m). It runs the
@@ -118,7 +123,9 @@ completed item 5 through the validated IR and dry-run boundary. Phase 2.5
 completed the JSON/native-loader/profile-language cleanup without adding a
 Python or PyYAML runtime dependency. Phase 3 completed project intake through
 transactional application, provenance read-back, and the all-profile
-demonstration; extractor import is next.
+demonstration. Phase 4 is under way on item 7: the DeepSqueak artifact adapter
+and its Excel-to-IR boundary are implemented, and the relational importer is
+not yet.
 
 ## Documentation
 

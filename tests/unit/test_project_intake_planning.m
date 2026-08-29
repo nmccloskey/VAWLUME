@@ -193,16 +193,37 @@ end
 function testIngestNamespaceDoesNotDuplicateSourceParsing(testCase)
 repoRoot = repoRootForTest();
 files = dir(fullfile(repoRoot, "src", "+vawlume", "+ingest", "**", "*.m"));
-text = "";
+
+namespaceText = "";
+intakeText = "";
 for index = 1:numel(files)
-    text = text + newline + string(fileread(fullfile(files(index).folder, files(index).name)));
+    contents = newline + string(fileread(fullfile(files(index).folder, files(index).name)));
+    namespaceText = namespaceText + contents;
+    if isProjectIntakeFile(files(index).name)
+        intakeText = intakeText + contents;
+    end
 end
 
-for forbidden = ["regexp(", "discoverSources", "parsePath", ...
-        "normalizeRelativePath", "source_mapping.parse"]
-    verifyFalse(testCase, contains(text, forbidden), ...
+% Source discovery and path-rule parsing belong to +source_mapping. No file in
+% the ingest namespace, project intake or extractor adapter, may reimplement
+% them.
+for forbidden = ["regexp(", "discoverSources", "parsePath", "source_mapping.parse"]
+    verifyFalse(testCase, contains(namespaceText, forbidden), ...
         "The ingest namespace must consume interpreted IR without source parsing.");
 end
+
+% Project intake additionally consumes only already-interpreted IR, so it must
+% never relativize a path itself. An extractor adapter reads an artifact that
+% never passed through source discovery and must derive that artifact's portable
+% path, but it does so by delegating to the shared source_mapping helper rather
+% than duplicating the logic, which is what this guard protects.
+verifyFalse(testCase, contains(intakeText, "normalizeRelativePath"), ...
+    "Project intake must take portable source paths from the IR, not recompute them.");
+end
+
+function tf = isProjectIntakeFile(name)
+name = string(name);
+tf = ~startsWith(name, "deepsqueak") && name ~= "sha256OfFile.m";
 end
 
 function ir = validProjectIR()

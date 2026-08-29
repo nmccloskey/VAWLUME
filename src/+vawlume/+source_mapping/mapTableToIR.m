@@ -118,6 +118,11 @@ if ~any(matches)
 end
 record = records(find(matches, 1), :);
 switch string(record.canonical_value_type)
+    case {"missing", "invalid"}
+        % An absent or uninterpretable identifier stays absent. Falling back to
+        % the raw token here would publish a fabricated identity such as "NaN"
+        % or a missing sentinel as though the source had supplied one.
+        identifier = "";
     case "integer"
         identifier = string(record.canonical_value_integer);
     case "real"

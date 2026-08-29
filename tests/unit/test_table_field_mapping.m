@@ -138,17 +138,26 @@ verifyFalse(testCase, ambiguous.is_valid);
 verifyEqual(testCase, string(ambiguous.issue_table.code), "FIELD_MAPPING_COLUMN_AMBIGUOUS");
 verifyEqual(testCase, ambiguous.mapped_record_count, 0);
 
+% "Other" is claimed by no mapping, so each result below also reports the
+% undeclared column alongside the requiredness diagnostic under test.
 missingTable = table([1; 2], VariableNames="Other");
 missing = vawlume.source_mapping.mapTableFields(missingTable, profile);
 verifyFalse(testCase, missing.is_valid);
-verifyEqual(testCase, string(missing.issue_table.code), "FIELD_MAPPING_COLUMN_MISSING");
+verifyEqual(testCase, sort(string(missing.issue_table.code)), ...
+    sort(["FIELD_MAPPING_COLUMN_MISSING"; "FIELD_MAPPING_SOURCE_COLUMN_UNMAPPED"]));
+verifyEqual(testCase, missing.unmapped_source_fields, "Other");
 
 optionalProfile = profile;
 optionalProfile.field_mappings{1}.required = false;
 optional = vawlume.source_mapping.mapTableFields(missingTable, optionalProfile);
 verifyTrue(testCase, optional.is_valid);
-verifyEqual(testCase, string(optional.issue_table.code), "FIELD_MAPPING_OPTIONAL_COLUMN_MISSING");
+verifyEqual(testCase, sort(string(optional.issue_table.code)), ...
+    sort(["FIELD_MAPPING_OPTIONAL_COLUMN_MISSING"; "FIELD_MAPPING_SOURCE_COLUMN_UNMAPPED"]));
 verifyEqual(testCase, optional.mapped_record_count, 0);
+
+% Declared alias labels count as claimed, so an ambiguous mapping reports only
+% its own ambiguity rather than also reporting its columns as undeclared.
+verifyEmpty(testCase, ambiguous.unmapped_source_fields);
 
 clear cleanupPath
 end

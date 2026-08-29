@@ -189,6 +189,11 @@ typed value column is meaningful for a non-missing value. The lexical
 `NA`. Explicit missingness uses type/status metadata and leaves typed payload
 columns empty.
 
+`raw_value` reports only tokens the source actually contained. A profile-declared
+textual sentinel such as `NA` is preserved verbatim, but an absent numeric cell
+has no lexical content and yields an empty `raw_value` rather than MATLAB's
+`NaN` rendering.
+
 ### `result.relationships`
 
 Relationships are separate from records so hierarchy is not forced into a
@@ -220,12 +225,33 @@ single-parent tree.
 | `affects_validity` | Derived from central severity policy. |
 
 The IR normalizes component-specific diagnostics into a compact vocabulary,
-including `COLUMN_MISSING`, `COLUMN_AMBIGUOUS`, `REGEX_NO_MATCH`,
-`REGEX_MULTIPLE_MATCH`, `REQUIRED_VALUE_MISSING`,
+including `COLUMN_MISSING`, `COLUMN_AMBIGUOUS`, `SOURCE_COLUMN_UNMAPPED`,
+`REGEX_NO_MATCH`, `REGEX_MULTIPLE_MATCH`, `REQUIRED_VALUE_MISSING`,
 `TYPE_COERCION_FAILED`, `TRANSFORM_FAILED`,
 `MISSING_TOKEN_NORMALIZED`, `SOURCE_DUPLICATE_DISCOVERY`,
 `VALUE_CORROBORATED`, and `VALUE_CONFLICT`. Profile validation codes remain
 visible when they already express a stable profile-level contract.
+
+### Undeclared source columns
+
+A supplied table column that no field mapping declares as a source field or
+alias produces one `SOURCE_COLUMN_UNMAPPED` issue. A column claimed by a
+mapping that failed for another reason is not reported again here, so one fault
+yields one diagnostic.
+
+This is the only IR code whose severity is chosen by the profile rather than by
+the central severity policy, because the mapping contract is what defines which
+fields are known. The profile's `mapping_policy.unknown_fields` decides:
+
+| `unknown_fields` | Severity | Effect on `valid_for_ingest` |
+| --- | --- | --- |
+| `preserve_and_warn`, `warn` | `warning` | none |
+| `error`, `fail`, `reject` | `error` | invalidates |
+| absent or anything else | `info` | none |
+
+`mapTableFields` also returns `unmapped_source_fields` for inspection. The
+current IR reports these columns but does not yet carry their per-row values, so
+populating the schema's `unmapped_source_values` table remains future work.
 
 ## Conflict and validity semantics
 

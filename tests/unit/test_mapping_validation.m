@@ -11,21 +11,27 @@ addpath(fullfile(repoRoot, "src"));
 cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
 tbl = table(1, VariableNames="Other");
 
+% "Other" is claimed by neither mapping, so each result also carries the
+% unmapped-column diagnostic. Requiredness policy alone must drive validity.
 required = syntheticMapping("Required", true);
 requiredResult = vawlume.source_mapping.mapTableToIR( ...
     tbl, syntheticExtractorProfile({required}));
 verifyFalse(testCase, requiredResult.valid_for_ingest);
-verifyEqual(testCase, string(requiredResult.issues.code), "COLUMN_MISSING");
-verifyEqual(testCase, string(requiredResult.issues.severity), "error");
-verifyTrue(testCase, requiredResult.issues.affects_validity);
+missingRequired = issueWithCode(requiredResult, "COLUMN_MISSING");
+verifyEqual(testCase, string(missingRequired.severity), "error");
+verifyTrue(testCase, missingRequired.affects_validity);
 
 optional = syntheticMapping("Optional", false);
 optionalResult = vawlume.source_mapping.mapTableToIR( ...
     tbl, syntheticExtractorProfile({optional}));
 verifyTrue(testCase, optionalResult.valid_for_ingest);
-verifyEqual(testCase, string(optionalResult.issues.code), "OPTIONAL_COLUMN_MISSING");
-verifyEqual(testCase, string(optionalResult.issues.severity), "info");
-verifyFalse(testCase, optionalResult.issues.affects_validity);
+missingOptional = issueWithCode(optionalResult, "OPTIONAL_COLUMN_MISSING");
+verifyEqual(testCase, string(missingOptional.severity), "info");
+verifyFalse(testCase, missingOptional.affects_validity);
+
+unmapped = issueWithCode(optionalResult, "SOURCE_COLUMN_UNMAPPED");
+verifyEqual(testCase, string(unmapped.severity), "info");
+verifyFalse(testCase, unmapped.affects_validity);
 
 clear cleanupPath
 end
@@ -87,6 +93,13 @@ profile.profile = struct( ...
 profile.extractor = struct(name="SyntheticExtractor");
 profile.field_mapping_source = struct(artifact_key="synthetic_table");
 profile.field_mappings = mappings;
+end
+
+function issue = issueWithCode(result, code)
+matches = string(result.issues.code) == code;
+assert(nnz(matches) == 1, "Expected exactly one %s issue, found %d.", ...
+    code, nnz(matches));
+issue = table2struct(result.issues(matches, :));
 end
 
 function repoRoot = repoRootForTest()
