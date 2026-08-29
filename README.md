@@ -63,7 +63,9 @@ representation, and renders a database-free dry-run preview. Project intake is
 now implemented as the transactional boundary from that IR to the relational
 project/entity/recording graph.
 
-DeepSqueak import is **in progress**. `vawlume.ingest.deepsqueakExport` reads a
+DeepSqueak import is **implemented**; MUPET import is the next target, and no
+cross-extractor matching or validation exists yet.
+`vawlume.ingest.deepsqueakExport` reads a
 DeepSqueak Excel call-statistics export and routes it through the tracked
 DeepSqueak output-mapping profile to a validated extractor-output IR, without
 any database access. `vawlume.ingest.deepsqueak` then plans or atomically
@@ -81,12 +83,24 @@ folder-driven, filename-driven, and dyadic project patterns through profile
 validation, source mapping, preview, intake, and relational read-back; it also
 demonstrates idempotency, root relocation, and tracked device/setup provenance.
 
+A second disposable demonstration covers the DeepSqueak path at
+[`examples/deepsqueak_import_demo.m`](examples/deepsqueak_import_demo.m). It
+establishes one project recording, generates a small synthetic call-statistics
+workbook, imports it, and reads back extraction-run and artifact provenance,
+detections, native and canonical measurements, and review and label evidence. It
+also shows an unchanged rerun and an artifact relocation producing no second
+scientific population.
+
 From the repository root:
 
 ```matlab
 addpath("examples")
 project_intake_demo
+deepsqueak_import_demo
 ```
+
+Both create every input they need under the system temporary directory and
+remove it before returning.
 
 ## Configuration policy
 
@@ -129,10 +143,11 @@ completed item 5 through the validated IR and dry-run boundary. Phase 2.5
 completed the JSON/native-loader/profile-language cleanup without adding a
 Python or PyYAML runtime dependency. Phase 3 completed project intake through
 transactional application, provenance read-back, and the all-profile
-demonstration. Phase 4 is under way on item 7: the DeepSqueak artifact adapter,
-its Excel-to-IR boundary, the transactional run/artifact provenance graph, and
-the detection/measurement/review/label population are implemented. A
-reproducible end-to-end demonstration and the phase integration review remain.
+demonstration. Phase 4 completed item 7: the DeepSqueak artifact adapter, its
+Excel-to-IR boundary, the transactional run and artifact provenance graph, the
+detection, measurement, review, and label population, and a reproducible
+end-to-end demonstration. The phase integration review is the remaining gate,
+and MUPET import is the next implementation target.
 
 ## Documentation
 
@@ -141,6 +156,7 @@ reproducible end-to-end demonstration and the phase integration review remain.
 - [`docs/development/02_development_workflow.md`](docs/development/02_development_workflow.md) — development conventions for the prototype
 - [`docs/development/03_source_mapping_intermediate_representation.md`](docs/development/03_source_mapping_intermediate_representation.md) — source-mapping IR and dry-run contract
 - [`docs/development/04_project_intake.md`](docs/development/04_project_intake.md) — transactional project-intake boundary and identity contract
+- [`docs/development/05_deepsqueak_import.md`](docs/development/05_deepsqueak_import.md) — DeepSqueak import contract, identity, provenance, and limitations
 
 Extractor-specific design references should live under:
 

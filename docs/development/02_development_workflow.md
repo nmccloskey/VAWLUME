@@ -255,8 +255,10 @@ Add integration tests when multiple layers are connected.
 
 Each bug that changes a semantic or relational invariant should ideally produce a regression test.
 
-The current checkpoint has completed source mapping and transactional project
-intake. DeepSqueak import is the next implementation target.
+The current checkpoint has completed source mapping, transactional project
+intake, and DeepSqueak import. MUPET import is the next implementation target.
+Cross-extractor matching and consensus remain unimplemented, so no comparison
+between extractors is yet possible.
 
 ## 12. Generated artifacts
 
