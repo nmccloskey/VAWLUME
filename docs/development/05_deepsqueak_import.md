@@ -65,7 +65,9 @@ A runnable demonstration is at `examples/deepsqueak_import_demo.m`.
 | registering a native `.mat`, settings file, or detector model as provenance | parsing any of them |
 | extractor-native labels as opaque evidence | DeepSqueak classifier or clustering workflows |
 
-MUPET, cross-extractor matching, and consensus are not implemented.
+MUPET event population, cross-extractor matching, and consensus are not part of
+this importer. The separate MUPET CSV adapter and read-only provenance planner
+are documented in `06_mupet_import.md`.
 
 ## Layer responsibilities
 

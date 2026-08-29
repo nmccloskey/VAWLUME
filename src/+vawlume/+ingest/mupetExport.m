@@ -44,9 +44,9 @@ ir = vawlume.source_mapping.mapTableToIR(readResult.table, loaded, ...
 issues = emptyAdapterIssues();
 issues = appendIssue(issues, emptyExportIssue(readResult, artifactPath));
 
-% This helper is profile-driven and already proved correct for MUPET in the
-% Phase 5 audit. Pass 3 owns its neutral rename alongside the other shared core.
-versionAssessment = deepsqueakVersionCompatibility( ...
+% Version compatibility is shared because both extractor profiles declare the
+% same version-scope language; no release list is hard-coded by either adapter.
+versionAssessment = extractorVersionCompatibility( ...
     profileDocument, options.ExtractorVersion);
 issues = appendIssue(issues, versionIssue(versionAssessment));
 

@@ -63,8 +63,9 @@ representation, and renders a database-free dry-run preview. Project intake is
 now implemented as the transactional boundary from that IR to the relational
 project/entity/recording graph.
 
-DeepSqueak import is **implemented**; MUPET import is the next target, and no
-cross-extractor matching or validation exists yet.
+DeepSqueak import is **implemented**. MUPET CSV adaptation and deterministic
+run/provenance planning are implemented; MUPET event population and atomic
+apply are the next target. No cross-extractor matching or validation exists yet.
 `vawlume.ingest.deepsqueakExport` reads a
 DeepSqueak Excel call-statistics export and routes it through the tracked
 DeepSqueak output-mapping profile to a validated extractor-output IR, without
@@ -76,6 +77,14 @@ settings, model, and native artifacts, and materializes the call population as
 detections, native and canonical event measurements, extractor review
 evidence, and extractor-native label assignments. Planning and applying happen
 in one atomic boundary, so an extraction run never exists without its calls.
+
+`vawlume.ingest.mupetExport` reads a MUPET per-syllable CSV and optionally
+captures native `config.csv` settings without database access.
+`vawlume.ingest.mupet` resolves an established recording and deterministically
+plans the exact extractor version, mapping profile, run, settings artifact,
+event CSV, and optional native processed `.mat` artifact. It is intentionally
+read-only until MUPET syllables can be committed in the same transaction as
+their run.
 
 A disposable all-profile demonstration is available at
 [`examples/project_intake_demo.m`](examples/project_intake_demo.m). It runs the
@@ -146,8 +155,9 @@ transactional application, provenance read-back, and the all-profile
 demonstration. Phase 4 completed item 7: the DeepSqueak artifact adapter, its
 Excel-to-IR boundary, the transactional run and artifact provenance graph, the
 detection, measurement, review, and label population, and a reproducible
-end-to-end demonstration. The Phase 4 integration gate is complete, and MUPET
-import is the next implementation target.
+end-to-end demonstration. Phase 5 now includes the MUPET CSV adapter and
+read-only provenance planner; event/measurement population and atomic apply
+remain next.
 
 ## Documentation
 
@@ -157,6 +167,8 @@ import is the next implementation target.
 - [`docs/development/03_source_mapping_intermediate_representation.md`](docs/development/03_source_mapping_intermediate_representation.md) — source-mapping IR and dry-run contract
 - [`docs/development/04_project_intake.md`](docs/development/04_project_intake.md) — transactional project-intake boundary and identity contract
 - [`docs/development/05_deepsqueak_import.md`](docs/development/05_deepsqueak_import.md) — DeepSqueak import contract, identity, provenance, and limitations
+
+- [`docs/development/06_mupet_import.md`](docs/development/06_mupet_import.md) — MUPET adapter and read-only provenance-planning contract
 
 Extractor-specific design references should live under:
 

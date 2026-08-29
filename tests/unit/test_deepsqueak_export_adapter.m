@@ -409,8 +409,12 @@ function testAdapterPathTouchesNoDatabase(testCase)
 adapterFiles = [ ...
     fullfile(repoRoot, "src", "+vawlume", "+ingest", "deepsqueakExport.m")
     fullfile(repoRoot, "src", "+vawlume", "+ingest", "private", "deepsqueakExportArtifactSpec.m")
+    fullfile(repoRoot, "src", "+vawlume", "+ingest", "private", "deepsqueakPortableLocation.m")
     fullfile(repoRoot, "src", "+vawlume", "+ingest", "private", "deepsqueakReadExportTable.m")
-    fullfile(repoRoot, "src", "+vawlume", "+ingest", "private", "deepsqueakVersionCompatibility.m")];
+    fullfile(repoRoot, "src", "+vawlume", "+ingest", "private", "deepsqueakVersionCompatibility.m")
+    fullfile(repoRoot, "src", "+vawlume", "+ingest", "private", "extractorArtifactSpec.m")
+    fullfile(repoRoot, "src", "+vawlume", "+ingest", "private", "extractorPortableLocation.m")
+    fullfile(repoRoot, "src", "+vawlume", "+ingest", "private", "extractorVersionCompatibility.m")];
 
 text = "";
 for index = 1:numel(adapterFiles)

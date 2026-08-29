@@ -34,7 +34,7 @@ plan.settings_profile = deepsqueakResolveSettingsProfile(conn, ...
 plan.artifacts = deepsqueakResolveArtifacts(conn, plan.recording.project_id, ...
     export, plan.context, roots);
 plan.run = deepsqueakResolveRun(conn, plan);
-plan.run_artifacts = runArtifactPlan(conn, plan);
+plan.run_artifacts = extractorRunArtifactPlan(conn, plan);
 
 plan = appendEventPlan(conn, plan, export);
 
@@ -140,48 +140,6 @@ end
 
 plan.events = deepsqueakResolveEvents(conn, plan, plan.routed);
 plan.conflicts = [plan.conflicts; plan.events.conflicts];
-end
-
-function runArtifacts = runArtifactPlan(conn, plan)
-runArtifacts = table(strings(0, 1), strings(0, 1), ...
-    VariableNames=["artifact_role", "action"]);
-if height(plan.artifacts) == 0
-    return
-end
-
-existingLinks = table();
-if plan.run.action == "reuse" && ~isnan(plan.run.existing_extraction_run_id)
-    rows = fetch(conn, ...
-        "SELECT artifact_role, artifact_id FROM extraction_run_artifacts " + ...
-        "WHERE extraction_run_id = " + string(plan.run.existing_extraction_run_id));
-    if ~isempty(rows) && height(rows) > 0
-        existingLinks = rows;
-    end
-end
-
-for index = 1:height(plan.artifacts)
-    role = string(plan.artifacts.role(index));
-    plannedArtifactId = double(plan.artifacts.existing_artifact_id(index));
-    if plan.run.action == "conflict" || string(plan.artifacts.action(index)) == "conflict"
-        action = "conflict";
-    elseif plan.run.action == "reuse"
-        if isempty(existingLinks) || height(existingLinks) == 0
-            action = "conflict";
-        else
-            roleMatches = string(existingLinks.artifact_role) == role;
-            exactMatch = roleMatches & ...
-                double(existingLinks.artifact_id) == plannedArtifactId;
-            if ~isnan(plannedArtifactId) && nnz(exactMatch) == 1
-                action = "reuse";
-            else
-                action = "conflict";
-            end
-        end
-    else
-        action = "create";
-    end
-    runArtifacts(end + 1, :) = {role, action}; %#ok<AGROW>
-end
 end
 
 function status = settingsStatus(plan)

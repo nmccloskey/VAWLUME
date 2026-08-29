@@ -275,8 +275,12 @@ function testAdapterIsDatabaseIndependentAndHasNoSemanticDictionary(testCase)
 files = [
     fullfile(repoRoot, "src", "+vawlume", "+ingest", "mupetExport.m")
     fullfile(repoRoot, "src", "+vawlume", "+ingest", "private", "mupetExportArtifactSpec.m")
+    fullfile(repoRoot, "src", "+vawlume", "+ingest", "private", "mupetPortableLocation.m")
     fullfile(repoRoot, "src", "+vawlume", "+ingest", "private", "mupetReadExportTable.m")
-    fullfile(repoRoot, "src", "+vawlume", "+ingest", "private", "mupetCaptureSettings.m")];
+    fullfile(repoRoot, "src", "+vawlume", "+ingest", "private", "mupetCaptureSettings.m")
+    fullfile(repoRoot, "src", "+vawlume", "+ingest", "private", "extractorArtifactSpec.m")
+    fullfile(repoRoot, "src", "+vawlume", "+ingest", "private", "extractorPortableLocation.m")
+    fullfile(repoRoot, "src", "+vawlume", "+ingest", "private", "extractorVersionCompatibility.m")];
 text = "";
 for index = 1:numel(files)
     text = text + newline + string(fileread(files(index)));

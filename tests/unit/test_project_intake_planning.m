@@ -224,6 +224,7 @@ end
 function tf = isProjectIntakeFile(name)
 name = string(name);
 tf = ~startsWith(name, "deepsqueak") && ~startsWith(name, "mupet") && ...
+    ~startsWith(name, "extractor") && ...
     name ~= "sha256OfFile.m";
 end
 

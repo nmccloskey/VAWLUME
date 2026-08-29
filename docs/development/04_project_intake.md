@@ -196,8 +196,8 @@ The current schema answers the Phase 3 review questions without another view:
 
 The recording's unique `source_file_id` is the extractor-import anchor. The
 DeepSqueak importer now resolves that established portable source/recording
-identity before attaching its extraction run and artifacts; MUPET is the next
-consumer of the same boundary.
+identity before attaching its extraction run and artifacts; the MUPET planner
+now consumes the same boundary without mutating it.
 
 ## Current limitations
 
@@ -214,5 +214,5 @@ consumer of the same boundary.
 - DeepSqueak and MUPET importers are outside Phase 3.
 
 These are bounded Phase 3 limitations, not hidden fallbacks. DeepSqueak import
-now consumes the established source-file/recording and profile-provenance
-anchors without changing the project-intake boundary; MUPET import is next.
+and MUPET provenance planning consume the established source-file/recording and
+profile-provenance anchors without changing the project-intake boundary.
