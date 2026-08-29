@@ -223,7 +223,8 @@ end
 
 function tf = isProjectIntakeFile(name)
 name = string(name);
-tf = ~startsWith(name, "deepsqueak") && name ~= "sha256OfFile.m";
+tf = ~startsWith(name, "deepsqueak") && ~startsWith(name, "mupet") && ...
+    name ~= "sha256OfFile.m";
 end
 
 function ir = validProjectIR()
