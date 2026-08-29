@@ -59,6 +59,7 @@ row.frequency_bandwidth = NaN;
 row.detection_score = NaN;
 row.review_raw_token = "";
 row.review_status = "";
+row.review_native_field = "";
 row.review_present = false;
 row.label_raw_token = "";
 row.label_present = false;
@@ -107,6 +108,7 @@ switch string(value.semantic_role)
         result.row.review_present = true;
         result.row.review_raw_token = string(value.raw_value);
         result.row.review_status = string(value.normalized_value_text);
+        result.row.review_native_field = string(value.native_field);
         result.handled = true;
     case "native_class_or_manual_label"
         result.row.label_present = string(value.status) ~= "missing";

@@ -138,6 +138,10 @@ path is never durable identity, because relocating the same content would then
 duplicate it. When no portable path can be derived the import is refused rather
 than falling back.
 
+An explicit `RelativePath` must itself be root-independent: drive-qualified,
+rooted, and parent-traversing (`..`) values are refused rather than persisted
+under a portable label.
+
 The stored `path_or_uri` is the portable path first registered. A later rerun
 from a different location reports its runtime path diagnostically and does not
 rewrite that provenance.
@@ -168,6 +172,7 @@ scope row.
 | same run key, changed export content | explicit conflict; nothing written |
 | same basename at a different portable path | a distinct artifact; never conflated by filename |
 | a different run key over the same recording | a distinct run with its own detections, reusing native call IDs |
+| same run key, changed/added/omitted settings, model, or native artifact | explicit provenance conflict; nothing written |
 
 A changed export under one run identity is a conflict even when native call IDs
 match, and existing scientific rows are never updated in place. Resolving such a
@@ -175,6 +180,12 @@ conflict requires an explicit migration workflow, which does not exist yet.
 
 A new run key does not rescue a conflicting artifact identity, because artifacts
 are project-scoped rather than run-scoped.
+
+Every identity-bearing run artifact is compared by role, portable identity,
+type, and checksum. One portable identity cannot be declared for two different
+roles in the same plan. Supplied files are hashed with streaming SHA-256, so
+large native containers and detector models retain content identity without
+being loaded wholly into memory.
 
 Reordering a workbook's rows changes its bytes and therefore its checksum, so it
 is reported as a content change. That strictness is deliberate: the checksum is
@@ -259,6 +270,11 @@ writes nothing at all, and no per-attempt audit row is recorded: unlike project
 intake, a DeepSqueak import is all-or-nothing over one artifact, and
 `extraction_runs.imported_at_utc` plus the export checksum already record what
 was imported and when the run was created.
+
+Reuse compares stored detection, measurement, curation, and native-label
+evidence rather than checking only that a row exists. Missing, duplicated, or
+changed scientific child rows are conflicts; the importer does not silently
+repair or reinterpret an existing run.
 
 ## Validation and diagnostics
 

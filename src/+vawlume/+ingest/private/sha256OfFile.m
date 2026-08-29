@@ -11,10 +11,15 @@ if fileId < 0
         "Could not open file for hashing: %s", path);
 end
 cleaner = onCleanup(@() fclose(fileId));
-bytes = fread(fileId, Inf, "*uint8")';
-
 digest = java.security.MessageDigest.getInstance("SHA-256");
-digest.update(typecast(bytes, "int8"));
+chunkBytes = 4 * 1024 * 1024;
+while true
+    bytes = fread(fileId, chunkBytes, "*uint8");
+    if isempty(bytes)
+        break
+    end
+    digest.update(typecast(bytes(:)', "int8"));
+end
 hashBytes = typecast(digest.digest(), "uint8");
 hash = lower(string(reshape(dec2hex(hashBytes, 2).', 1, [])));
 delete(cleaner);

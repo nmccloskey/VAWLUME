@@ -7,10 +7,12 @@ tests = functiontests({ ...
     @testExtractorVersionRequirementComesFromProfile, ...
     @testCompatibleRerunReusesEverything, ...
     @testRelocatedExportReusesArtifactAndRun, ...
+    @testDifferentPortableExportIdentityConflicts, ...
     @testChangedContentUnderSameIdentityConflicts, ...
     @testDistinctRunOverSameRecordingCoexists, ...
     @testSettingsProvenanceIsCapturedOrExplicitlyAbsent, ...
     @testModelProvenanceIsNeverFabricated, ...
+    @testIdentityDefiningOptionalArtifactsCannotChangeOnRerun, ...
     @testInvalidProvenanceRollsBackCompletely, ...
     @testRelationalReadBacksAnswerProvenanceQuestions});
 end
@@ -247,6 +249,35 @@ verifyError(testCase, ...
 clear cleanup
 end
 
+function testDifferentPortableExportIdentityConflicts(testCase)
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+
+apply(fixture, defaultRunSpec());
+
+% The same bytes at a different portable path are a distinct artifact. Reusing
+% the run must not create that second artifact without linking it, nor silently
+% substitute it for the export identity the run already records.
+alternatePath = fullfile(fixture.artifact_root, "copies", "REC_A_Stats.xlsx");
+makeParentFolder(alternatePath);
+copyfile(fixture.export_a, alternatePath);
+
+conflicted = vawlume.ingest.deepsqueak(fixture.conn, alternatePath, ...
+    portableRef("proj-a", "audio/day1/REC_A.wav"), defaultRunSpec(), ...
+    RepoRoot=fixture.repo_root, ArtifactRoot=fixture.artifact_root);
+verifyEqual(testCase, conflicted.status, "conflict");
+verifyTrue(testCase, any(contains(conflicted.conflicts, ...
+    "event_measurement_export artifact identity differs")));
+
+attempted = vawlume.ingest.deepsqueak(fixture.conn, alternatePath, ...
+    portableRef("proj-a", "audio/day1/REC_A.wav"), defaultRunSpec(), ...
+    RepoRoot=fixture.repo_root, ArtifactRoot=fixture.artifact_root, Apply=true);
+verifyFalse(testCase, attempted.committed);
+verifyEqual(testCase, countOf(fixture.conn, "artifacts"), 1);
+verifyEqual(testCase, countOf(fixture.conn, "extraction_run_artifacts"), 1);
+
+clear cleanup
+end
+
 function testChangedContentUnderSameIdentityConflicts(testCase)
 [fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
 
@@ -408,6 +439,74 @@ verifyEqual(testCase, double(native.is_native(1)), 1);
 audioArtifacts = fetch(fixture.conn, ...
     "SELECT COUNT(*) AS n FROM artifacts WHERE path_or_uri LIKE '%REC_A.wav'");
 verifyEqual(testCase, double(audioArtifacts.n(1)), 0);
+
+clear cleanup
+end
+
+function testIdentityDefiningOptionalArtifactsCannotChangeOnRerun(testCase)
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+
+full = defaultRunSpec();
+full.run_key = "ds-run-complete-provenance";
+full.settings = struct(artifact_path=fixture.settings_artifact_path);
+full.model = struct(artifact_path=fixture.model_path, model_label="rat_detector_v2");
+full.native_artifact = struct(artifact_path=fixture.native_path);
+
+first = apply(fixture, full);
+second = apply(fixture, full);
+verifyTrue(testCase, second.committed);
+verifyEqual(testCase, second.extraction_run.extraction_run_id, ...
+    first.extraction_run.extraction_run_id);
+verifyEqual(testCase, second.applied_counts.artifacts, 0);
+
+withoutModel = rmfield(full, "model");
+modelOmitted = plan(fixture, withoutModel);
+verifyEqual(testCase, modelOmitted.status, "conflict");
+verifyTrue(testCase, any(contains(modelOmitted.conflicts, ...
+    "detector_network artifact provenance")));
+
+withoutSettings = rmfield(full, "settings");
+settingsOmitted = plan(fixture, withoutSettings);
+verifyEqual(testCase, settingsOmitted.status, "conflict");
+verifyTrue(testCase, any(contains(settingsOmitted.conflicts, ...
+    "extractor_settings artifact provenance")));
+
+withoutNative = rmfield(full, "native_artifact");
+nativeOmitted = plan(fixture, withoutNative);
+verifyEqual(testCase, nativeOmitted.status, "conflict");
+verifyTrue(testCase, any(contains(nativeOmitted.conflicts, ...
+    "native_detection_container artifact provenance")));
+
+replacementPath = fullfile(fixture.artifact_root, "replacement_detector.mat");
+writeText(replacementPath, "different synthetic detector network stand-in");
+replacement = full;
+replacement.model = struct(artifact_path=replacementPath, ...
+    model_label="rat_detector_v3");
+modelChanged = plan(fixture, replacement);
+verifyEqual(testCase, modelChanged.status, "conflict");
+verifyTrue(testCase, any(contains(modelChanged.conflicts, ...
+    "detector_network artifact identity differs")));
+
+% Adding model evidence later is also a provenance change, not an invitation to
+% mutate an existing run in place.
+withoutAnyModel = defaultRunSpec();
+withoutAnyModel.run_key = "ds-run-no-model";
+apply(fixture, withoutAnyModel);
+withLateModel = withoutAnyModel;
+withLateModel.model = struct(artifact_path=fixture.model_path);
+added = plan(fixture, withLateModel);
+verifyEqual(testCase, added.status, "conflict");
+verifyTrue(testCase, any(contains(added.conflicts, ...
+    "detector_network artifact provenance")));
+
+collision = defaultRunSpec();
+collision.run_key = "ds-run-artifact-collision";
+collision.model = struct(artifact_path=fixture.native_path);
+collision.native_artifact = struct(artifact_path=fixture.native_path);
+collided = plan(fixture, collision);
+verifyEqual(testCase, collided.status, "conflict");
+verifyTrue(testCase, any(contains(collided.conflicts, ...
+    "declared for more than one role")));
 
 clear cleanup
 end

@@ -194,9 +194,10 @@ The current schema answers the Phase 3 review questions without another view:
 - ingestion run to source files and statuses: `ingestion_files` joined to
   `source_files`.
 
-The recording's unique `source_file_id` is also the future extractor-import
-anchor: an extractor adapter can resolve a portable source first, then attach
-its extraction run and artifacts to the established recording.
+The recording's unique `source_file_id` is the extractor-import anchor. The
+DeepSqueak importer now resolves that established portable source/recording
+identity before attaching its extraction run and artifacts; MUPET is the next
+consumer of the same boundary.
 
 ## Current limitations
 
@@ -212,6 +213,6 @@ its extraction run and artifacts to the established recording.
   migration/update workflow is future work.
 - DeepSqueak and MUPET importers are outside Phase 3.
 
-These are bounded Phase 3 limitations, not hidden fallbacks. The next
-architectural target is the DeepSqueak importer using the established
-source-file/recording and profile-provenance anchors.
+These are bounded Phase 3 limitations, not hidden fallbacks. DeepSqueak import
+now consumes the established source-file/recording and profile-provenance
+anchors without changing the project-intake boundary; MUPET import is next.

@@ -1,8 +1,8 @@
 # VAWLUME Prototype Development Outline
 
 **Status:** Revised working development plan  
-**Updated:** 2026-08-28
-**Project stage:** Relational foundation and source mapping implemented through the Phase 2.5 native-configuration cleanup
+**Updated:** 2026-08-29
+**Project stage:** Implemented through Phase 4 DeepSqueak import; MUPET import is next
 **Primary implementation environment:** MATLAB + SQLite  
 **Prototype objective:** Poster-ready, vertically integrated demonstration
 
@@ -775,6 +775,13 @@ unresolved recordings
 
 DeepSqueak + MUPET.
 
+### Current status
+
+The DeepSqueak minimum is implemented through its tracked call-statistics
+profile, explicit recording resolution, atomic run/artifact/event import, and
+runnable demonstration. MUPET remains the critical second importer and is the
+next implementation target.
+
 ### DeepSqueak minimum
 
 Support at least:
@@ -1505,9 +1512,10 @@ The earlier outline proposed beginning with `schema.sql`.
 
 That has now occurred conceptually and as a first executable draft.
 
-Phase 1 completed Steps 1-4, Phase 2 completed Step 5, and Phase 3 completed
-Step 6 as tested relational checkpoints. The recommended sequence below
-remains the implementation spine, with Step 7 as the next active target.
+Phase 1 completed Steps 1-4, Phase 2 completed Step 5, Phase 3 completed Step 6,
+and Phase 4 completed Step 7 as tested relational checkpoints. The recommended
+sequence below remains the implementation spine, with Step 8 as the next active
+target.
 
 ## Step 1 — Stabilize schema vocabulary
 
@@ -1597,7 +1605,16 @@ Current checkpoint complete:
 
 ## Step 7 — Implement DeepSqueak importer
 
-First proof of extractor ingestion.
+Current checkpoint complete:
+
+- one public planning/apply importer plus one read-only workbook adapter;
+- tracked-profile interpretation through the source-mapping IR, with native and
+  canonical measurement evidence preserved;
+- explicit recording, extraction-run, artifact, settings, and model provenance;
+- atomic and idempotent detection, review, and native-label population with
+  explicit identity conflicts;
+- portable artifact identity, relocation behavior, and a runnable end-to-end
+  demonstration.
 
 ## Step 8 — Implement MUPET importer
 
@@ -1706,27 +1723,22 @@ The prototype is successful when it can reproducibly demonstrate:
 # 17. Immediate next planning target
 
 With the schema, semantic seed, synthetic fixture, acceptance queries, Phase 2
-`source_mapping` engine, and Phase 3 project intake in place, the next
-architectural hinge is real extractor import.
+`source_mapping` engine, Phase 3 project intake, and Phase 4 DeepSqueak import
+in place, the next architectural hinge is the second real extractor import.
 
 The recommended next target is:
 
-## **DeepSqueak import**
+## **MUPET import**
 
-This should use the established portable source/recording anchor and tracked
-profile provenance to create:
+MUPET should reuse the established source-mapping, portable recording,
+extraction-run, artifact, and native/canonical measurement boundaries while
+preserving MUPET's own dataset, repertoire, syllable, and settings semantics.
+It is the critical proof that the relational/import architecture is not merely
+a generalized DeepSqueak schema. Shared importer helpers should be factored
+only where the two implemented paths demonstrate genuine duplication.
 
-- extraction-run and artifact provenance;
-- DeepSqueak-native objects and detections;
-- native and canonical event measurements through the shipped output mapping
-  profile;
-- explicit settings/output-profile linkage;
-- a reusable adapter boundary that does not move extractor interpretation into
-  project intake.
-
-The completed Phase 1 seed/fixture layer, Phase 2 source-mapping contract, and
-Phase 3 intake/read-back suite should remain regression targets, so the first
-real importer proceeds against a concrete project and recording graph.
+The completed Phase 1-4 test and demonstration suite remains the regression
+floor for that work.
 
 ---
 

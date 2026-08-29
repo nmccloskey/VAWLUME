@@ -52,8 +52,8 @@ differences = appendDifference(differences, ...
     settingsDifference(rows, plan));
 differences = appendDifference(differences, ...
     recordingDifference(conn, run.existing_extraction_run_id, plan));
-differences = appendDifference(differences, ...
-    exportArtifactDifference(conn, run.existing_extraction_run_id, plan));
+differences = [differences; artifactProvenanceDifferences( ...
+    conn, run.existing_extraction_run_id, plan)];
 
 if ~isempty(differences)
     run.action = "conflict";
@@ -125,32 +125,69 @@ if ~any(double(rows.recording_id) == plan.recording.recording_id)
 end
 end
 
-function message = exportArtifactDifference(conn, extractionRunId, plan)
-message = "";
-planned = plan.artifacts(plan.artifacts.role == "event_measurement_export", :);
-if isempty(planned) || height(planned) == 0
-    return
-end
+function differences = artifactProvenanceDifferences(conn, extractionRunId, plan)
+%ARTIFACTPROVENANCEDIFFERENCES Compare every identity-bearing run artifact.
+%
+% A reused run must retain the same export, native container, settings file,
+% and detector model evidence. Comparing only the export checksum would let a
+% rerun add, omit, or replace optional provenance under an existing run_key.
+% It would also let a same-content export at a different portable identity
+% create an artifact row that was never linked to the run.
 
-rows = fetch(conn, ...
-    "SELECT a.path_or_uri, IFNULL(a.checksum_sha256, '') AS checksum_sha256 " + ...
+roles = ["event_measurement_export", "native_detection_container", ...
+    "extractor_settings", "detector_network"];
+differences = strings(0, 1);
+
+stored = fetch(conn, ...
+    "SELECT ra.artifact_role, a.artifact_id, a.path_or_uri, a.artifact_type, " + ...
+    "IFNULL(a.checksum_sha256, '') AS checksum_sha256 " + ...
     "FROM extraction_run_artifacts ra " + ...
     "JOIN artifacts a ON a.artifact_id = ra.artifact_id " + ...
-    "WHERE ra.extraction_run_id = " + string(extractionRunId) + ...
-    " AND ra.artifact_role = 'event_measurement_export'");
-if isempty(rows) || height(rows) == 0
-    return
-end
+    "WHERE ra.extraction_run_id = " + string(extractionRunId));
 
-plannedChecksum = string(planned.checksum_sha256(1));
-storedChecksums = string(rows.checksum_sha256);
-if strlength(plannedChecksum) == 0 || all(strlength(storedChecksums) == 0)
-    return
-end
-if ~any(storedChecksums == plannedChecksum)
-    % Content, not location, decides. A relocated copy of the same export keeps
-    % its checksum and so remains the same run input.
-    message = "the existing run imported an export with a different checksum.";
+for index = 1:numel(roles)
+    role = roles(index);
+    planned = plan.artifacts(plan.artifacts.role == role, :);
+    if isempty(stored) || height(stored) == 0
+        storedForRole = table();
+    else
+        storedForRole = stored(presentText(stored.artifact_role) == role, :);
+    end
+
+    plannedCount = height(planned);
+    storedCount = height(storedForRole);
+    if plannedCount ~= 1 || storedCount ~= 1
+        if plannedCount ~= storedCount
+            differences(end + 1, 1) = role + ...
+                " artifact provenance is present on only one version of the run."; %#ok<AGROW>
+        elseif plannedCount > 1 || storedCount > 1
+            differences(end + 1, 1) = role + ...
+                " artifact provenance is ambiguous because more than one artifact has that role."; %#ok<AGROW>
+        end
+        continue
+    end
+
+    plannedPath = string(planned.path_or_uri(1));
+    storedPath = presentText(storedForRole.path_or_uri(1));
+    if plannedPath ~= storedPath
+        differences(end + 1, 1) = role + " artifact identity differs (stored '" + ...
+            storedPath + "', supplied '" + plannedPath + "')."; %#ok<AGROW>
+        continue
+    end
+
+    plannedType = string(planned.artifact_type(1));
+    storedType = presentText(storedForRole.artifact_type(1));
+    if plannedType ~= storedType
+        differences(end + 1, 1) = role + " artifact type differs."; %#ok<AGROW>
+        continue
+    end
+
+    plannedChecksum = string(planned.checksum_sha256(1));
+    storedChecksum = presentText(storedForRole.checksum_sha256(1));
+    if strlength(plannedChecksum) > 0 && strlength(storedChecksum) > 0 && ...
+            plannedChecksum ~= storedChecksum
+        differences(end + 1, 1) = role + " artifact has a different checksum."; %#ok<AGROW>
+    end
 end
 end
 
@@ -175,4 +212,9 @@ end
 
 function text = sqlText(value)
 text = "'" + replace(string(value), "'", "''") + "'";
+end
+
+function text = presentText(value)
+text = string(value);
+text(ismissing(text)) = "";
 end

@@ -42,6 +42,7 @@ artifacts = emptyArtifactTable();
 for index = 1:numel(candidates)
     artifacts = [artifacts; classify(candidates{index}, existing)]; %#ok<AGROW>
 end
+artifacts = markCandidateIdentityCollisions(artifacts);
 end
 
 function candidate = exportCandidate(export)
@@ -97,16 +98,8 @@ end
 end
 
 function [checksum, status] = optionalChecksum(artifactPath)
-% Detection containers and detector networks can be large. Content identity is
-% still preferred, so hashing is the default and is skipped only above a
-% documented ceiling, with the omission reported rather than hidden.
-maximumHashBytes = 512 * 1024 * 1024;
-info = dir(artifactPath);
-if ~isempty(info) && double(info(1).bytes) > maximumHashBytes
-    checksum = "";
-    status = "skipped_large_file";
-    return
-end
+% Stream the digest so even large native containers and detector networks keep
+% content identity without loading the whole artifact into memory.
 checksum = sha256OfFile(artifactPath);
 status = "computed";
 end
@@ -172,6 +165,52 @@ if storedType ~= candidate.artifact_type
     conflictMessage = "Artifact '" + candidate.path_or_uri + ...
         "' is registered as artifact_type '" + storedType + ...
         "' but this import treats it as '" + candidate.artifact_type + "'.";
+    return
+end
+
+storedNativeType = string(stored.native_artifact_type(1));
+storedNativeType(ismissing(storedNativeType)) = "";
+if storedNativeType ~= candidate.native_artifact_type
+    action = "conflict";
+    conflictMessage = "Artifact '" + candidate.path_or_uri + ...
+        "' has different native artifact type provenance.";
+    return
+end
+
+storedFormat = string(stored.file_format(1));
+storedFormat(ismissing(storedFormat)) = "";
+if storedFormat ~= candidate.file_format || ...
+        logical(stored.is_native(1)) ~= logical(candidate.is_native)
+    action = "conflict";
+    conflictMessage = "Artifact '" + candidate.path_or_uri + ...
+        "' has different format or native-artifact provenance.";
+end
+end
+
+function artifacts = markCandidateIdentityCollisions(artifacts)
+%MARKCANDIDATEIDENTITYCOLLISIONS Refuse two meanings for one planned identity.
+%
+% Existing-row comparison cannot see collisions between two artifacts that are
+% both new in the same plan. Without this preflight, supplying one file as (for
+% example) both the detector model and native detection container produces a
+% conflict-free plan that fails only at the artifacts UNIQUE constraint.
+
+if height(artifacts) < 2
+    return
+end
+
+paths = string(artifacts.path_or_uri);
+for path = unique(paths)'
+    matches = paths == path;
+    if nnz(matches) < 2
+        continue
+    end
+    roles = string(artifacts.role(matches));
+    message = "Portable artifact identity '" + path + ...
+        "' is declared for more than one role in this import: " + ...
+        strjoin(roles, ", ") + ".";
+    artifacts.action(matches) = "conflict";
+    artifacts.conflict_message(matches) = message;
 end
 end
 

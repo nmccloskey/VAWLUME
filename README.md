@@ -146,8 +146,8 @@ transactional application, provenance read-back, and the all-profile
 demonstration. Phase 4 completed item 7: the DeepSqueak artifact adapter, its
 Excel-to-IR boundary, the transactional run and artifact provenance graph, the
 detection, measurement, review, and label population, and a reproducible
-end-to-end demonstration. The phase integration review is the remaining gate,
-and MUPET import is the next implementation target.
+end-to-end demonstration. The Phase 4 integration gate is complete, and MUPET
+import is the next implementation target.
 
 ## Documentation
 

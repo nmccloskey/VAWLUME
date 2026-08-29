@@ -26,7 +26,7 @@ location.relative_path = "";
 location.relative_path_source = "unavailable";
 
 if strlength(declaredRelativePath) > 0
-    location.relative_path = replace(declaredRelativePath, "\", "/");
+    location.relative_path = normalizeDeclaredPortablePath(declaredRelativePath);
     location.relative_path_source = "declared";
     return
 end
@@ -45,4 +45,38 @@ for index = 1:numel(roots)
         return
     end
 end
+end
+
+function path = normalizeDeclaredPortablePath(path)
+%NORMALIZEDECLAREDPORTABLEPATH Validate caller-declared durable identity.
+%
+% A RelativePath value bypasses root-based containment, so it must prove its
+% own portability. Accepting a drive-qualified, rooted, or parent-traversing
+% value here would persist a machine location while labelling it portable.
+
+path = strtrim(replace(string(path), "\", "/"));
+path = regexprep(path, "/+", "/");
+
+isDriveQualified = false;
+pathCharacters = char(path);
+if numel(pathCharacters) >= 2
+    isDriveQualified = isletter(pathCharacters(1)) && pathCharacters(2) == ':';
+end
+isRooted = startsWith(path, "/");
+parts = split(path, "/");
+hasParentTraversal = any(parts == "..");
+
+if strlength(path) == 0 || isDriveQualified || isRooted || hasParentTraversal
+    error("vawlume:ingest:DeepSqueakArtifactNotPortable", ...
+        ['Declared artifact identity ''%s'' is not a portable relative path. ' ...
+        'Use a root-independent path with no drive, leading separator, or ''..'' segment.'], ...
+        path);
+end
+
+parts(parts == "." | strlength(parts) == 0) = [];
+if isempty(parts)
+    error("vawlume:ingest:DeepSqueakArtifactNotPortable", ...
+        "Declared artifact identity must name a portable relative path.");
+end
+path = strjoin(parts, "/");
 end

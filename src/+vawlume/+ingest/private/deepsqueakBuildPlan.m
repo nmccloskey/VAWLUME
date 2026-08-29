@@ -149,20 +149,34 @@ if height(plan.artifacts) == 0
     return
 end
 
-existingRoles = strings(0, 1);
+existingLinks = table();
 if plan.run.action == "reuse" && ~isnan(plan.run.existing_extraction_run_id)
     rows = fetch(conn, ...
-        "SELECT artifact_role FROM extraction_run_artifacts " + ...
+        "SELECT artifact_role, artifact_id FROM extraction_run_artifacts " + ...
         "WHERE extraction_run_id = " + string(plan.run.existing_extraction_run_id));
     if ~isempty(rows) && height(rows) > 0
-        existingRoles = string(rows.artifact_role);
+        existingLinks = rows;
     end
 end
 
 for index = 1:height(plan.artifacts)
     role = string(plan.artifacts.role(index));
-    if ismember(role, existingRoles)
-        action = "reuse";
+    plannedArtifactId = double(plan.artifacts.existing_artifact_id(index));
+    if plan.run.action == "conflict" || string(plan.artifacts.action(index)) == "conflict"
+        action = "conflict";
+    elseif plan.run.action == "reuse"
+        if isempty(existingLinks) || height(existingLinks) == 0
+            action = "conflict";
+        else
+            roleMatches = string(existingLinks.artifact_role) == role;
+            exactMatch = roleMatches & ...
+                double(existingLinks.artifact_id) == plannedArtifactId;
+            if ~isnan(plannedArtifactId) && nnz(exactMatch) == 1
+                action = "reuse";
+            else
+                action = "conflict";
+            end
+        end
     else
         action = "create";
     end

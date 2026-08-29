@@ -28,7 +28,8 @@ existing = existingDetections(conn, runId, plan.recording.recording_id, artifact
 
 for index = 1:numel(routed.rows)
     row = routed.rows{index};
-    [detection, conflicts] = classifyDetection(conn, plan, row, existing, artifactId);
+    [detection, conflicts] = classifyDetection(conn, plan, row, existing, ...
+        artifactId, events.classification);
     events.detections{index, 1} = detection;
     events.conflicts = [events.conflicts; conflicts];
 end
@@ -36,7 +37,8 @@ end
 events.counts = summarize(events);
 end
 
-function [detection, conflicts] = classifyDetection(conn, plan, row, existing, artifactId)
+function [detection, conflicts] = classifyDetection(conn, plan, row, existing, ...
+        artifactId, classification)
 conflicts = strings(0, 1);
 detection = struct();
 detection.source_row = row.source_row;
@@ -70,18 +72,32 @@ if ~compatible
 end
 
 detection.action = "reuse";
-[detection, conflicts] = classifyExistingChildren(conn, plan, detection, conflicts);
+[detection, conflicts] = classifyExistingChildren(conn, plan, detection, ...
+    conflicts, classification);
 end
 
-function [detection, conflicts] = classifyExistingChildren(conn, plan, detection, conflicts)
+function [detection, conflicts] = classifyExistingChildren(conn, plan, detection, ...
+        conflicts, classification)
 storedMeasurements = existingMeasurements(conn, detection.detection_id);
 for index = 1:height(detection.measurements)
     featureId = detection.measurements.extractor_feature_id(index);
     match = storedMeasurements(storedMeasurements.extractor_feature_id == featureId, :);
     if isempty(match) || height(match) == 0
+        detection.measurements.action(index) = "conflict";
+        conflicts(end + 1, 1) = "Detection '" + detection.native_event_id + ...
+            "' measurement '" + string(detection.measurements.native_name(index)) + ...
+            "': the stored measurement is missing."; %#ok<AGROW>
         continue
     end
-    [compatible, message] = measurementIsCompatible(match, detection.measurements(index, :));
+    if height(match) > 1
+        detection.measurements.action(index) = "conflict";
+        conflicts(end + 1, 1) = "Detection '" + detection.native_event_id + ...
+            "' measurement '" + string(detection.measurements.native_name(index)) + ...
+            "': more than one stored measurement uses this feature identity."; %#ok<AGROW>
+        continue
+    end
+    [compatible, message] = measurementIsCompatible(match, ...
+        detection.measurements(index, :), detection.source_artifact_id);
     if compatible
         detection.measurements.action(index) = "reuse";
     else
@@ -92,14 +108,26 @@ for index = 1:height(detection.measurements)
     end
 end
 
-if detection.curation.present && ...
-        curationExists(conn, detection.detection_id, detection.curation.action_type)
-    detection.curation.action = "reuse";
+if detection.curation.present
+    [compatible, message] = curationIsCompatible(conn, detection);
+    if compatible
+        detection.curation.action = "reuse";
+    else
+        detection.curation.action = "conflict";
+        conflicts(end + 1, 1) = "Detection '" + detection.native_event_id + ...
+            "' curation evidence: " + message;
+    end
 end
 
-if detection.classification.action == "create" && ...
-        assignmentExists(conn, detection.detection_id, plan)
-    detection.classification.action = "reuse";
+if detection.classification.action == "create"
+    [compatible, message] = assignmentIsCompatible(conn, detection, plan, classification);
+    if compatible
+        detection.classification.action = "reuse";
+    else
+        detection.classification.action = "conflict";
+        conflicts(end + 1, 1) = "Detection '" + detection.native_event_id + ...
+            "' classification evidence: " + message;
+    end
 end
 end
 
@@ -132,7 +160,7 @@ if value >= 1e307
 end
 end
 
-function [compatible, message] = measurementIsCompatible(match, planned)
+function [compatible, message] = measurementIsCompatible(match, planned, sourceArtifactId)
 compatible = true;
 message = "";
 tolerance = 1e-9;
@@ -150,9 +178,25 @@ if presentText(match.native_raw_token(1)) ~= presentText(planned.native_raw_toke
     return
 end
 if ~valuesAgree(nullableReal(match.native_value_real(1)), planned.native_value_real(1), tolerance) || ...
-        ~valuesAgree(nullableReal(match.canonical_value_real(1)), planned.canonical_value_real(1), tolerance)
+        ~valuesAgree(nullableReal(match.native_value_integer(1)), planned.native_value_integer(1), tolerance) || ...
+        ~valuesAgree(nullableReal(match.canonical_value_real(1)), planned.canonical_value_real(1), tolerance) || ...
+        ~valuesAgree(nullableReal(match.canonical_value_integer(1)), planned.canonical_value_integer(1), tolerance) || ...
+        presentText(match.native_value_text(1)) ~= presentText(planned.native_value_text(1)) || ...
+        presentText(match.canonical_value_text(1)) ~= presentText(planned.canonical_value_text(1))
     compatible = false;
     message = "stored value differs from the imported value.";
+    return
+end
+
+if double(match.source_artifact_id(1)) ~= sourceArtifactId || ...
+        double(match.canonical_feature_id(1)) ~= double(planned.canonical_feature_id(1)) || ...
+        presentText(match.native_unit(1)) ~= presentText(planned.native_unit(1)) || ...
+        presentText(match.canonical_unit(1)) ~= presentText(planned.canonical_unit(1)) || ...
+        presentText(match.transform_key(1)) ~= presentText(planned.transform_key(1)) || ...
+        presentText(match.operational_variant(1)) ~= presentText(planned.operational_variant(1)) || ...
+        presentText(match.source_locator(1)) ~= presentText(planned.source_locator(1))
+    compatible = false;
+    message = "stored feature or provenance fields differ from the imported evidence.";
 end
 end
 
@@ -182,7 +226,8 @@ curation = struct( ...
     action="skip", ...
     action_type="native_review_status_import", ...
     status_after=row.review_status, ...
-    raw_token=row.review_raw_token);
+    raw_token=row.review_raw_token, ...
+    native_field=row.review_native_field);
 if row.review_present
     curation.action = "create";
 end
@@ -237,8 +282,9 @@ function counts = summarize(events)
 counts = struct( ...
     detections_create=0, detections_reuse=0, detections_conflict=0, ...
     measurements_create=0, measurements_reuse=0, measurements_conflict=0, ...
-    curation_create=0, curation_reuse=0, ...
-    classification_assignments_create=0, classification_assignments_reuse=0);
+    curation_create=0, curation_reuse=0, curation_conflict=0, ...
+    classification_assignments_create=0, classification_assignments_reuse=0, ...
+    classification_assignments_conflict=0);
 
 for index = 1:numel(events.detections)
     detection = events.detections{index};
@@ -313,25 +359,103 @@ end
 
 function rows = existingMeasurements(conn, detectionId)
 rows = fetch(conn, ...
-    "SELECT extractor_feature_id, native_value_type, " + ...
+    "SELECT extractor_feature_id, IFNULL(canonical_feature_id, -1) AS canonical_feature_id, " + ...
+    "IFNULL(source_artifact_id, -1) AS source_artifact_id, native_value_type, " + ...
     "IFNULL(native_raw_token, '') AS native_raw_token, " + ...
     "IFNULL(native_value_real, 1e308) AS native_value_real, " + ...
-    "IFNULL(canonical_value_real, 1e308) AS canonical_value_real " + ...
+    "IFNULL(native_value_integer, 1e308) AS native_value_integer, " + ...
+    "IFNULL(native_value_text, '') AS native_value_text, " + ...
+    "IFNULL(canonical_value_real, 1e308) AS canonical_value_real, " + ...
+    "IFNULL(canonical_value_integer, 1e308) AS canonical_value_integer, " + ...
+    "IFNULL(canonical_value_text, '') AS canonical_value_text, " + ...
+    "IFNULL(native_unit, '') AS native_unit, " + ...
+    "IFNULL(canonical_unit, '') AS canonical_unit, " + ...
+    "IFNULL(transform_key, '') AS transform_key, " + ...
+    "IFNULL(operational_variant, '') AS operational_variant, " + ...
+    "IFNULL(source_locator, '') AS source_locator " + ...
     "FROM event_measurements WHERE detection_id = " + string(detectionId));
 end
 
-function tf = curationExists(conn, detectionId, actionType)
+function [compatible, message] = curationIsCompatible(conn, detection)
 rows = fetch(conn, ...
-    "SELECT COUNT(*) AS n FROM curation_events WHERE detection_id = " + ...
-    string(detectionId) + " AND action_type = '" + actionType + "'");
-tf = double(rows.n(1)) > 0;
+    "SELECT IFNULL(status_after, '') AS status_after, actor_type, " + ...
+    "IFNULL(source_artifact_id, -1) AS source_artifact_id, " + ...
+    "IFNULL(actor_label, '') AS actor_label, " + ...
+    "IFNULL(details_json, '') AS details_json " + ...
+    "FROM curation_events WHERE detection_id = " + string(detection.detection_id) + ...
+    " AND action_type = " + sqlText(detection.curation.action_type));
+
+compatible = false;
+if isempty(rows) || height(rows) == 0
+    message = "the stored curation row is missing.";
+    return
+end
+if height(rows) > 1
+    message = "more than one stored curation row has this action type.";
+    return
+end
+if presentText(rows.status_after(1)) ~= detection.curation.status_after
+    message = "stored review status differs from the imported evidence.";
+    return
+end
+if presentText(rows.actor_type(1)) ~= "extractor" || ...
+        double(rows.source_artifact_id(1)) ~= detection.source_artifact_id
+    message = "stored curation provenance differs from the imported evidence.";
+    return
+end
+expectedActorLabel = "DeepSqueak " + detection.curation.native_field + " column";
+expectedDetails = jsonencode(struct( ...
+    native_field=detection.curation.native_field, ...
+    native_raw_token=detection.curation.raw_token, ...
+    canonical_status=detection.curation.status_after));
+if presentText(rows.actor_label(1)) ~= expectedActorLabel || ...
+        presentText(rows.details_json(1)) ~= expectedDetails
+    message = "stored native review token or field provenance differs from the imported evidence.";
+    return
+end
+compatible = true;
+message = "";
 end
 
-function tf = assignmentExists(conn, detectionId, plan)
+function [compatible, message] = assignmentIsCompatible(conn, detection, plan, classification)
 rows = fetch(conn, ...
-    "SELECT COUNT(*) AS n FROM classification_assignments ca " + ...
+    "SELECT cc.native_class_id, cc.native_class_label, " + ...
+    "IFNULL(cc.canonical_class_label, '') AS canonical_class_label, " + ...
+    "ca.assignment_source, IFNULL(ca.score_or_distance, 1e308) AS score_or_distance " + ...
+    "FROM classification_assignments ca " + ...
     "JOIN classification_runs cr ON cr.classification_run_id = ca.classification_run_id " + ...
-    "WHERE ca.detection_id = " + string(detectionId) + ...
-    " AND cr.parent_extraction_run_id = " + string(plan.run.existing_extraction_run_id));
-tf = double(rows.n(1)) > 0;
+    "JOIN classification_classes cc ON cc.classification_class_id = ca.classification_class_id " + ...
+    "WHERE ca.detection_id = " + string(detection.detection_id) + ...
+    " AND cr.parent_extraction_run_id = " + string(plan.run.existing_extraction_run_id) + ...
+    " AND cr.method = " + sqlText(classification.method));
+
+compatible = false;
+if isempty(rows) || height(rows) == 0
+    message = "the stored classification assignment is missing.";
+    return
+end
+if height(rows) > 1
+    message = "more than one stored assignment represents this imported label.";
+    return
+end
+if presentText(rows.native_class_id(1)) ~= detection.classification.native_label || ...
+        presentText(rows.native_class_label(1)) ~= detection.classification.native_label
+    message = "stored native label differs from the imported evidence.";
+    return
+end
+if strlength(presentText(rows.canonical_class_label(1))) > 0
+    message = "stored assignment adds a canonical class interpretation not present in the export.";
+    return
+end
+if presentText(rows.assignment_source(1)) ~= "extractor" || ...
+        ~isnan(nullableReal(rows.score_or_distance(1)))
+    message = "stored assignment source or score differs from the imported evidence.";
+    return
+end
+compatible = true;
+message = "";
+end
+
+function text = sqlText(value)
+text = "'" + replace(string(value), "'", "''") + "'";
 end
