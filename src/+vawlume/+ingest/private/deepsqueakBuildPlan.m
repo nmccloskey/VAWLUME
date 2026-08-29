@@ -36,6 +36,8 @@ plan.artifacts = deepsqueakResolveArtifacts(conn, plan.recording.project_id, ...
 plan.run = deepsqueakResolveRun(conn, plan);
 plan.run_artifacts = runArtifactPlan(conn, plan);
 
+plan = appendEventPlan(conn, plan, export);
+
 plan.settings_status = settingsStatus(plan);
 plan.model_status = modelStatus(plan);
 plan = collectConflicts(plan);
@@ -102,6 +104,42 @@ switch assessment.status
     case "compatible_family"
         plan.warnings(end + 1, 1) = assessment.message;
 end
+end
+
+function plan = appendEventPlan(conn, plan, export)
+%APPENDEVENTPLAN Route, validate, and classify the event population.
+%
+% The dictionary is read against the profile's registered feature scope rather
+% than the run's exact extractor version, because seed registration attached
+% extractor_features to the scope row.
+
+plan.feature_dictionary = deepsqueakFeatureDictionary(conn, ...
+    plan.extractor.feature_version_id, plan.output_profile.profile_version_id);
+plan.routed = deepsqueakRouteEventValues(export.ir, plan.feature_dictionary, ...
+    string(export.artifact.artifact_key));
+
+if ~isempty(plan.routed.unregistered_fields)
+    % A mapped column with no registered feature and no routing role means the
+    % profile and the seeded vocabulary disagree. Manufacturing a dictionary row
+    % from workbook text would paper over that, so it is refused.
+    error("vawlume:ingest:DeepSqueakFeatureUnregistered", ...
+        ['These mapped source fields have no registered extractor feature and ' ...
+        'no routing role: %s. Re-run vawlume.db.registerBuiltinSemantics for ' ...
+        'the current tracked profile.'], ...
+        strjoin(plan.routed.unregistered_fields, ", "));
+end
+
+plan.validation = deepsqueakValidateEvents(plan.routed, export.profile_document);
+plan.warnings = [plan.warnings; plan.validation.warnings];
+if ~plan.validation.is_valid
+    error("vawlume:ingest:DeepSqueakEventValidationFailed", ...
+        ['The DeepSqueak export failed profile-declared event validation, so ' ...
+        'no rows were planned:%s'], ...
+        newline + strjoin(plan.validation.errors, newline));
+end
+
+plan.events = deepsqueakResolveEvents(conn, plan, plan.routed);
+plan.conflicts = [plan.conflicts; plan.events.conflicts];
 end
 
 function runArtifacts = runArtifactPlan(conn, plan)

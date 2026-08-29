@@ -36,7 +36,11 @@ verifyEqual(testCase, result.extraction_run.input_action, "create");
 verifyEqual(testCase, string(result.artifacts.action(1)), "create");
 verifyEqual(testCase, result.settings.status, "not_recoverable");
 verifyEqual(testCase, result.model.status, "not_recoverable");
-verifyEqual(testCase, result.detections.planned, 0);
+
+% The event population is planned in the same pass and applied in the same
+% transaction, so planning reports it without writing any of it.
+verifyEqual(testCase, result.detections.planned, 2);
+verifyEqual(testCase, result.detections.detections_create, 2);
 
 clear cleanup
 end
@@ -57,9 +61,10 @@ verifyEqual(testCase, countOf(fixture.conn, "extraction_runs"), 1);
 verifyEqual(testCase, countOf(fixture.conn, "extraction_run_inputs"), 1);
 verifyEqual(testCase, countOf(fixture.conn, "artifacts"), 1);
 
-% The event population belongs to a later pass, so none exists yet.
-verifyEqual(testCase, countOf(fixture.conn, "detections"), 0);
-verifyEqual(testCase, countOf(fixture.conn, "event_measurements"), 0);
+% The event population is written by the same atomic apply, so an extraction run
+% never exists without the calls it produced.
+verifyEqual(testCase, countOf(fixture.conn, "detections"), 2);
+verifyEqual(testCase, countOf(fixture.conn, "event_measurements"), 28);
 
 % Extractor import must not recreate any part of the project graph.
 verifyEqual(testCase, countOf(fixture.conn, "projects"), 2);

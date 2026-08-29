@@ -18,6 +18,31 @@ context.run = validateRunSpec(runSpec);
 context.settings = validateSettings(runSpec);
 context.model = validateModel(runSpec);
 context.native_artifact = validateNativeArtifact(runSpec);
+context.classification = validateClassification(runSpec);
+end
+
+function classification = validateClassification(runSpec)
+%VALIDATECLASSIFICATION Optional real provenance for the export's Label column.
+%
+% Without this, labels are still preserved but under a method that states their
+% provenance is unrecorded, because a DeepSqueak label may be manual,
+% supervised, or clustering-derived and the export does not say which. A caller
+% who knows how the labels were produced can say so here instead.
+classification = struct(mode="inferred_unspecified", method="", run_label="");
+if ~isfield(runSpec, "classification") || isempty(runSpec.classification)
+    return
+end
+
+declared = runSpec.classification;
+if ~isstruct(declared) || ~isscalar(declared)
+    error("vawlume:ingest:DeepSqueakRunSpecInvalid", ...
+        "runSpec.classification must be a scalar struct when supplied.");
+end
+
+classification.mode = "declared";
+classification.method = requiredText(declared, "method", ...
+    "vawlume:ingest:DeepSqueakRunSpecInvalid");
+classification.run_label = optionalText(declared, "run_label");
 end
 
 function ref = validateRecordingRef(recordingRef)

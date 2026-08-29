@@ -96,6 +96,9 @@ result.ir = ir;
 result.table = readResult.table;
 result.artifact = artifactProvenance(artifactPath, spec, readResult, location);
 result.profile = profileProvenanceSummary(loaded, ir);
+% The decoded profile is carried forward so downstream consumers can read
+% profile-declared policy without reopening or re-decoding the JSON.
+result.profile_document = profileDocument;
 result.extractor_version = versionAssessment;
 result.issues = issues;
 result.source_key = sourceKey;

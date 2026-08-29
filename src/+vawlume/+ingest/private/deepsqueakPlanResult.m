@@ -72,10 +72,21 @@ result.artifacts = plan.artifacts(:, ["role", "artifact_type", "path_or_uri", ..
 result.artifacts.Properties.VariableNames{end} = 'artifact_id';
 result.run_artifacts = plan.run_artifacts;
 
-result.detections = struct( ...
-    planned=0, ...
-    applied=0, ...
-    note="Event population is inserted by a later pass inside this same transaction.");
+result.events = eventSummary(plan);
+result.detections = plan.events.counts;
+result.detections.planned = numel(plan.events.detections);
+result.classification = struct( ...
+    present=plan.events.classification.present, ...
+    method=plan.events.classification.method, ...
+    action=plan.events.classification.action, ...
+    classification_run_id=plan.events.classification.classification_run_id, ...
+    native_labels=plan.events.classification.classes, ...
+    canonical_interpretation="none");
+result.validation = struct( ...
+    is_valid=plan.validation.is_valid, ...
+    evaluated_checks=plan.validation.evaluated_checks, ...
+    unevaluated_checks=plan.validation.unevaluated_checks, ...
+    warnings=plan.validation.warnings);
 
 result.warnings = plan.warnings;
 result.conflicts = plan.conflicts;
@@ -88,4 +99,36 @@ result.export = struct( ...
     relative_path_source=plan.export.artifact.relative_path_source, ...
     runtime_path=plan.export.artifact.runtime_path);
 result.plan = plan;
+end
+
+function summary = eventSummary(plan)
+%EVENTSUMMARY One row per planned detection, inspectable before commit.
+%
+% Measurement counts come from the routed evidence rather than from
+% height(ir.values): identity, review, and label evidence are not measurements,
+% so counting IR values would overstate them.
+count = numel(plan.events.detections);
+sourceRow = NaN(count, 1);
+nativeEventId = strings(count, 1);
+startTime = NaN(count, 1);
+endTime = NaN(count, 1);
+measurementCount = NaN(count, 1);
+action = strings(count, 1);
+detectionId = NaN(count, 1);
+
+for index = 1:count
+    detection = plan.events.detections{index};
+    sourceRow(index) = detection.source_row;
+    nativeEventId(index) = detection.native_event_id;
+    startTime(index) = detection.start_time_s;
+    endTime(index) = detection.end_time_s;
+    measurementCount(index) = height(detection.measurements);
+    action(index) = detection.action;
+    detectionId(index) = detection.detection_id;
+end
+
+summary = table(sourceRow, nativeEventId, startTime, endTime, ...
+    measurementCount, action, detectionId, ...
+    VariableNames=["source_row", "native_event_id", "start_time_s", ...
+    "end_time_s", "measurement_count", "action", "detection_id"]);
 end
