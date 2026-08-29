@@ -270,6 +270,20 @@ The profile loader should reject or clearly flag:
 The current source-mapping preview surfaces mapping conflicts and readiness
 diagnostics without performing database insertion.
 
+## Current project-intake linkage
+
+`vawlume.ingest.project` can register and associate the tracked
+recording-device and experimental-setup profile examples through the linkage
+document under `config/04_examples/`. The Phase 3 contract supports declared
+project-default assignments, inheritance of those defaults onto recordings,
+and explicit recording assignments. Its validators cover this demonstrated
+linkage language; generalized profile composition and full device/setup domain
+validation remain future work.
+
+See
+[`docs/development/04_project_intake.md`](../docs/development/04_project_intake.md)
+for the intake, identity, transaction, and provenance contract.
+
 ## Authority rule
 
 For shipped semantic definitions:

@@ -125,6 +125,8 @@ demonstration; extractor import is next.
 - [`docs/design/01_prototype_development_outline.md`](docs/design/01_prototype_development_outline.md) — current prototype development plan
 - [`docs/development/01_repo_structure.md`](docs/development/01_repo_structure.md) — repository policy and MATLAB-specific layout
 - [`docs/development/02_development_workflow.md`](docs/development/02_development_workflow.md) — development conventions for the prototype
+- [`docs/development/03_source_mapping_intermediate_representation.md`](docs/development/03_source_mapping_intermediate_representation.md) — source-mapping IR and dry-run contract
+- [`docs/development/04_project_intake.md`](docs/development/04_project_intake.md) — transactional project-intake boundary and identity contract
 
 Extractor-specific design references should live under:
 

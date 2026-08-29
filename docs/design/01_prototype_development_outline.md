@@ -1505,7 +1505,9 @@ The earlier outline proposed beginning with `schema.sql`.
 
 That has now occurred conceptually and as a first executable draft.
 
-Phase 1 has now completed Steps 1-4 as a tested relational checkpoint. The recommended sequence below remains the implementation spine, with Step 5 as the next active target.
+Phase 1 completed Steps 1-4, Phase 2 completed Step 5, and Phase 3 completed
+Step 6 as tested relational checkpoints. The recommended sequence below
+remains the implementation spine, with Step 7 as the next active target.
 
 ## Step 1 — Stabilize schema vocabulary
 
@@ -1583,12 +1585,15 @@ Current checkpoint complete:
 
 ## Step 6 — Implement project intake
 
-Use the source-mapping engine to create:
+Current checkpoint complete:
 
-- experimental entities;
-- relationships;
-- recordings;
-- profile linkages.
+- one public planning/apply API consuming validated project-input IR;
+- explicit project identity separate from experimental hierarchy;
+- portable source, entity, relationship, recording, and participant identity;
+- mapping-profile, recording-device, and experimental-setup provenance;
+- atomic application with immutable ingestion-attempt audit rows;
+- idempotent graph reuse, explicit conflicts, relocation behavior, and
+  relational read-back across all three shipped project patterns.
 
 ## Step 7 — Implement DeepSqueak importer
 
@@ -1700,27 +1705,28 @@ The prototype is successful when it can reproducibly demonstrate:
 
 # 17. Immediate next planning target
 
-With the schema, semantic seed, synthetic fixture, acceptance queries, and the
-Phase 2 `source_mapping` engine in place, the next architectural hinge is
-project intake.
+With the schema, semantic seed, synthetic fixture, acceptance queries, Phase 2
+`source_mapping` engine, and Phase 3 project intake in place, the next
+architectural hinge is real extractor import.
 
 The recommended next target is:
 
-## **project intake**
+## **DeepSqueak import**
 
-This should consume the validated source-mapping intermediate representation
-to create:
+This should use the established portable source/recording anchor and tracked
+profile provenance to create:
 
-- experimental entities and their relationships;
-- recordings and source provenance;
-- project, device, and experimental-setup profile linkages;
-- an explicit validation-to-insertion boundary without duplicating profile or
-  path-parsing logic in the intake layer.
+- extraction-run and artifact provenance;
+- DeepSqueak-native objects and detections;
+- native and canonical event measurements through the shipped output mapping
+  profile;
+- explicit settings/output-profile linkage;
+- a reusable adapter boundary that does not move extractor interpretation into
+  project intake.
 
-The completed Phase 1 seed/fixture layer and Phase 2 source-mapping test suite
-should remain the regression targets for this work, so the first real importer
-proceeds against a concrete, tested relational environment rather than an
-abstract schema.
+The completed Phase 1 seed/fixture layer, Phase 2 source-mapping contract, and
+Phase 3 intake/read-back suite should remain regression targets, so the first
+real importer proceeds against a concrete project and recording graph.
 
 ---
 

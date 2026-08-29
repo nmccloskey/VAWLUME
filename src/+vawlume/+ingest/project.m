@@ -5,6 +5,11 @@ function result = project(conn, ir, projectSpec, options)
 % provenance, optional tracked device/setup linkage, portable sources,
 % experimental graph, recordings, assignments, and audit rows as create,
 % reuse, or conflict.
+% Planning is the default. APPLY=true commits a conflict-free plan in one
+% transaction and records an immutable ingestion attempt. PROJECTSPEC must
+% declare PROJECT_KEY and NAME; DESCRIPTION is optional. PROFILELINKAGEPATH
+% may declare tracked device/setup assignments, resolved relative to REPOROOT.
+% Source interpretation remains the responsibility of VAWLUME.SOURCE_MAPPING.
 
 arguments
     conn

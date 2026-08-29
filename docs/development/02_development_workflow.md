@@ -221,6 +221,12 @@ view derived solely from the intermediate representation. It accepts no
 database connection and its readiness verdict mirrors IR validity; it does not
 claim that ingestion occurred.
 
+The implemented database boundary is `vawlume.ingest.project`. It consumes a
+validated project-input IR, plans create/reuse/conflict outcomes by durable
+logical identity, and optionally applies the project/entity/recording graph in
+one transaction. It does not repeat discovery or parsing. See
+[`04_project_intake.md`](04_project_intake.md) for the current contract.
+
 ### JSON loader runtime dependency
 
 `vawlume.source_mapping.loadProfile` reads tracked JSON profiles with
@@ -248,6 +254,9 @@ test_project_input_parsing.m
 Add integration tests when multiple layers are connected.
 
 Each bug that changes a semantic or relational invariant should ideally produce a regression test.
+
+The current checkpoint has completed source mapping and transactional project
+intake. DeepSqueak import is the next implementation target.
 
 ## 12. Generated artifacts
 

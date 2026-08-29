@@ -3,7 +3,8 @@
 ## Purpose
 
 The source-mapping intermediate representation (IR) is the single
-database-free result contract between source interpretation and later ingest.
+database-free result contract between source interpretation and project intake
+or extractor ingest.
 It preserves the evidence needed to create relational rows without asking an
 ingester to re-read JSON, rerun regular expressions, or infer precedence from
 iteration order.
@@ -158,9 +159,9 @@ A record is a logical source-scoped object, not a database entity.
 | `mapping_rule` | Rule provenance. |
 | `status` | Mapped, missing-bearing, unresolved, conflict, or invalid state. |
 
-Project records remain source-scoped. A later ingester may resolve repeated
-logical entities through their declared level and native identifier; it need
-not reconstruct those identifiers from filenames.
+Project records remain source-scoped. `vawlume.ingest.project` resolves
+repeated logical entities through their declared level and native identifier;
+it does not reconstruct those identifiers from filenames.
 
 ### `result.values`
 
@@ -259,9 +260,9 @@ blocking ingest.
   absolute paths.
 - No random UUID or database ID is allocated.
 
-## Phase 1 relational compatibility
+## Relational compatibility
 
-The IR carries enough source/profile/rule identity for later ingest to create
+The IR carries enough source/profile/rule identity for project intake to create
 `source_files`, `config_profile_versions`, and ingestion provenance. Project
 records and relationships can populate `experimental_entities`,
 `entity_relationships`, recordings, and role-bearing
@@ -270,8 +271,10 @@ event identity, native/canonical measurements, transforms, operational
 variants, and raw sentinels needed for detections and
 `event_measurements.native_raw_token`.
 
-Later ingest must resolve logical keys to database IDs. The source-mapping
-layer does not open SQLite, execute SQL, or mutate a database.
+`vawlume.ingest.project` resolves project logical keys to database IDs. The
+source-mapping layer still does not open SQLite, execute SQL, or mutate a
+database. See [`04_project_intake.md`](04_project_intake.md) for the stable
+Phase 3 identity, transaction, linkage, and read-back contract.
 
 The dry-run test suite enforces this boundary against a disposable Phase 1
 fixture database by comparing every user-table row count and foreign-key check
