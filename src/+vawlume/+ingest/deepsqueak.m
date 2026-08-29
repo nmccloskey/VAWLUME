@@ -62,9 +62,41 @@ function result = deepsqueak(conn, artifactPath, recordingRef, runSpec, options)
 % unchanged export reuses its artifact row rather than duplicating it, and the
 % same portable path carrying different content is an explicit conflict.
 %
-% This pass establishes the run and provenance graph. Detections and measurements
-% are inserted by a later pass inside this same transaction, so a failure there
-% cannot leave an orphaned extraction run behind.
+% One transaction covers the whole import: the run, its artifacts, the
+% detections, their measurements, review evidence, and label assignments. A
+% failure at any point rolls all of it back, so an extraction run never exists
+% without the calls it produced.
+%
+% Diagnostics are layered, and RESULT.DIAGNOSTICS labels every non-fatal finding
+% with the layer that raised it:
+%
+%   adapter        workbook mechanics
+%   source_mapping profile-driven field interpretation
+%   preflight      profile-declared event checks and version scope
+%   identity       create/reuse/conflict against existing rows
+%   apply          database constraint or transaction failure
+%
+% Conditions that make a plan untrustworthy are raised as exceptions rather than
+% returned, so an inspectable result always describes a real possible import:
+%
+%   adapter         DeepSqueakArtifactNotFound, DeepSqueakArtifactUnreadable,
+%                   DeepSqueakArtifactUnsupported, DeepSqueakArtifactNotPortable
+%   source_mapping  DeepSqueakIRNotValid, and the loader's own
+%                   vawlume:source_mapping:UnexpectedProfileKind and
+%                   ProfileLoadFailed, which own profile-kind and decode faults
+%   preflight       DeepSqueakVersionRequired, DeepSqueakVersionIncompatible,
+%                   DeepSqueakVersionInconsistent, DeepSqueakEventValidationFailed,
+%                   DeepSqueakRecordingNotFound, DeepSqueakRecordingAmbiguous,
+%                   DeepSqueakRecordingRefInvalid, DeepSqueakRunSpecInvalid,
+%                   DeepSqueakProfileUnsupported, DeepSqueakProfileUnregistered,
+%                   DeepSqueakFeatureUnregistered, DeepSqueakExtractorUnregistered,
+%                   DeepSqueakSettingsNotFound, DeepSqueakSettingsInvalid
+%   apply           TransactionState, DeepSqueakPlanConflict
+%
+% Identity conflicts are the exception to that rule: they are returned in
+% RESULT.CONFLICTS with STATUS "conflict" so a caller can inspect exactly what
+% disagrees. Requesting Apply on a conflicting plan returns the conflict and
+% writes nothing.
 %
 % See also VAWLUME.INGEST.DEEPSQUEAKEXPORT, VAWLUME.INGEST.PROJECT.
 
