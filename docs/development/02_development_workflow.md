@@ -267,7 +267,8 @@ MUPET import        complete
 matching candidates complete
 assignment/consensus complete
 detection/feature agreement complete
-consilience + manual QC next, unimplemented
+consilience + manual QC + sensitivity complete
+demonstration and exit review next
 ```
 
 The first cross-extractor correspondence stage is implemented as
@@ -281,11 +282,15 @@ groups), and emits only the consensus lineage permitted by topology.
 default, states the denominator on every proportion, discovers comparable
 features through the registered `equivalence_class` and `feature_relationships`
 rather than through canonical name, and restricts quantitative feature
-comparison to unambiguous one-to-one groups. Consilience statuses, manual QC,
-and threshold sensitivity remain later stages. See
+comparison to unambiguous one-to-one groups. It also assigns one automated
+consilience status per match group with the evidence behind it, evaluates both
+runs against an independent reviewer-authored reference set, and supports
+threshold-sensitivity comparison across configurations without naming any of
+them optimal. See
 [`07_matching_candidate_generation.md`](07_matching_candidate_generation.md),
 [`08_matching_assignment_and_consensus.md`](08_matching_assignment_and_consensus.md),
-and [`09_detection_and_feature_agreement.md`](09_detection_and_feature_agreement.md).
+[`09_detection_and_feature_agreement.md`](09_detection_and_feature_agreement.md),
+and [`10_consilience_manual_qc_and_sensitivity.md`](10_consilience_manual_qc_and_sensitivity.md).
 
 ## 12. Generated artifacts
 

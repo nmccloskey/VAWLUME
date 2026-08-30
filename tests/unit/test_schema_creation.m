@@ -41,6 +41,10 @@ expectedTables = [
     "candidate_pairs"
     "match_groups"
     "consensus_events"
+    "consilience_assessments"
+    "manual_reviews"
+    "manual_reference_events"
+    "agreement_statistics"
     "external_events"
     "aligned_external_events"
 ];

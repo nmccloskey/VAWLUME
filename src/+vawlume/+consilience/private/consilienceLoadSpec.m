@@ -62,9 +62,59 @@ end
 requiredStruct(document, "detection_agreement");
 requiredStruct(document, "feature_agreement");
 requiredStruct(document, "feature_support");
+requiredStruct(document, "consilience");
+requiredStruct(document.consilience, "support_rule");
+requiredStruct(document.consilience, "precedence");
+requiredStruct(document, "manual_qc");
+requiredStruct(document.manual_qc, "reference_events");
+requiredStruct(document.manual_qc, "matching_rule");
 detection = document.detection_agreement;
 feature = document.feature_agreement;
 support = document.feature_support;
+consilience = document.consilience;
+supportRule = consilience.support_rule;
+manualQc = document.manual_qc;
+referenceEvents = manualQc.reference_events;
+manualRule = manualQc.matching_rule;
+
+% A score column exists on consilience_assessments. The specification must state
+% that it is not a probability, and this implementation leaves it NULL.
+if ~isfield(consilience, "score_is_probability") || ...
+        ~islogical(consilience.score_is_probability) || ...
+        consilience.score_is_probability
+    error("vawlume:consilience:SpecificationInvalid", ...
+        ['consilience.score_is_probability must be false. A consilience ' ...
+        'status is a categorical evidence summary, and no calibration exists ' ...
+        'that would justify storing a probability.']);
+end
+requiredTrue(consilience.precedence, "automated_status_is_preserved");
+minimumSupporting = numericField(supportRule, ...
+    "minimum_supporting_comparisons", NaN);
+if ~isfinite(minimumSupporting) || minimumSupporting < 1 || ...
+        fix(minimumSupporting) ~= minimumSupporting
+    error("vawlume:consilience:SpecificationInvalid", ...
+        "consilience.support_rule.minimum_supporting_comparisons must be a positive integer.");
+end
+if requiredText(supportRule, "missing_feature_policy") ~= "not_a_discrepancy"
+    error("vawlume:consilience:SpecificationInvalid", ...
+        ['consilience.support_rule.missing_feature_policy must be ' ...
+        '''not_a_discrepancy''; treating an unexported measurement as ' ...
+        'disagreement would manufacture a discrepancy from a missing column.']);
+end
+requiredTrue(manualQc.curation_cross_reference, ...
+    "report_deepsqueak_accepted_against_reference");
+requiredFalse(manualQc.curation_cross_reference, "used_to_generate_manual_labels");
+requiredFalse(manualQc.curation_cross_reference, "used_in_consilience_status_rules");
+manualMinIou = numericField(manualRule, "min_temporal_iou", NaN);
+if ~isfinite(manualMinIou) || manualMinIou < 0 || manualMinIou > 1
+    error("vawlume:consilience:SpecificationInvalid", ...
+        "manual_qc.matching_rule.min_temporal_iou must be a finite scalar in [0, 1].");
+end
+referenceCoverage = requiredText(referenceEvents, "coverage");
+if ~ismember(referenceCoverage, ["exhaustive_over_recording", "partial"])
+    error("vawlume:consilience:SpecificationInvalid", ...
+        "manual_qc.reference_events.coverage must be exhaustive_over_recording or partial.");
+end
 
 denominator = requiredText(detection, "denominator");
 if requiredText(feature, "scope") ~= "eligible feature pairs on one_to_one groups only"
@@ -114,7 +164,53 @@ specification = struct( ...
     tolerances=toleranceMap(support), ...
     secondary_minimum_n=numericField(feature, "secondary_minimum_n", 10), ...
     icc_enabled=false, ...
-    icc_reason=optionalText(feature.icc, "reason"));
+    icc_reason=optionalText(feature.icc, "reason"), ...
+    minimum_supporting_comparisons=minimumSupporting, ...
+    missing_feature_policy=requiredText(supportRule, "missing_feature_policy"), ...
+    precedence_order=textList(consilience.precedence, "order"), ...
+    status_vocabulary=statusVocabulary(consilience), ...
+    consilience_semantics=requiredText(consilience, "semantics"), ...
+    reference_set_key=requiredText(referenceEvents, "reference_set_key"), ...
+    reference_coverage=referenceCoverage, ...
+    manual_min_temporal_iou=manualMinIou, ...
+    sensitivity_configurations=sensitivityConfigurations(document), ...
+    min_temporal_iou=numericField( ...
+        document.candidate_generation.plausibility_rule, "min_temporal_iou", NaN));
+end
+
+function value = statusVocabulary(consilience)
+value = table(strings(0, 1), strings(0, 1), strings(0, 1), ...
+    VariableNames=["status", "target", "rule"]);
+if ~isfield(consilience, "statuses")
+    return
+end
+items = consilience.statuses;
+if isstruct(items)
+    items = num2cell(items);
+end
+for index = 1:numel(items)
+    item = items{index};
+    value(end + 1, :) = {string(item.status), string(item.target), ...
+        string(item.rule)}; %#ok<AGROW>
+end
+end
+
+function value = sensitivityConfigurations(document)
+value = table(strings(0, 1), zeros(0, 1), ...
+    VariableNames=["name", "min_temporal_iou"]);
+if ~isfield(document, "sensitivity") || ...
+        ~isfield(document.sensitivity, "configurations")
+    return
+end
+items = document.sensitivity.configurations;
+if isstruct(items)
+    items = num2cell(items);
+end
+for index = 1:numel(items)
+    item = items{index};
+    value(end + 1, :) = {string(item.name), ...
+        double(item.min_temporal_iou)}; %#ok<AGROW>
+end
 end
 
 function value = toleranceMap(support)
@@ -204,6 +300,14 @@ if ~isfield(container, field) || ~islogical(container.(field)) || ...
         ~isscalar(container.(field)) || ~container.(field)
     error("vawlume:consilience:SpecificationInvalid", ...
         "Matching specification field '%s' must be true.", field);
+end
+end
+
+function requiredFalse(container, field)
+if ~isfield(container, field) || ~islogical(container.(field)) || ...
+        ~isscalar(container.(field)) || container.(field)
+    error("vawlume:consilience:SpecificationInvalid", ...
+        "Matching specification field '%s' must be false.", field);
 end
 end
 

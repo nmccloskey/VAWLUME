@@ -452,8 +452,14 @@ verifyEqual(testCase, double(featureRows.n(1)), 0);
 
 % Per-pair comparison rows exist in the report but nowhere in the database.
 verifyEqual(testCase, height(report.feature_comparisons), 7);
-verifyEqual(testCase, countOf(fixture.conn, "consilience_assessments"), 0);
+
+% One consilience assessment per match group is written alongside the
+% statistics. Manual reviews are reviewer input and are never authored here, so
+% this fixture, which supplies none, still has none.
+verifyEqual(testCase, countOf(fixture.conn, "consilience_assessments"), ...
+    countOf(fixture.conn, "match_groups"));
 verifyEqual(testCase, countOf(fixture.conn, "manual_reviews"), 0);
+verifyEqual(testCase, countOf(fixture.conn, "manual_reference_events"), 0);
 verifyEqual(testCase, height(fetch(fixture.conn, "PRAGMA foreign_key_check")), 0);
 end
 

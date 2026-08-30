@@ -156,7 +156,26 @@
       { "status": "adjudicated_negative", "target": "match_group_or_consensus_event", "rule": "manual adjudication rejects the correspondence" }
     ],
     "semantics": "A consilience status is an assessment derived from stated evidence under this versioned specification. It is not a probability that a vocalization occurred, and it must not be reported as one.",
-    "rationale_json_required": true
+    "rationale_json_required": true,
+    "score_is_probability": false,
+    "support_rule": {
+      "minimum_supporting_comparisons": 2,
+      "supporting_comparisons_are": "eligible feature pairs with a declared relative tolerance, excluding the timing classes reserved as primary temporal evidence",
+      "missing_feature_policy": "not_a_discrepancy",
+      "missing_feature_effect": "a comparison that could not be computed neither supports nor contradicts; it only reduces the count of available supporting comparisons"
+    },
+    "precedence": {
+      "order": [
+        "manual_adjudication",
+        "ambiguous_topology",
+        "temporal_plus_feature_evidence",
+        "temporal_match",
+        "single_extractor"
+      ],
+      "automated_status_is_preserved": true,
+      "manual_status_storage": "manual_reviews rows joined to the same match group; the automated status in consilience_assessments.status is never overwritten",
+      "effective_status_is_reported_not_stored": true
+    }
   },
 
   "manual_qc": {
@@ -173,13 +192,25 @@
       "ambiguous_segmentation_on_a_match_group",
       "adjudicated_correspondence_on_a_match_group_or_consensus_event"
     ],
-    "not_representable": [
-      {
-        "case": "missed_event_false_negative",
-        "reason": "manual_reviews requires exactly one of detection_id, match_group_id, or consensus_event_id, so an event that neither extractor detected has nothing to attach to",
-        "handling": "reported as a known limitation; recall against a manual reference is out of scope until the schema can hold a reviewer-authored reference event"
-      }
-    ]
+    "reference_events": {
+      "table": "manual_reference_events",
+      "reference_set_key": "prototype_manual_reference_v1",
+      "coverage": "exhaustive_over_recording",
+      "coverage_meaning": "the reviewer annotated the whole recording, so a detection with no overlapping reference event is a reviewed disagreement rather than an unreviewed region",
+      "coverage_required_for": ["recall", "false_negative_count"],
+      "not_derived_from": "any extractor detection, curation state, label, or score"
+    },
+    "matching_rule": {
+      "purpose": "detection to manual reference; deliberately separate from the extractor-to-extractor rule so one cannot be tuned through the other",
+      "require_positive_overlap": true,
+      "min_temporal_iou": 0.10,
+      "assignment": "greatest temporal IoU, each reference event and each detection used at most once"
+    },
+    "curation_cross_reference": {
+      "report_deepsqueak_accepted_against_reference": true,
+      "used_to_generate_manual_labels": false,
+      "used_in_consilience_status_rules": false
+    }
   },
 
   "sensitivity": {
@@ -190,9 +221,26 @@
       "one_to_one_group_count",
       "ambiguous_group_count",
       "unmatched_detection_count_by_extractor",
+      "feature_supported_group_count",
+      "feature_discrepant_group_count",
       "manual_qc_agreement_where_a_reference_subset_exists"
     ],
-    "forbid_selecting_best_threshold_from_synthetic_data": true
+    "configurations": [
+      { "name": "strict", "min_temporal_iou": 0.50 },
+      { "name": "illustrative", "min_temporal_iou": 0.10 },
+      { "name": "permissive", "min_temporal_iou": 0.05 }
+    ],
+    "varied_parameters": ["candidate_generation.plausibility_rule.min_temporal_iou"],
+    "held_constant": [
+      "input extraction runs",
+      "algorithm key and version",
+      "assignment model",
+      "consensus policy",
+      "feature eligibility and tolerances",
+      "manual reference set"
+    ],
+    "forbid_selecting_best_threshold_from_synthetic_data": true,
+    "reporting_rule": "state how outcomes move with the threshold; never label one configuration optimal, validated, or calibrated on synthetic data"
   },
 
   "analysis_identity": {

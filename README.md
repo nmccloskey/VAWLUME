@@ -130,10 +130,24 @@ takes its temporal deltas from the stored candidate evidence rather than
 recomputing them. Feature comparison is discovered through
 `extractor_features.equivalence_class` and `feature_relationships` — never
 through canonical name, which finds nothing at all for central frequency — and
-is restricted to unambiguous one-to-one groups. `Apply=true` persists only
-aggregate statistics, under a child analysis run parented to the matching
-analysis. See
+is restricted to unambiguous one-to-one groups. See
 [`docs/development/09_detection_and_feature_agreement.md`](docs/development/09_detection_and_feature_agreement.md).
+
+The same function assigns one automated consilience status per match group, with
+the rule that produced it and the evidence behind it recorded on every row and no
+score stored, because a status is a categorical evidence summary rather than a
+calibrated probability. `single_extractor` means only that no eligible
+cross-extractor correspondence survived the specification; it is not a false
+positive, and Phase 6 has no manual reference that could make it one by itself.
+Manual adjudication is reported beside the automated status and never overwrites
+it. Both runs are also evaluated against a reviewer-authored reference set held
+in `manual_reference_events`, which is scoped to the recording rather than to any
+analysis, is never derived from extractor curation, and makes recall and missed
+events representable for the first time. `vawlume.consilience.sensitivity`
+compares several matching configurations over identical inputs and names none of
+them optimal. `Apply=true` commits the assessments and the aggregate statistics
+together under a child analysis run parented to the matching analysis. See
+[`docs/development/10_consilience_manual_qc_and_sensitivity.md`](docs/development/10_consilience_manual_qc_and_sensitivity.md).
 
 A disposable all-profile demonstration is available at
 [`examples/project_intake_demo.m`](examples/project_intake_demo.m). It runs the
@@ -225,10 +239,10 @@ semantic collapse, and a runnable MUPET demonstration with a bounded
 co-residence appendix. Item 9, matching and consensus, is underway: its
 versioned contract, temporal candidates, connected-component assignment,
 explicit unmatched groups, and topology-gated consensus lineage are
-implemented, as are registry-driven feature-pair discovery and detection- and
-feature-level agreement. Consilience statuses, manual QC, and threshold
-sensitivity remain pending, so nothing yet writes a consilience assessment or a
-manual review.
+implemented, as are registry-driven feature-pair discovery, detection- and
+feature-level agreement, provenance-bearing consilience statuses, evaluation
+against an independent reviewer-authored reference set, and threshold-sensitivity
+comparison. An end-to-end demonstration and the phase exit review remain.
 
 The dual-extractor result is worth stating precisely, because it is what
 distinguishes a shared architecture from two special cases. Both extractors
@@ -252,6 +266,7 @@ metric identity is never asserted.
 - [`docs/development/07_matching_candidate_generation.md`](docs/development/07_matching_candidate_generation.md) — explicit run-pair resolution, temporal candidate evidence, provenance, planning, and atomic apply
 - [`docs/development/08_matching_assignment_and_consensus.md`](docs/development/08_matching_assignment_and_consensus.md) — connected-component topology, explicit unmatched groups, consensus lineage, and rerun semantics
 - [`docs/development/09_detection_and_feature_agreement.md`](docs/development/09_detection_and_feature_agreement.md) — agreement denominators, registry-driven feature-pair discovery, comparison scope, and what is and is not persisted
+- [`docs/development/10_consilience_manual_qc_and_sensitivity.md`](docs/development/10_consilience_manual_qc_and_sensitivity.md) — consilience status rules and precedence, the independent manual reference, and threshold sensitivity
 
 Extractor-specific design references should live under:
 

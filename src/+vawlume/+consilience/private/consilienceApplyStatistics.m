@@ -1,5 +1,5 @@
 function [counts, agreementAnalysis] = consilienceApplyStatistics( ...
-        conn, analysis, specification, detection, feature)
+        conn, analysis, specification, detection, feature, classification, manualQc)
 %CONSILIENCEAPPLYSTATISTICS Persist aggregate agreement under a child analysis run.
 %
 % Only aggregates are stored, in agreement_statistics, which the schema provides
@@ -13,18 +13,24 @@ function [counts, agreementAnalysis] = consilienceApplyStatistics( ...
 % The results live under their own analysis_runs row whose parent is the matching
 % analysis, so a changed agreement algorithm produces a new child rather than
 % mutating an earlier summary.
+%
+% Consilience assessments commit in the same transaction as the statistics. A
+% failure part way through must not leave a database claiming a completed
+% agreement analysis while only some groups carry a status.
 
 runKey = agreementRunKey(analysis.run_key);
 existing = fetch(conn, "SELECT analysis_run_id, status, IFNULL(notes,'') AS notes " + ...
     "FROM analysis_runs WHERE project_id=" + string(analysis.project_id) + ...
     " AND run_key=" + sqlText(runKey));
-rows = statisticRows(detection, feature);
+rows = statisticRows(detection, feature, manualQc);
 
 if height(existing) > 0
-    agreementAnalysis = reuseOrConflict(conn, analysis, existing, runKey, rows);
+    agreementAnalysis = reuseOrConflict(conn, analysis, existing, runKey, rows, ...
+        classification);
     counts = emptyCounts();
     counts.reused_analysis_runs = 1;
     counts.reused_agreement_statistics = height(rows);
+    counts.reused_consilience_assessments = height(classification.assessments);
     return
 end
 
@@ -71,6 +77,19 @@ try
             "agreement_statistic_id");
     end
     counts.agreement_statistics = height(rows);
+    for index = 1:height(classification.assessments)
+        row = classification.assessments(index, :);
+        % status holds the automated status only. The manual verdict stays in
+        % its own manual_reviews row, joined by match group, so manual review
+        % never destroys the algorithmic result. score stays NULL because a
+        % consilience status is not a calibrated probability.
+        consilienceInsertRow(conn, "consilience_assessments", struct( ...
+            analysis_run_id=analysisRunId, ...
+            match_group_id=row.match_group_id, ...
+            status=row.automated_status, ...
+            rationale_json=row.rationale_json), "consilience_assessment_id");
+    end
+    counts.consilience_assessments = height(classification.assessments);
     execute(conn, "UPDATE analysis_runs SET status='completed', " + ...
         "completed_at_utc=strftime('%Y-%m-%dT%H:%M:%fZ','now') " + ...
         "WHERE analysis_run_id=" + string(analysisRunId));
@@ -89,7 +108,8 @@ agreementAnalysis = struct(analysis_run_id=analysisRunId, run_key=runKey, ...
     action="create", statistic_count=height(rows));
 end
 
-function agreementAnalysis = reuseOrConflict(conn, analysis, existing, runKey, rows)
+function agreementAnalysis = reuseOrConflict(conn, analysis, existing, runKey, ...
+        rows, classification)
 %REUSEORCONFLICT An existing summary is reused only if it is identical.
 %
 % Nothing is updated in place. A different result under the same key means the
@@ -113,11 +133,31 @@ if ~mismatch
         end
     end
 end
+if ~mismatch
+    storedStatuses = fetch(conn, "SELECT ca.match_group_id, ca.status " + ...
+        "FROM consilience_assessments ca WHERE ca.analysis_run_id=" + ...
+        string(analysisRunId) + " ORDER BY ca.match_group_id");
+    expectedStatuses = sortrows(classification.assessments, "match_group_id");
+    if height(storedStatuses) ~= height(expectedStatuses)
+        mismatch = true;
+    else
+        for index = 1:height(expectedStatuses)
+            if double(storedStatuses.match_group_id(index)) ~= ...
+                    expectedStatuses.match_group_id(index) || ...
+                    presentText(storedStatuses.status(index)) ~= ...
+                    expectedStatuses.automated_status(index)
+                mismatch = true;
+                break
+            end
+        end
+    end
+end
 if mismatch
     error("vawlume:consilience:AgreementConflict", ...
-        ['Agreement analysis ''%s'' already exists with different statistics. ' ...
-        'A changed algorithm or changed inputs require a new analysis key ' ...
-        'rather than rewriting a stored summary.'], runKey);
+        ['Agreement analysis ''%s'' already exists with different statistics ' ...
+        'or consilience statuses. A changed algorithm or changed inputs ' ...
+        'require a new analysis key rather than rewriting a stored summary.'], ...
+        runKey);
 end
 agreementAnalysis = struct(analysis_run_id=analysisRunId, run_key=runKey, ...
     parent_analysis_run_id=analysis.analysis_run_id, status="reused", ...
@@ -136,8 +176,9 @@ end
 value = abs(stored - expected) <= 1e-9 * max(1, abs(expected));
 end
 
-function rows = statisticRows(detection, feature)
+function rows = statisticRows(detection, feature, manualQc)
 rows = emptyRows();
+rows = manualStatisticRows(rows, manualQc);
 for index = 1:height(detection.per_run)
     run = detection.per_run(index, :);
     context = string(jsonencode(struct( ...
@@ -217,6 +258,63 @@ end
 rows = sortrows(rows, ["statistic_kind", "statistic_name"]);
 end
 
+function rows = manualStatisticRows(rows, manualQc)
+%MANUALSTATISTICROWS Evaluation against the independent reference, if one exists.
+%
+% Namespaced under manual. so a reader can never confuse agreement between the
+% two extractors with agreement against a reviewer. Recall and the false-negative
+% count are omitted entirely rather than stored as NaN when the specification
+% does not declare the reference set exhaustive.
+if ~manualQc.reference_available
+    return
+end
+for index = 1:height(manualQc.per_run)
+    run = manualQc.per_run(index, :);
+    context = string(jsonencode(struct( ...
+        run_role=run.run_role, extractor_name=run.extractor_name, ...
+        reference_set_key=manualQc.reference_set_key, ...
+        reference_coverage=manualQc.coverage, ...
+        manual_min_temporal_iou=manualQc.matching_rule.min_temporal_iou, ...
+        rule="detection to manual reference, separate from the " + ...
+            "extractor-to-extractor rule", ...
+        caution="synthetic reference subset; demonstrates evaluation logic, " + ...
+            "not extractor performance")));
+    prefix = "manual." + run.run_role + ".";
+    rows = append(rows, "detection_agreement", prefix + "true_positives", ...
+        run.true_positives, run.detection_count, context);
+    rows = append(rows, "detection_agreement", prefix + "false_positives", ...
+        run.false_positives, run.detection_count, context);
+    rows = append(rows, "detection_agreement", prefix + "precision", ...
+        run.precision, run.detection_count, context);
+    if manualQc.recall_reportable
+        rows = append(rows, "detection_agreement", prefix + "false_negatives", ...
+            run.false_negatives, run.reference_event_count, context);
+        rows = append(rows, "detection_agreement", prefix + "recall", ...
+            run.recall, run.reference_event_count, context);
+    end
+    rows = append(rows, "detection_agreement", ...
+        prefix + "mean_absolute_onset_error_s", ...
+        run.mean_absolute_onset_error_s, run.true_positives, context);
+    rows = append(rows, "detection_agreement", ...
+        prefix + "mean_absolute_offset_error_s", ...
+        run.mean_absolute_offset_error_s, run.true_positives, context);
+end
+for index = 1:height(manualQc.contingency)
+    row = manualQc.contingency(index, :);
+    context = string(jsonencode(struct( ...
+        automated_status=row.automated_status, ...
+        reference_set_key=manualQc.reference_set_key, ...
+        caution="counts only; this is not a calibrated predictive claim")));
+    prefix = "manual.contingency." + row.automated_status + ".";
+    rows = append(rows, "matching_diagnostic", prefix + "group_count", ...
+        row.group_count, NaN, context);
+    rows = append(rows, "matching_diagnostic", prefix + "reference_supported", ...
+        row.reference_supported, row.group_count, context);
+    rows = append(rows, "matching_diagnostic", prefix + "reference_absent", ...
+        row.reference_absent, row.group_count, context);
+end
+end
+
 function rows = append(rows, kind, name, value, n, context)
 rows(end + 1, :) = {string(kind), string(name), double(value), NaN, NaN, ...
     double(n), string(context)};
@@ -254,7 +352,8 @@ end
 function counts = emptyCounts()
 counts = struct(analysis_runs=0, analysis_run_profiles=0, ...
     analysis_run_extraction_inputs=0, agreement_statistics=0, ...
-    reused_analysis_runs=0, reused_agreement_statistics=0);
+    consilience_assessments=0, reused_analysis_runs=0, ...
+    reused_agreement_statistics=0, reused_consilience_assessments=0);
 end
 
 function value = presentText(value)

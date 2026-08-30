@@ -776,6 +776,40 @@ CREATE TABLE manual_reviews (
     CHECK (corrected_end_time_s IS NULL OR corrected_start_time_s IS NULL OR corrected_end_time_s >= corrected_start_time_s)
 );
 
+-- Reviewer-authored events, independent of any extractor and of any analysis.
+--
+-- manual_reviews adjudicates something that already exists: a detection, a match
+-- group, or a consensus event. It therefore cannot represent an event that no
+-- extractor found, which makes recall and false negatives unrepresentable. These
+-- rows are the missing half: a reviewer asserting that a vocalization occurred,
+-- attached to the recording rather than to anything an extractor produced.
+--
+-- Scoped to the recording and to a named reference set, not to an analysis run,
+-- so one reviewed subset anchors every matching configuration compared against
+-- it. Nothing here is derived from extractor curation; a reference set built from
+-- an extractor's own accept flag would not be independent evidence.
+--
+-- Whether a set annotates the whole recording exhaustively is a methodological
+-- property of how it was produced, so it is declared in the versioned matching
+-- and consilience specification rather than assumed here. Precision needs no such
+-- claim; recall is only meaningful under exhaustive coverage.
+CREATE TABLE manual_reference_events (
+    manual_reference_event_id INTEGER PRIMARY KEY,
+    recording_id        INTEGER NOT NULL REFERENCES recordings(recording_id) ON DELETE CASCADE,
+    reference_set_key   TEXT NOT NULL,
+    native_reference_id TEXT,
+    reviewer_label      TEXT,
+    start_time_s        REAL NOT NULL CHECK (start_time_s >= 0),
+    end_time_s          REAL NOT NULL CHECK (end_time_s >= start_time_s),
+    event_status        TEXT NOT NULL DEFAULT 'reference_event' CHECK (event_status IN (
+                            'reference_event',
+                            'reference_event_uncertain'
+                        )),
+    reviewed_at_utc     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    notes               TEXT,
+    UNIQUE(recording_id, reference_set_key, native_reference_id)
+);
+
 -- Generic storage for detection- or feature-agreement statistics produced after matching.
 CREATE TABLE agreement_statistics (
     agreement_statistic_id INTEGER PRIMARY KEY,
@@ -1420,6 +1454,7 @@ CREATE INDEX idx_candidate_pairs_recording ON candidate_pairs(analysis_run_id, r
 CREATE INDEX idx_match_groups_recording ON match_groups(analysis_run_id, recording_id);
 CREATE INDEX idx_match_members_detection ON match_group_members(detection_id);
 CREATE INDEX idx_consensus_events_recording_time ON consensus_events(recording_id, start_time_s, end_time_s);
+CREATE INDEX idx_manual_reference_events_recording_time ON manual_reference_events(recording_id, reference_set_key, start_time_s, end_time_s);
 CREATE INDEX idx_external_streams_recording ON external_streams(recording_id);
 CREATE INDEX idx_external_events_stream_time ON external_events(external_stream_id, start_time_native);
 CREATE INDEX idx_alignment_anchors_run ON alignment_anchors(alignment_run_id, source_time);
