@@ -504,7 +504,10 @@ lines = ["noise-reduction,5"; "minimum-syllable-duration,008"; ...
 end
 
 function path = writeSpecVariant(basePath, workspaceRoot, name, iou)
-text = string(fileread(basePath));
+% Line endings are normalized to LF before matching. The tracked JSON is stored
+% with LF but `.gitattributes` sets `* text=auto`, so a Windows checkout gives it
+% CRLF, and a search pattern spanning a line break would then match nothing.
+text = replace(string(fileread(basePath)), sprintf("\r\n"), newline);
 old = string(sprintf('"min_temporal_iou": 0.10\n    }'));
 new = string(sprintf('"min_temporal_iou": %g\n    }', iou));
 assert(count(text, old) == 1);

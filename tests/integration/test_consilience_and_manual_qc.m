@@ -627,8 +627,12 @@ path = writeSpecVariant(fixture, name + ".json", {old, ...
 end
 
 function path = writeSpecVariant(fixture, name, oldValues, newValues)
+% Line endings are normalized to LF before matching. The tracked JSON is stored
+% with LF but `.gitattributes` sets `* text=auto`, so a Windows checkout gives it
+% CRLF, and a search pattern spanning a line break would then match nothing.
 text = string(fileread(fullfile(fixture.repo_root, "config", ...
     "05_matching_profiles", "prototype_matching_consilience_spec.json")));
+text = replace(text, sprintf("\r\n"), newline);
 for index = 1:numel(oldValues)
     assert(count(text, string(oldValues{index})) == 1, ...
         "Expected exactly one occurrence of the replaced specification text.");

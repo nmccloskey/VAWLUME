@@ -258,8 +258,18 @@ plus registry-driven feature-pair discovery, detection- and feature-level
 agreement, provenance-bearing consilience statuses, evaluation against an
 independent reviewer-authored reference set, threshold-sensitivity comparison,
 and an end-to-end demonstration. The Phase 6 integration and exit review has
-passed, so item 10 — one compact sequence/alignment analysis — is the next
-implementation target.
+passed.
+
+Phase 7 is now underway on item 10, which it splits so that temporal alignment
+comes first: sequence analysis over vocalization events is only meaningful once
+those events share a defensible common clock with the behavioural or neural
+events they are being related to. Phase 7 targets timebases, external streams
+and their coverage, logical anchors with observations on several clocks,
+offset-only and affine source-to-reference transforms with residual evidence,
+common-time projection, and one small regularized timeline. Sequence analytics
+proper — transitions, motifs, bouts, string methods — is deferred to a later
+phase. **Nothing in that list is implemented yet;** the design contract is
+[`docs/design/02_temporal_alignment_contract.md`](docs/design/02_temporal_alignment_contract.md).
 
 **Every matching, tolerance, and manual-reference threshold shipped with the
 prototype is provisional.** They are deterministic demonstration values chosen
@@ -281,6 +291,7 @@ metric identity is never asserted.
 ## Documentation
 
 - [`docs/design/01_prototype_development_outline.md`](docs/design/01_prototype_development_outline.md) — current prototype development plan
+- [`docs/design/02_temporal_alignment_contract.md`](docs/design/02_temporal_alignment_contract.md) — Phase 7 temporal-alignment design contract, exit criteria, and inherited-schema audit (design target; not yet implemented)
 - [`docs/development/01_repo_structure.md`](docs/development/01_repo_structure.md) — repository policy and MATLAB-specific layout
 - [`docs/development/02_development_workflow.md`](docs/development/02_development_workflow.md) — development conventions for the prototype
 - [`docs/development/03_source_mapping_intermediate_representation.md`](docs/development/03_source_mapping_intermediate_representation.md) — source-mapping IR and dry-run contract

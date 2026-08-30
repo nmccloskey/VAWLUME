@@ -1526,7 +1526,8 @@ Phase 1 completed Steps 1-4, Phase 2 completed Step 5, Phase 3 completed Step 6,
 Phase 4 completed Step 7, Phase 5 completed Step 8, and Phase 6 completed Step 9
 as tested relational checkpoints. The recommended sequence below remains the
 implementation spine, with Step 10 — a compact sequence/alignment analysis — as
-the active target. Step 9's candidate generation, assignment, consensus-lineage,
+the active target, which Phase 7 splits so that temporal alignment is built
+before sequence analytics. Step 9's candidate generation, assignment, consensus-lineage,
 agreement, consilience, manual-QC, sensitivity, and end-to-end demonstration
 stages are complete, and the Phase 6 integration and exit review has passed.
 
@@ -1681,6 +1682,23 @@ illustrative rather than calibrated.
 
 Prefer one scientifically illustrative example over broad analytical scope.
 
+**Phase 7 splits this step, alignment first.** Sequence analysis over
+vocalization events is only meaningful once those events and the behavioural or
+neural events they are related to share a defensible common clock, so temporal
+alignment is the prerequisite half and is large enough to own a phase on its
+own. Phase 7 therefore delivers timebases, external streams and coverage,
+logical anchors with per-timebase observations, offset-only and affine
+source-to-reference transforms with residual evidence, common-time projection,
+and one small regularized timeline.
+
+Transition matrices, bout statistics, n-grams, motifs, edit distance, string
+alignment, sequence clustering, and hierarchy-aware inference are deliberately
+deferred to a later phase.
+
+The governing contract, including the audit of the inherited draft alignment
+schema, is
+[`02_temporal_alignment_contract.md`](02_temporal_alignment_contract.md).
+
 ---
 
 # 14. Proposed repository organization
@@ -1776,16 +1794,31 @@ The prototype is successful when it can reproducibly demonstrate:
 # 17. Immediate next planning target
 
 With Goal 3's correspondence workflow implemented and its exit review passed,
-the immediate target is Step 10.
+Phase 7 is underway on the first half of Step 10.
 
-The recommended next target is:
+The active target is:
 
-## **Step 10 — one compact sequence/alignment analysis**
+## **Phase 7 — temporal alignment and a sequence-ready timeline**
 
-Prefer one scientifically illustrative example over broad analytical scope. The
-natural inputs are the detection populations and, where topology permits, the
-consensus lineage that Phase 6 now produces; ambiguous groups must stay
-ambiguous rather than being silently resolved to make a sequence well ordered.
+Make heterogeneous event streams expressible on a user-selected reference
+timebase while preserving native timestamps, source provenance, anchor evidence,
+and fit diagnostics, and build only the minimum regularized-timeline foundation
+needed to show aligned vocalization, behavioural, and neural events coordinated
+in common bins.
+
+The reference timebase is a coordinate choice, not a claim of ground truth.
+Anchor correspondence comes from explicit user-supplied identities, never from
+nearest-timestamp or pulse-order guessing. Native timestamps are never
+overwritten; aligned times are derived from an authoritative transform. A
+regularized timeline must distinguish an event being absent from a stream not
+having been observed.
+
+Sequence analytics proper — transitions, motifs, bouts, string methods — is
+deferred to a later phase, for the reason recorded at Step 10.
+
+The contract, its exit criteria, and an audit of the inherited draft alignment
+schema are in
+[`02_temporal_alignment_contract.md`](02_temporal_alignment_contract.md).
 
 The completed Phase 1-6 test and demonstration suite is the regression floor for
 that work: **265 tests passing, 0 failed, 0 incomplete.**

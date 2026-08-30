@@ -270,8 +270,14 @@ detection/feature agreement complete
 consilience + manual QC + sensitivity complete
 matching/consensus demonstration complete
 Phase 6 integration/exit review complete
-sequence/alignment analysis next
+temporal alignment contract complete
+alignment schema and timebase ontology next
 ```
+
+Phase 7 splits Step 10 so that temporal alignment is built before sequence
+analytics. Its contract, exit criteria, and inherited-schema audit are in
+[`../design/02_temporal_alignment_contract.md`](../design/02_temporal_alignment_contract.md).
+Nothing in that contract is implemented yet.
 
 The first cross-extractor correspondence stage is implemented as
 `vawlume.matching.compare`. It generates and can atomically persist all
