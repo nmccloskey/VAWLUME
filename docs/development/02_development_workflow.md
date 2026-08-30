@@ -268,7 +268,8 @@ matching candidates complete
 assignment/consensus complete
 detection/feature agreement complete
 consilience + manual QC + sensitivity complete
-demonstration and exit review next
+matching/consensus demonstration complete
+Phase 6 exit review next
 ```
 
 The first cross-extractor correspondence stage is implemented as
@@ -286,7 +287,12 @@ comparison to unambiguous one-to-one groups. It also assigns one automated
 consilience status per match group with the evidence behind it, evaluates both
 runs against an independent reviewer-authored reference set, and supports
 threshold-sensitivity comparison across configurations without naming any of
-them optimal. See
+them optimal. The complete disposable workflow is executable as
+[`examples/matching_consensus_demo.m`](../../examples/matching_consensus_demo.m),
+and its consolidated contract is documented in
+[`07_matching_and_consensus.md`](07_matching_and_consensus.md). Its synthetic
+thresholds are illustrative, not recommended. The Phase 6 exit review owns the
+final phase status. See also
 [`07_matching_candidate_generation.md`](07_matching_candidate_generation.md),
 [`08_matching_assignment_and_consensus.md`](08_matching_assignment_and_consensus.md),
 [`09_detection_and_feature_agreement.md`](09_detection_and_feature_agreement.md),

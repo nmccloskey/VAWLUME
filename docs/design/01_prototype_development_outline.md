@@ -2,7 +2,7 @@
 
 **Status:** Revised working development plan  
 **Updated:** 2026-08-30
-**Project stage:** Implemented through Phase 6 consilience, manual-QC evaluation, and threshold sensitivity; an end-to-end demonstration and the phase exit review remain
+**Project stage:** Implemented through the Phase 6 matching-and-consensus demonstration; the phase exit review remains
 **Primary implementation environment:** MATLAB + SQLite  
 **Prototype objective:** Poster-ready, vertically integrated demonstration
 
@@ -789,7 +789,8 @@ cross-extractor correspondence — belongs to Goal 3 and Step 9. Its contract,
 versioned specification, temporal candidates, connected-component assignment,
 topology-gated consensus lineage, and registry-driven detection- and
 feature-level agreement, consilience classification, independent manual-QC
-evaluation, and threshold sensitivity are now implemented; an end-to-end
+evaluation, threshold sensitivity, and an end-to-end demonstration are now
+implemented. The Phase 6 exit review remains and owns the final phase status.
 
 ### DeepSqueak minimum
 
@@ -1526,7 +1527,8 @@ Phase 4 completed Step 7, and Phase 5 completed Step 8 as tested relational
 checkpoints. The recommended sequence below remains the implementation spine,
 with Step 9 — matching and consensus — as the active target. Its candidate
 generation, assignment, consensus-lineage, agreement, consilience, manual-QC,
-and sensitivity stages are complete; demonstration and exit review remain.
+sensitivity, and end-to-end demonstration stages are complete. The Phase 6 exit
+review remains.
 
 ## Step 1 — Stabilize schema vocabulary
 
@@ -1657,10 +1659,13 @@ Temporal-first, ambiguity-preserving.
 
 **Current checkpoint:** the caller-selected run-pair resolver, versioned
 matching-spec registration, transparent temporal evidence, exhaustive candidate
-generation, unmatched summaries, and atomic candidate persistence are
-implemented. Candidate generation performs no assignment. Connected-component
-groups, consensus timing, agreement statistics, and consilience remain later
-Step 9 stages.
+generation, connected-component grouping, explicit unmatched groups,
+topology-gated consensus, agreement statistics, consilience, independent
+manual-QC evaluation, threshold sensitivity, and an end-to-end demonstration
+are implemented. Candidate generation remains distinct from assignment, all
+plausible edges are preserved, and ambiguous topology is not forced into a
+one-to-one solution. The Phase 6 exit review remains before Step 9 can be marked
+complete.
 
 ## Step 10 — Implement a small sequence/alignment analysis
 
@@ -1760,23 +1765,20 @@ The prototype is successful when it can reproducibly demonstrate:
 
 # 17. Immediate next planning target
 
-With the schema, semantic seed, synthetic fixture, acceptance queries, Phase 2
-`source_mapping` engine, Phase 3 project intake, and Phase 4 DeepSqueak import
-in place, the next architectural hinge is the second real extractor import.
+With the shared imports and Phase 6 matching-and-consensus demonstration in
+place, the immediate target is the Phase 6 exit review.
 
 The recommended next target is:
 
-## **MUPET import**
+## **Phase 6 integration and exit review**
 
-MUPET should reuse the established source-mapping, portable recording,
-extraction-run, artifact, and native/canonical measurement boundaries while
-preserving MUPET's own dataset, repertoire, syllable, and settings semantics.
-It is the critical proof that the relational/import architecture is not merely
-a generalized DeepSqueak schema. Shared importer helpers should be factored
-only where the two implemented paths demonstrate genuine duplication.
+The review should reconcile the complete correspondence workflow against the
+Phase 6 specification, run the full regression and static-check suite, and own
+the final phase status. After that gate passes, Step 10's compact
+sequence/alignment analysis becomes the next implementation target.
 
-The completed Phase 1-4 test and demonstration suite remains the regression
-floor for that work.
+The completed Phase 1-6 test and demonstration suite is the regression floor for
+that work.
 
 ---
 

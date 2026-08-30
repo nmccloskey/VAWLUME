@@ -176,6 +176,16 @@ the two populations can be seen coexisting. That appendix computes no
 correspondence between them, and the run ends with zero candidate pairs, match
 groups, consensus events, and consilience assessments.
 
+A fourth disposable demonstration covers the complete cross-extractor path at
+[`examples/matching_consensus_demo.m`](examples/matching_consensus_demo.m). It
+creates one synthetic recording, imports DeepSqueak and MUPET results through
+their public adapters, runs temporal matching, connected-component assignment,
+consensus, agreement, consilience, independent manual-QC evaluation, and three
+threshold configurations, and verifies stable rerun identity and end-to-end
+provenance. The fixture deliberately contains one-to-one, one-to-many, and
+unmatched topology. Its thresholds illustrate behavior only; they are not a
+scientific recommendation.
+
 From the repository root:
 
 ```matlab
@@ -183,9 +193,10 @@ addpath("examples")
 project_intake_demo
 deepsqueak_import_demo
 mupet_import_demo
+matching_consensus_demo
 ```
 
-All three create every input they need under the system temporary directory and
+All four create every input they need under the system temporary directory and
 remove it before returning.
 
 ## Configuration policy
@@ -236,13 +247,15 @@ end-to-end demonstration. Phase 5 completed item 8: the MUPET CSV adapter, the
 run and provenance graph, the atomic syllable and measurement population, the
 dual-extractor proof that both importers reach one relational model without
 semantic collapse, and a runnable MUPET demonstration with a bounded
-co-residence appendix. Item 9, matching and consensus, is underway: its
+co-residence appendix. Phase 6 has implemented item 9's matching-and-consensus
+prototype: its
 versioned contract, temporal candidates, connected-component assignment,
 explicit unmatched groups, and topology-gated consensus lineage are
 implemented, as are registry-driven feature-pair discovery, detection- and
 feature-level agreement, provenance-bearing consilience statuses, evaluation
 against an independent reviewer-authored reference set, and threshold-sensitivity
-comparison. An end-to-end demonstration and the phase exit review remain.
+comparison, and its end-to-end demonstration. The Phase 6 exit review remains;
+it owns the final phase status before sequence/alignment work begins.
 
 The dual-extractor result is worth stating precisely, because it is what
 distinguishes a shared architecture from two special cases. Both extractors
@@ -263,6 +276,7 @@ metric identity is never asserted.
 - [`docs/development/04_project_intake.md`](docs/development/04_project_intake.md) — transactional project-intake boundary and identity contract
 - [`docs/development/05_deepsqueak_import.md`](docs/development/05_deepsqueak_import.md) — DeepSqueak import contract, identity, provenance, and limitations
 - [`docs/development/06_mupet_import.md`](docs/development/06_mupet_import.md) — MUPET import contract, syllable identity, the deliberate curation/classification absences, and the shared extractor core
+- [`docs/development/07_matching_and_consensus.md`](docs/development/07_matching_and_consensus.md) — end-to-end matching, consensus, agreement, consilience, manual-QC, and sensitivity workflow
 - [`docs/development/07_matching_candidate_generation.md`](docs/development/07_matching_candidate_generation.md) — explicit run-pair resolution, temporal candidate evidence, provenance, planning, and atomic apply
 - [`docs/development/08_matching_assignment_and_consensus.md`](docs/development/08_matching_assignment_and_consensus.md) — connected-component topology, explicit unmatched groups, consensus lineage, and rerun semantics
 - [`docs/development/09_detection_and_feature_agreement.md`](docs/development/09_detection_and_feature_agreement.md) — agreement denominators, registry-driven feature-pair discovery, comparison scope, and what is and is not persisted
