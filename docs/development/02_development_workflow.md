@@ -269,7 +269,8 @@ assignment/consensus complete
 detection/feature agreement complete
 consilience + manual QC + sensitivity complete
 matching/consensus demonstration complete
-Phase 6 exit review next
+Phase 6 integration/exit review complete
+sequence/alignment analysis next
 ```
 
 The first cross-extractor correspondence stage is implemented as
@@ -291,8 +292,9 @@ them optimal. The complete disposable workflow is executable as
 [`examples/matching_consensus_demo.m`](../../examples/matching_consensus_demo.m),
 and its consolidated contract is documented in
 [`07_matching_and_consensus.md`](07_matching_and_consensus.md). Its synthetic
-thresholds are illustrative, not recommended. The Phase 6 exit review owns the
-final phase status. See also
+thresholds are illustrative, not recommended. The Phase 6 integration and exit
+review has passed, so the next implementation target is one compact
+sequence/alignment analysis. See also
 [`07_matching_candidate_generation.md`](07_matching_candidate_generation.md),
 [`08_matching_assignment_and_consensus.md`](08_matching_assignment_and_consensus.md),
 [`09_detection_and_feature_agreement.md`](09_detection_and_feature_agreement.md),

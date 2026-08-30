@@ -249,7 +249,21 @@ computation checks, not extractor-performance estimates.
 - no sequence/bout analysis, external-event alignment, hierarchy-aware
   inferential model, or poster claim of validated extractor performance exists;
 - correlation/ICC remain unexercised at realistic sample size;
-- Pass 7 still owns the Phase 6 integration exit decision.
+- there is no reviewer-file ingest API, so reference events must be authored
+  directly against `manual_reference_events`;
+- registered feature relationships are matched to an analysis by extractor
+  name, not by extractor version. A relationship registered against a different
+  version of the same extractor yields an unavailable comparison rather than a
+  wrong one, but it is not selected out explicitly.
+
+`candidate_pairs` is constrained by trigger to one recording and two distinct
+extraction runs, but not to its analysis run's declared inputs; that narrower
+scope is enforced by the implementation and asserted by tests rather than by the
+schema. `match_group_members` is trigger-constrained to the declared inputs.
+
+The Phase 6 integration and exit review has passed. Goal 3 has a functioning
+prototype, and the next implementation target is one compact sequence/alignment
+analysis.
 
 More detailed stage contracts remain in
 [`07_matching_candidate_generation.md`](07_matching_candidate_generation.md),

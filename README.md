@@ -57,7 +57,10 @@ The current design includes:
   candidate, connected-component assignment, and consensus planner over
   explicitly selected extraction runs;
 - registry-driven cross-extractor feature-pair discovery and read-only
-  detection- and feature-level agreement summaries with explicit denominators.
+  detection- and feature-level agreement summaries with explicit denominators;
+- provenance-bearing consilience statuses, evaluation against an independent
+  reviewer-authored reference set, and read-only threshold sensitivity across
+  coexisting matching configurations.
 
 The reusable `source_mapping` engine now completes the Phase 2 checkpoint and
 the Phase 2.5 native-configuration cleanup: it loads canonical JSON profiles
@@ -74,8 +77,9 @@ through one shared relational and semantic architecture. Import itself creates
 no cross-extractor result. Matching is implemented separately from import
 through transparent temporal candidates, ambiguity-preserving match groups,
 and topology-governed consensus lineage. Agreement between those populations is
-then quantified separately again, read-only by default. Consilience statuses and
-manual adjudication remain later stages.
+then quantified separately again, read-only by default. Consilience statuses,
+independent manual review, and threshold sensitivity are implemented on top of
+that, still without either extractor being treated as ground truth.
 `vawlume.ingest.deepsqueakExport` reads a
 DeepSqueak Excel call-statistics export and routes it through the tracked
 DeepSqueak output-mapping profile to a validated extractor-output IR, without
@@ -247,15 +251,22 @@ end-to-end demonstration. Phase 5 completed item 8: the MUPET CSV adapter, the
 run and provenance graph, the atomic syllable and measurement population, the
 dual-extractor proof that both importers reach one relational model without
 semantic collapse, and a runnable MUPET demonstration with a bounded
-co-residence appendix. Phase 6 has implemented item 9's matching-and-consensus
-prototype: its
-versioned contract, temporal candidates, connected-component assignment,
-explicit unmatched groups, and topology-gated consensus lineage are
-implemented, as are registry-driven feature-pair discovery, detection- and
-feature-level agreement, provenance-bearing consilience statuses, evaluation
-against an independent reviewer-authored reference set, and threshold-sensitivity
-comparison, and its end-to-end demonstration. The Phase 6 exit review remains;
-it owns the final phase status before sequence/alignment work begins.
+co-residence appendix. Phase 6 completed item 9's matching-and-consensus
+prototype: its versioned contract, temporal candidates, connected-component
+assignment, explicit unmatched groups, and topology-gated consensus lineage,
+plus registry-driven feature-pair discovery, detection- and feature-level
+agreement, provenance-bearing consilience statuses, evaluation against an
+independent reviewer-authored reference set, threshold-sensitivity comparison,
+and an end-to-end demonstration. The Phase 6 integration and exit review has
+passed, so item 10 — one compact sequence/alignment analysis — is the next
+implementation target.
+
+**Every matching, tolerance, and manual-reference threshold shipped with the
+prototype is provisional.** They are deterministic demonstration values chosen
+to exercise algorithm behaviour on synthetic fixtures. Calibration requires a
+genuine paired extractor session and an independent manually reviewed reference
+subset, neither of which exists yet, so no configuration should be reported as
+optimal, validated, or recommended.
 
 The dual-extractor result is worth stating precisely, because it is what
 distinguishes a shared architecture from two special cases. Both extractors

@@ -1523,12 +1523,12 @@ The earlier outline proposed beginning with `schema.sql`.
 That has now occurred conceptually and as a first executable draft.
 
 Phase 1 completed Steps 1-4, Phase 2 completed Step 5, Phase 3 completed Step 6,
-Phase 4 completed Step 7, and Phase 5 completed Step 8 as tested relational
-checkpoints. The recommended sequence below remains the implementation spine,
-with Step 9 — matching and consensus — as the active target. Its candidate
-generation, assignment, consensus-lineage, agreement, consilience, manual-QC,
-sensitivity, and end-to-end demonstration stages are complete. The Phase 6 exit
-review remains.
+Phase 4 completed Step 7, Phase 5 completed Step 8, and Phase 6 completed Step 9
+as tested relational checkpoints. The recommended sequence below remains the
+implementation spine, with Step 10 — a compact sequence/alignment analysis — as
+the active target. Step 9's candidate generation, assignment, consensus-lineage,
+agreement, consilience, manual-QC, sensitivity, and end-to-end demonstration
+stages are complete, and the Phase 6 integration and exit review has passed.
 
 ## Step 1 — Stabilize schema vocabulary
 
@@ -1657,15 +1657,25 @@ capabilities are produced by its output profile rather than by a MUPET branch.
 
 Temporal-first, ambiguity-preserving.
 
-**Current checkpoint:** the caller-selected run-pair resolver, versioned
-matching-spec registration, transparent temporal evidence, exhaustive candidate
-generation, connected-component grouping, explicit unmatched groups,
-topology-gated consensus, agreement statistics, consilience, independent
-manual-QC evaluation, threshold sensitivity, and an end-to-end demonstration
-are implemented. Candidate generation remains distinct from assignment, all
-plausible edges are preserved, and ambiguous topology is not forced into a
-one-to-one solution. The Phase 6 exit review remains before Step 9 can be marked
-complete.
+**Complete.** The caller-selected run-pair resolver, versioned matching-spec
+registration, transparent temporal evidence, exhaustive candidate generation,
+connected-component grouping, explicit unmatched groups, topology-gated
+consensus, agreement statistics, consilience, independent manual-QC evaluation,
+threshold sensitivity, and an end-to-end demonstration are implemented.
+Candidate generation remains distinct from assignment, all plausible edges are
+preserved, and ambiguous topology is not forced into a one-to-one solution.
+
+The Phase 6 integration and exit review confirmed this independently: stored
+candidate evidence was recomputed from `detections` by brute force at three
+thresholds and matched exactly; every upstream table was byte-identical before
+and after the full correspondence workflow; each analysis partitions its input
+detections exactly once; and no calibrated score is stored anywhere.
+
+Goal 3's scientific claims remain bounded by the synthetic-data limitation.
+Every extractor artifact and reviewer event exercised so far is synthetic, so
+the demonstrated precision, recall, and agreement figures are computation checks
+rather than extractor-performance estimates, and every shipped threshold is
+illustrative rather than calibrated.
 
 ## Step 10 — Implement a small sequence/alignment analysis
 
@@ -1765,20 +1775,20 @@ The prototype is successful when it can reproducibly demonstrate:
 
 # 17. Immediate next planning target
 
-With the shared imports and Phase 6 matching-and-consensus demonstration in
-place, the immediate target is the Phase 6 exit review.
+With Goal 3's correspondence workflow implemented and its exit review passed,
+the immediate target is Step 10.
 
 The recommended next target is:
 
-## **Phase 6 integration and exit review**
+## **Step 10 — one compact sequence/alignment analysis**
 
-The review should reconcile the complete correspondence workflow against the
-Phase 6 specification, run the full regression and static-check suite, and own
-the final phase status. After that gate passes, Step 10's compact
-sequence/alignment analysis becomes the next implementation target.
+Prefer one scientifically illustrative example over broad analytical scope. The
+natural inputs are the detection populations and, where topology permits, the
+consensus lineage that Phase 6 now produces; ambiguous groups must stay
+ambiguous rather than being silently resolved to make a sequence well ordered.
 
 The completed Phase 1-6 test and demonstration suite is the regression floor for
-that work.
+that work: **265 tests passing, 0 failed, 0 incomplete.**
 
 ---
 

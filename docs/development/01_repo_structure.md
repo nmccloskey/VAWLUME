@@ -80,7 +80,8 @@ VAWLUME/
 │   │   └── project_inputs/
 │   ├── 02_device_profiles/
 │   ├── 03_setup_profiles/
-│   └── 04_examples/
+│   ├── 04_examples/
+│   └── 05_matching_profiles/
 │
 ├── src/
 │   └── +vawlume/
@@ -262,6 +263,24 @@ config/04_examples/
 ```
 
 for examples whose purpose is to demonstrate how multiple profile categories are linked.
+
+### Matching and consilience specifications
+
+Use:
+
+```text
+config/05_matching_profiles/
+```
+
+for the versioned, checksum-bearing specifications that govern one cross-extractor
+matching analysis. Unlike the categories above, these are not examples: a
+specification here is registered as a `config_profiles` row of kind
+`consilience_policy`, linked to its analysis run, and re-checksummed on every
+later read, so the file is part of the analysis's identity. `vawlume.matching.compare`
+resolves `prototype_matching_consilience_spec.json` from this directory when the
+caller supplies no `profile_path`.
+
+Its numeric thresholds are illustrative prototype values, not calibrated defaults.
 
 See `config/README.md` for profile responsibilities.
 
