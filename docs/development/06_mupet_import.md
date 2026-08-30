@@ -198,9 +198,48 @@ conflict. Nothing is repaired or updated in place.
 
 ## Shared extractor core
 
-Detections and event measurements are planned and written by extractor-neutral
-private helpers that both importers use: `extractorFeatureDictionary`,
+Both importers resolve, plan, and write through extractor-neutral private
+helpers. The event layer is `extractorFeatureDictionary`,
 `extractorRouteEventValues`, `extractorValidateEvents`,
-`extractorClassifyDetections`, and `extractorApplyEvents`. DeepSqueak layers its
-curation and classification evidence on top of them; MUPET adds nothing. See
-`05_deepsqueak_import.md` for the DeepSqueak-specific layers.
+`extractorClassifyDetections`, and `extractorApplyEvents`; the provenance layer
+is `extractorApplyProvenance` on top of the Pass 3 resolvers. `mupetApplyPlan`
+issues no insert of its own at all — every row it writes goes through that
+shared core — while `deepsqueakApplyPlan` adds only its own curation and
+classification writes. See `05_deepsqueak_import.md` for those layers.
+
+## Co-residence with DeepSqueak
+
+Both extractors can import the same recording as separate runs, each keeping its
+own extractor version, output mapping profile, settings, artifacts, detections,
+and measurements. Native event ids are scoped by extraction run, so DeepSqueak
+call 1 and MUPET syllable 1 coexist on one recording without collision, and two
+MUPET runs may repeat the same syllable ordinals.
+
+Six broad concepts are queryable for both extractors by canonical name:
+`call_start_time`, `call_end_time`, `call_duration`, `frequency_min`,
+`frequency_max`, and `frequency_bandwidth`. Canonical units agree even though
+native units do not, and every row still names its extractor, native field,
+native unit, and transform.
+
+**Central frequency is the deliberate exception, and matters for any later
+matching work.** DeepSqueak's `Principle Frequency (kHz)` is registered under
+the canonical name `contour_median_frequency`, not the generic
+`frequency_center` that MUPET's `mean frequency (kHz)` uses, because a contour
+median and a filterbank mean are not the same statistic. Joining the two
+extractors on `canonical_name` therefore finds nothing for that concept. The
+bridge is `extractor_features.equivalence_class`, which both carry as
+`vocalization_frequency_center`, plus the seeded `feature_relationships` row
+between them. The profile's `broader_canonical_concept` declaration is preserved
+as registered feature provenance in `extractor_features.notes`, not as a
+joinable column.
+
+The general rule that follows: **join on `equivalence_class` for cross-extractor
+comparison, and on `canonical_name` only when both extractors genuinely share
+one canonical feature.** No `transform_equivalent` relationship exists between
+any DeepSqueak and MUPET feature, and the power/energy/amplitude relationships
+remain `related` with `consilience_eligible = 0`.
+
+Capability differences remain visible rather than smoothed over: DeepSqueak
+detections carry curation rows, class assignments, and detector scores; MUPET
+detections carry none of the three. No matching, consensus, or consilience rows
+are created by either importer.

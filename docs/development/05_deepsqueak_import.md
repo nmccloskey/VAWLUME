@@ -56,17 +56,28 @@ importing it. All other helpers are package-private under
 
 Since MUPET became the second real importer, the parts of that path both
 extractors need are extractor-neutral private helpers rather than DeepSqueak
-code: `extractorFeatureDictionary`, `extractorRouteEventValues`,
+code. `extractorFeatureDictionary`, `extractorRouteEventValues`,
 `extractorValidateEvents`, `extractorClassifyDetections`, and
 `extractorApplyEvents` handle feature resolution, semantic routing,
-profile-declared validation, and the detection and measurement population for
-both. DeepSqueak's behaviour is unchanged; what remains DeepSqueak-specific is
-the evidence only DeepSqueak exports — the `Accepted` review state that becomes
-curation evidence, the opaque call label that becomes a classification
-assignment, and the detector score — layered on top of the shared core. An
-extractor whose profile declares none of those roles, as MUPET's does not,
-therefore creates none of those rows without any importer needing to special-case
-it. See `06_mupet_import.md`.
+profile-declared validation, and the detection and measurement population;
+`extractorApplyProvenance` writes the settings profile, extractor version,
+artifacts, extraction run, recording input, and run-artifact links. Descriptive
+text that differs between extractors arrives there as data rather than as a
+second implementation.
+
+DeepSqueak's behaviour is unchanged. What remains DeepSqueak-specific is the
+evidence only DeepSqueak exports — the `Accepted` review state that becomes
+curation evidence, the opaque call label that becomes a classification run,
+class, and assignment, and the detector score — layered on top of the shared
+core inside the same transaction. An extractor whose profile declares none of
+those roles, as MUPET's does not, therefore creates none of those rows without
+any importer needing to special-case it.
+
+Each importer still owns its own transaction. There are exactly three
+transaction owners in the ingest namespace — project intake's applier,
+`deepsqueakApplyPlan`, and `mupetApplyPlan` — and no resolver or shared helper
+opens one. That invariant is enforced by a static test. See
+`06_mupet_import.md`.
 
 A runnable demonstration is at `examples/deepsqueak_import_demo.m`.
 

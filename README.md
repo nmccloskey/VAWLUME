@@ -63,9 +63,10 @@ representation, and renders a database-free dry-run preview. Project intake is
 now implemented as the transactional boundary from that IR to the relational
 project/entity/recording graph.
 
-DeepSqueak import is **implemented**. MUPET import is **implemented** through
-its syllable and measurement population, so both importers now populate real
-event graphs. No cross-extractor matching or validation exists yet.
+DeepSqueak import and MUPET import are both **implemented** through their event
+populations, and both are tested importing the same recording side by side
+through one shared relational and semantic architecture. No cross-extractor
+matching, consensus, or consilience exists yet, and none is created by import.
 `vawlume.ingest.deepsqueakExport` reads a
 DeepSqueak Excel call-statistics export and routes it through the tracked
 DeepSqueak output-mapping profile to a validated extractor-output IR, without
@@ -166,10 +167,20 @@ transactional application, provenance read-back, and the all-profile
 demonstration. Phase 4 completed item 7: the DeepSqueak artifact adapter, its
 Excel-to-IR boundary, the transactional run and artifact provenance graph, the
 detection, measurement, review, and label population, and a reproducible
-end-to-end demonstration. Phase 5 now covers item 8 through the MUPET CSV
-adapter, the run and provenance graph, and the atomic syllable and measurement
-population. A MUPET demonstration, the dual-extractor independence proof, and
-item 9 remain next.
+end-to-end demonstration. Phase 5 completed item 8: the MUPET CSV adapter, the
+run and provenance graph, the atomic syllable and measurement population, and
+the dual-extractor proof that both importers reach one relational model without
+semantic collapse. A MUPET demonstration and item 9 remain next.
+
+The dual-extractor result is worth stating precisely, because it is what
+distinguishes a shared architecture from two special cases. Both extractors
+populate six broad canonical concepts over the same recording in comparable
+units. Central frequency is deliberately *not* one of them: DeepSqueak's contour
+median is registered under its own canonical name rather than the generic
+`frequency_center` MUPET uses, so cross-extractor comparison of that concept must
+go through the shared `equivalence_class` and the seeded feature relationship
+rather than through a canonical-name join. Structural equivalence is queryable;
+metric identity is never asserted.
 
 ## Documentation
 
