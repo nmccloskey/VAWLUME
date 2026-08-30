@@ -12,13 +12,14 @@ iteration order.
 The prototype IR contract version is:
 
 ```text
-0.1-draft
+0.2-draft
 ```
 
-Executable source-mapping profiles use profile language version:
+Existing project/extractor profiles use profile language version `0.2-draft`.
+External-stream and alignment-anchor profiles use the additive version:
 
 ```text
-0.2-draft
+0.3-draft
 ```
 
 ## Public entry points
@@ -45,7 +46,7 @@ declared per mapping through `missing_value_policy`, including
 `missing_tokens`, `case_sensitive`, `blank_is_missing`, and
 `preserve_raw_token`.
 
-Already-loaded extractor tables use:
+Already-loaded extractor, external-event, and alignment-anchor tables use:
 
 ```matlab
 result = vawlume.source_mapping.mapTableToIR( ...
@@ -54,8 +55,11 @@ result = vawlume.source_mapping.mapTableToIR( ...
 ```
 
 `mapTableToIR` accepts a loaded profile bundle, one decoded profile document,
-or a profile JSON path. It does not read DeepSqueak or MUPET artifacts; the
-caller supplies a MATLAB `table`. The lower-level `discoverSources`,
+or a profile JSON path. It dispatches by the validated profile kind while keeping
+one entry point and one IR. It does not read extractor or external artifacts; the
+caller supplies a MATLAB `table`. Anchor profiles may additionally receive a
+previously mapped external-event IR as `EventContext` to resolve optional logical
+event references. The lower-level `discoverSources`,
 `parsePath`, and `mapTableFields` functions remain available for focused
 inspection, but downstream ingest should consume the unified IR.
 
@@ -69,7 +73,8 @@ disp(preview.text)
 Set `Print=true` to also print the text while retaining the structured return
 value. The report exposes header/profile provenance, discovery counts,
 role-aware project hierarchy columns, extractor table-mapping summaries,
-issues grouped by severity and code, bounded issue details, and a final
+external stream/event/coverage summaries, anchor observations by timebase and
+fit-pair eligibility, issues grouped by severity and code, bounded issue details, and a final
 `READY FOR INGEST` or `NOT READY FOR INGEST` verdict. The verdict is solely a
 readable view of `result.valid_for_ingest`.
 
@@ -93,6 +98,13 @@ result = struct( ...
     records=..., ...
     values=..., ...
     relationships=..., ...
+    streams=..., ...
+    events=..., ...
+    event_attributes=..., ...
+    coverage=..., ...
+    anchors=..., ...
+    anchor_observations=..., ...
+    anchor_fit_pairs=..., ...
     issues=..., ...
     summary=..., ...
     valid_for_ingest=...);
@@ -107,7 +119,7 @@ SQLite surrogate ID.
 | --- | --- |
 | `profile_key` | Stable `profile.id` from JSON. |
 | `profile_name` | Authored display name from `profile.name`; retained so intake does not reopen the profile document. |
-| `profile_kind` | `project_input` or `extractor_output`. |
+| `profile_kind` | `project_input`, `extractor_output`, `external_stream_mapping`, or `alignment_anchor_mapping`. |
 | `profile_version` | Explicit authored `profile.profile_version`. |
 | `profile_version_source` | `profile.profile_version` for validated executable profiles; `not_declared` only for unvalidated in-memory documents. |
 | `profile_schema_version` | Version of the profile language. |
@@ -120,7 +132,8 @@ SQLite surrogate ID.
 | `extractor_version_scope_compatible_family` | Broader compatible extractor family when declared. |
 
 The current executable JSON profiles declare `profile.profile_version =
-0.1.0` and `profile.profile_schema_version = 0.2-draft`. Extractor
+0.1.0`. Project/extractor profiles declare language version `0.2-draft`; the
+new external-stream and anchor shapes declare `0.3-draft`. Extractor
 compatibility remains separate under `extractor.version_scope`.
 
 ### `result.sources`
@@ -133,7 +146,7 @@ One row represents one discovered project file or supplied extractor table.
 | `runtime_path` | Machine-local runtime path, if one exists. |
 | `relative_path` | Slash-normalized portable location. |
 | `filename` | Source filename. |
-| `source_type` | `project_file` or `extractor_table`. |
+| `source_type` | `project_file`, `extractor_table`, `external_event_table`, or `alignment_anchor_table`. |
 | `discovery_rule` | Profile discovery rule or `supplied_table`. |
 | `artifact_type` | Stable source/artifact category from the mapping contract. |
 | `status` | `mapped`, warning-bearing, or invalid status. |
@@ -211,6 +224,48 @@ single-parent tree.
 | `mapping_rule` | Profile declaration that produced the edge. |
 | `status` | Mapping state. |
 
+### External-stream tables
+
+`result.streams` distinguishes the logical `stream_key`, its `timebase_key`, and
+the supplied `source_key`; modality never substitutes for clock identity.
+
+`result.events` contains one source row per operational event. It preserves the
+native event ID/label and native start/end values, adds normalized seconds and an
+optional normalized project event key, and records the actual timestamp columns
+plus whether they resolved by exact name, declared alias, or deterministic
+default. A missing end value means a point event at the start; it does not mean an
+unknown start. Event keys are deterministic source/row keys and never SQLite IDs.
+
+`result.event_attributes` is long-form typed evidence. Each row carries the
+native and resolved field names, operational attribute name, raw token, one typed
+normalized value, native/normalized units, transform key, mapping rule, source
+row, locator, and status. Only explicitly declared fields become attributes.
+
+`result.coverage` contains explicit observed segments in both native time and
+seconds. The implemented prototype path is `coverage.mode = constant_segments`;
+`manifest_later` explicitly defers coverage to Phase 7 intake. Event bounds never
+imply continuous observation, so a gap between segments remains unavailable.
+
+### Alignment-anchor tables
+
+`result.anchors` is logical identity and optional type/order metadata. It has no
+timestamp. `result.anchor_observations` carries each clock reading with distinct
+stream/timebase keys, native and normalized time, role, tri-state inclusion while
+resolution is pending, uncertainty, source locator, and optional logical event
+reference (`event_source_key` plus native event ID).
+
+Long profiles map an explicit observation-identity column through declared
+stream/timebase context. Wide profiles enumerate every clock column in
+`layout.stream_columns`; no numeric column is auto-detected. Both paths populate
+the same two tables. Redundant observations remain separate. One explicit
+primary/included row resolves a duplicate group; unresolved duplicates or more
+than one primary produce `ANCHOR_PRIMARY_AMBIGUOUS` and make the IR not ready.
+
+`result.anchor_fit_pairs` is the IR-derived readiness summary for profile-declared
+source/reference clock pairs. Its count includes a logical anchor only when the
+IR contains exactly one valid included observation on both clocks. Preview reads
+this table and does not reimplement eligibility in display code.
+
 ### `result.issues`
 
 | Column | Meaning |
@@ -231,6 +286,16 @@ including `COLUMN_MISSING`, `COLUMN_AMBIGUOUS`, `SOURCE_COLUMN_UNMAPPED`,
 `MISSING_TOKEN_NORMALIZED`, `SOURCE_DUPLICATE_DISCOVERY`,
 `VALUE_CORROBORATED`, and `VALUE_CONFLICT`. Profile validation codes remain
 visible when they already express a stable profile-level contract.
+
+Phase 7 adds stable table-mapping diagnostics including
+`TIMESTAMP_COLUMN_MISSING`, `TIMESTAMP_INVALID`, `EVENT_INTERVAL_INVALID`,
+`TIME_UNIT_UNSUPPORTED`, `NATIVE_EVENT_ID_DUPLICATE`,
+`NORMALIZED_EVENT_TARGET_UNKNOWN`, `COVERAGE_INTERVAL_INVALID`,
+`ANCHOR_KEY_MISSING`, `ANCHOR_OBSERVATION_IDENTITY_MISSING`,
+`ANCHOR_IDENTITY_UNDECLARED`, `ANCHOR_PRIMARY_AMBIGUOUS`,
+`WIDE_STREAM_COLUMN_MISSING`, `EVENT_REFERENCE_UNRESOLVED`,
+`ANCHOR_ROLE_INVALID`, and `ANCHOR_INCLUDED_INVALID`. Normal malformed user data
+therefore becomes structured evidence rather than a raw indexing error.
 
 ### Undeclared source columns
 
@@ -301,6 +366,15 @@ variants, and raw sentinels needed for detections and
 source-mapping layer still does not open SQLite, execute SQL, or mutate a
 database. See [`04_project_intake.md`](04_project_intake.md) for the stable
 Phase 3 identity, transaction, linkage, and read-back contract.
+
+The Phase 7 tables deliberately stop at logical identity. They carry the stream,
+timebase, source, event, anchor, observation, mapping rule, and source locator
+needed by the later registration boundary, but no `timebase_id`,
+`external_stream_id`, `external_event_id`, or alignment surrogate. The external
+event/attribute/coverage and anchor/observation shapes mirror the normalized
+targets documented in
+[`11_temporal_alignment_schema.md`](11_temporal_alignment_schema.md) without
+performing those writes.
 
 The dry-run test suite enforces this boundary against a disposable Phase 1
 fixture database by comparing every user-table row count and foreign-key check

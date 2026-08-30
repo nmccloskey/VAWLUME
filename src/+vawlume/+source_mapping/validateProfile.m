@@ -2,7 +2,8 @@ function report = validateProfile(document, options)
 %VALIDATEPROFILE Validate decoded VAWLUME source-mapping profile content.
 %
 % This function validates the profile language currently used by tracked
-% project-input and extractor-output mapping profiles. It deliberately stops
+% project-input, extractor-output, external-stream, and alignment-anchor
+% mapping profiles. It deliberately stops
 % at profile structure and executable declaration preflight; source discovery,
 % source parsing, transforms, and database ingestion belong to later passes.
 
@@ -59,7 +60,8 @@ report = finalizeReport(report);
             "profile_schema_version", location + ".profile.profile_schema_version");
 
         if hasKind
-            if ~ismember(kind, ["project_input", "extractor_output"])
+            if ~ismember(kind, ["project_input", "extractor_output", ...
+                    "external_stream_mapping", "alignment_anchor_mapping"])
                 addIssue("error", "PROFILE_UNSUPPORTED_KIND", location + ".profile.kind", ...
                     "Unsupported source_mapping profile kind: " + kind + ".");
             elseif strlength(options.ExpectedKind) > 0 && kind ~= options.ExpectedKind
@@ -68,10 +70,16 @@ report = finalizeReport(report);
             end
         end
 
-        if hasSchemaVersion && schemaVersion ~= "0.2-draft"
+        if hasSchemaVersion && ~ismember(schemaVersion, ["0.2-draft", "0.3-draft"])
             addIssue("error", "PROFILE_UNSUPPORTED_SCHEMA_VERSION", ...
                 location + ".profile.profile_schema_version", ...
                 "Unsupported mapping-profile schema version: " + schemaVersion + ".");
+        elseif hasSchemaVersion && ismember(kind, ...
+                ["external_stream_mapping", "alignment_anchor_mapping"]) && ...
+                schemaVersion ~= "0.3-draft"
+            addIssue("error", "PROFILE_UNSUPPORTED_SCHEMA_VERSION", ...
+                location + ".profile.profile_schema_version", ...
+                "External-stream and anchor profiles require mapping-profile schema version 0.3-draft.");
         end
 
         versionLabel = profileVersionLabel(entry, profile, kind, location);
@@ -88,6 +96,10 @@ report = finalizeReport(report);
                 validateProjectInputProfile(entry, location);
             case "extractor_output"
                 validateExtractorOutputProfile(entry, location);
+            case "external_stream_mapping"
+                validateExternalStreamProfile(entry, location);
+            case "alignment_anchor_mapping"
+                validateAlignmentAnchorProfile(entry, location);
         end
     end
 
@@ -321,6 +333,364 @@ report = finalizeReport(report);
 
         validateArtifactRegexes(entry, location);
         validateFieldMappings(entry, location);
+    end
+
+    function validateExternalStreamProfile(entry, location)
+        if requireMapping(entry, "source", location + ".source")
+            requiredText(entry.source, "table_role", location + ".source.table_role");
+        end
+        if requireMapping(entry, "context", location + ".context")
+            requiredText(entry.context, "stream_key", location + ".context.stream_key");
+            requiredText(entry.context, "timebase_key", location + ".context.timebase_key");
+            requiredText(entry.context, "stream_kind", location + ".context.stream_kind");
+            [unit, hasUnit] = requiredText(entry.context, "native_time_unit", ...
+                location + ".context.native_time_unit");
+            if hasUnit
+                validateTimeUnit(unit, location + ".context.native_time_unit");
+            end
+        end
+        if ~requireMapping(entry, "columns", location + ".columns")
+            return
+        end
+        if requireMapping(entry.columns, "start_time", location + ".columns.start_time")
+            validateColumnRule(entry.columns.start_time, location + ".columns.start_time", true);
+        end
+        optionalColumns = ["end_time", "native_event_id", "native_event_label", ...
+            "entity_key", "scalar_value"];
+        for columnIndex = 1:numel(optionalColumns)
+            name = optionalColumns(columnIndex);
+            if hasField(entry.columns, name)
+                if ~isstruct(entry.columns.(char(name)))
+                    addIssue("error", "PROFILE_INVALID_FIELD", ...
+                        location + ".columns." + name, "Column declaration must be a mapping/object.");
+                else
+                    validateColumnRule(entry.columns.(char(name)), ...
+                        location + ".columns." + name, false);
+                end
+            end
+        end
+        if hasField(entry, "attributes")
+            validateAttributeMappings(entry.attributes, location + ".attributes");
+        end
+        if hasField(entry, "normalized_event_mapping")
+            validateNormalizedEventMapping(entry.normalized_event_mapping, ...
+                location + ".normalized_event_mapping");
+        end
+        if hasField(entry, "coverage")
+            validateCoverageDeclaration(entry.coverage, location + ".coverage");
+        end
+    end
+
+    function validateAlignmentAnchorProfile(entry, location)
+        if requireMapping(entry, "source", location + ".source")
+            requiredText(entry.source, "table_role", location + ".source.table_role");
+        end
+        declaredTimebases = strings(0, 1);
+        if requireMapping(entry, "context", location + ".context")
+            [unit, hasUnit] = requiredText(entry.context, "native_time_unit", ...
+                location + ".context.native_time_unit");
+            if hasUnit
+                validateTimeUnit(unit, location + ".context.native_time_unit");
+            end
+            if ~hasField(entry.context, "declared_timebases")
+                addIssue("error", "PROFILE_MISSING_FIELD", ...
+                    location + ".context.declared_timebases", ...
+                    "Anchor mapping context must declare its logical timebases.");
+            else
+                declaredTimebases = normalizeTextSequence(entry.context.declared_timebases);
+                if isempty(declaredTimebases) || numel(unique(declaredTimebases)) ~= numel(declaredTimebases)
+                    addIssue("error", "PROFILE_INVALID_FIELD", ...
+                        location + ".context.declared_timebases", ...
+                        "declared_timebases must be a nonempty unique text sequence.");
+                end
+            end
+            validateStreamTimebaseMappings(entry.context, declaredTimebases, ...
+                location + ".context");
+            validateFitPairs(entry.context, declaredTimebases, location + ".context");
+        end
+        if ~requireMapping(entry, "layout", location + ".layout")
+            return
+        end
+        [layoutKind, hasLayout] = requiredText(entry.layout, "kind", ...
+            location + ".layout.kind");
+        if hasLayout && ~ismember(layoutKind, ["long", "wide"])
+            addIssue("error", "PROFILE_INVALID_FIELD", location + ".layout.kind", ...
+                "Anchor layout.kind must be long or wide.");
+        end
+        if ~requireMapping(entry, "columns", location + ".columns")
+            return
+        end
+        if requireMapping(entry.columns, "anchor_key", location + ".columns.anchor_key")
+            validateColumnRule(entry.columns.anchor_key, location + ".columns.anchor_key", true);
+        end
+        for name = ["anchor_type", "expected_order"]
+            if hasField(entry.columns, name) && isstruct(entry.columns.(char(name)))
+                validateColumnRule(entry.columns.(char(name)), ...
+                    location + ".columns." + name, false);
+            end
+        end
+        if layoutKind == "long"
+            for name = ["observation_identity", "timestamp"]
+                if requireMapping(entry.columns, name, location + ".columns." + name)
+                    validateColumnRule(entry.columns.(char(name)), ...
+                        location + ".columns." + name, true);
+                end
+            end
+            for name = ["observation_role", "included_in_fit", "uncertainty", ...
+                    "event_reference", "event_source_key"]
+                if hasField(entry.columns, name) && isstruct(entry.columns.(char(name)))
+                    validateColumnRule(entry.columns.(char(name)), ...
+                        location + ".columns." + name, false);
+                end
+            end
+        elseif layoutKind == "wide"
+            validateWideStreamColumns(entry.layout, declaredTimebases, location + ".layout");
+        end
+    end
+
+    function validateColumnRule(rule, location, requiresResolution)
+        hasSource = strlength(optionalText(rule, "source_field")) > 0;
+        defaults = strings(0, 1);
+        if hasField(rule, "default_source_fields")
+            defaults = normalizeTextSequence(rule.default_source_fields);
+        end
+        if requiresResolution && ~hasSource && isempty(defaults)
+            addIssue("error", "PROFILE_MISSING_FIELD", location + ".source_field", ...
+                "Column mapping must declare source_field or deterministic default_source_fields.");
+        end
+        transform = optionalText(rule, "transform");
+        if strlength(transform) > 0 && ~ismember(transform, supportedTransformKeys())
+            addIssue("error", "PROFILE_UNKNOWN_TRANSFORM", location + ".transform", ...
+                "Transform key is not registered for prototype execution: " + transform + ".");
+        end
+        validateMissingValuePolicy(rule, location);
+    end
+
+    function validateAttributeMappings(rawAttributes, location)
+        attributes = normalizeSequence(rawAttributes);
+        names = strings(0, 1);
+        for attributeIndex = 1:numel(attributes)
+            attribute = attributes{attributeIndex};
+            itemLocation = location + "(" + attributeIndex + ")";
+            if ~isstruct(attribute)
+                addIssue("error", "PROFILE_INVALID_FIELD", itemLocation, ...
+                    "Each attribute mapping must be a mapping/object.");
+                continue
+            end
+            requiredText(attribute, "source_field", itemLocation + ".source_field");
+            [name, hasName] = requiredText(attribute, "attribute_name", ...
+                itemLocation + ".attribute_name");
+            [dataType, hasType] = requiredText(attribute, "data_type", ...
+                itemLocation + ".data_type");
+            if hasType && ~ismember(dataType, ...
+                    ["float", "float_or_missing", "integer", "string", "boolean"])
+                addIssue("error", "PROFILE_INVALID_FIELD", itemLocation + ".data_type", ...
+                    "Unsupported typed attribute data_type: " + dataType + ".");
+            end
+            if hasName
+                names(end + 1, 1) = name; %#ok<AGROW>
+            end
+            validateColumnRule(attribute, itemLocation, true);
+        end
+        if numel(unique(names)) ~= numel(names)
+            addIssue("error", "PROFILE_INVALID_FIELD", location, ...
+                "Operational attribute_name values must be unique.");
+        end
+    end
+
+    function validateNormalizedEventMapping(mapping, location)
+        if ~isstruct(mapping)
+            addIssue("error", "PROFILE_INVALID_FIELD", location, ...
+                "normalized_event_mapping must be a mapping/object.");
+            return
+        end
+        targets = strings(0, 1);
+        if hasField(mapping, "controlled_targets")
+            targets = normalizeTextSequence(mapping.controlled_targets);
+        end
+        if ~hasField(mapping, "mappings")
+            return
+        end
+        items = normalizeSequence(mapping.mappings);
+        nativeValues = strings(0, 1);
+        for itemIndex = 1:numel(items)
+            item = items{itemIndex};
+            itemLocation = location + ".mappings(" + itemIndex + ")";
+            if ~isstruct(item)
+                addIssue("error", "PROFILE_INVALID_FIELD", itemLocation, ...
+                    "Each normalized event mapping must be a mapping/object.");
+                continue
+            end
+            [nativeValue, hasNative] = requiredText(item, "native_value", ...
+                itemLocation + ".native_value");
+            [target, hasTarget] = requiredText(item, "normalized_value", ...
+                itemLocation + ".normalized_value");
+            if hasTarget && ~isempty(targets) && ~ismember(target, targets)
+                addIssue("error", "NORMALIZED_EVENT_TARGET_UNKNOWN", ...
+                    itemLocation + ".normalized_value", ...
+                    "Normalized event target is not in controlled_targets: " + target + ".");
+            end
+            if hasNative
+                nativeValues(end + 1, 1) = nativeValue; %#ok<AGROW>
+            end
+        end
+        if numel(unique(nativeValues)) ~= numel(nativeValues)
+            addIssue("error", "PROFILE_INVALID_FIELD", location + ".mappings", ...
+                "normalized_event_mapping native_value entries must be unique.");
+        end
+    end
+
+    function validateCoverageDeclaration(coverage, location)
+        if ~isstruct(coverage)
+            addIssue("error", "PROFILE_INVALID_FIELD", location, ...
+                "coverage must be a mapping/object.");
+            return
+        end
+        [mode, hasMode] = requiredText(coverage, "mode", location + ".mode");
+        if hasMode && ~ismember(mode, ["constant_segments", "manifest_later"])
+            addIssue("error", "PROFILE_INVALID_FIELD", location + ".mode", ...
+                "coverage.mode must be constant_segments or manifest_later.");
+        end
+        if mode ~= "constant_segments"
+            return
+        end
+        if ~hasField(coverage, "segments")
+            addIssue("error", "PROFILE_MISSING_FIELD", location + ".segments", ...
+                "constant_segments coverage must declare one or more segments.");
+            return
+        end
+        segments = normalizeSequence(coverage.segments);
+        if isempty(segments)
+            addIssue("error", "PROFILE_INVALID_FIELD", location + ".segments", ...
+                "constant_segments coverage must declare one or more segments.");
+        end
+        for segmentIndex = 1:numel(segments)
+            segment = segments{segmentIndex};
+            itemLocation = location + ".segments(" + segmentIndex + ")";
+            if ~isstruct(segment)
+                addIssue("error", "PROFILE_INVALID_FIELD", itemLocation, ...
+                    "Each coverage segment must be a mapping/object.");
+                continue
+            end
+            validateFiniteScalarField(segment, "start_time_native", itemLocation);
+            validateFiniteScalarField(segment, "end_time_native", itemLocation);
+        end
+    end
+
+    function validateStreamTimebaseMappings(context, declaredTimebases, location)
+        if ~hasField(context, "stream_timebases")
+            return
+        end
+        mappings = normalizeSequence(context.stream_timebases);
+        nativeValues = strings(0, 1);
+        for mappingIndex = 1:numel(mappings)
+            mapping = mappings{mappingIndex};
+            itemLocation = location + ".stream_timebases(" + mappingIndex + ")";
+            if ~isstruct(mapping)
+                addIssue("error", "PROFILE_INVALID_FIELD", itemLocation, ...
+                    "Each stream/timebase mapping must be a mapping/object.");
+                continue
+            end
+            [nativeValue, hasNative] = requiredText(mapping, "native_value", ...
+                itemLocation + ".native_value");
+            [timebase, hasTimebase] = requiredText(mapping, "timebase_key", ...
+                itemLocation + ".timebase_key");
+            if hasTimebase && ~isempty(declaredTimebases) && ...
+                    ~ismember(timebase, declaredTimebases)
+                addIssue("error", "PROFILE_INVALID_FIELD", itemLocation + ".timebase_key", ...
+                    "stream_timebases timebase_key is not declared: " + timebase + ".");
+            end
+            if hasNative
+                nativeValues(end + 1, 1) = nativeValue; %#ok<AGROW>
+            end
+        end
+        if numel(unique(nativeValues)) ~= numel(nativeValues)
+            addIssue("error", "PROFILE_INVALID_FIELD", location + ".stream_timebases", ...
+                "stream_timebases native_value entries must be unique.");
+        end
+    end
+
+    function validateFitPairs(context, declaredTimebases, location)
+        if ~hasField(context, "fit_pairs")
+            return
+        end
+        pairs = normalizeSequence(context.fit_pairs);
+        for pairIndex = 1:numel(pairs)
+            pair = pairs{pairIndex};
+            itemLocation = location + ".fit_pairs(" + pairIndex + ")";
+            if ~isstruct(pair)
+                addIssue("error", "PROFILE_INVALID_FIELD", itemLocation, ...
+                    "Each fit pair must be a mapping/object.");
+                continue
+            end
+            [source, hasSource] = requiredText(pair, "source_timebase_key", ...
+                itemLocation + ".source_timebase_key");
+            [reference, hasReference] = requiredText(pair, "reference_timebase_key", ...
+                itemLocation + ".reference_timebase_key");
+            if hasSource && ~isempty(declaredTimebases) && ~ismember(source, declaredTimebases)
+                addIssue("error", "PROFILE_INVALID_FIELD", itemLocation, ...
+                    "Fit-pair source timebase is not declared: " + source + ".");
+            end
+            if hasReference && ~isempty(declaredTimebases) && ...
+                    ~ismember(reference, declaredTimebases)
+                addIssue("error", "PROFILE_INVALID_FIELD", itemLocation, ...
+                    "Fit-pair reference timebase is not declared: " + reference + ".");
+            end
+        end
+    end
+
+    function validateWideStreamColumns(layout, declaredTimebases, location)
+        if ~hasField(layout, "stream_columns")
+            addIssue("error", "PROFILE_MISSING_FIELD", location + ".stream_columns", ...
+                "Wide anchor layout must explicitly declare stream_columns.");
+            return
+        end
+        mappings = normalizeSequence(layout.stream_columns);
+        sourceFields = strings(0, 1);
+        for mappingIndex = 1:numel(mappings)
+            mapping = mappings{mappingIndex};
+            itemLocation = location + ".stream_columns(" + mappingIndex + ")";
+            if ~isstruct(mapping)
+                addIssue("error", "PROFILE_INVALID_FIELD", itemLocation, ...
+                    "Each wide stream column must be a mapping/object.");
+                continue
+            end
+            [sourceField, hasSource] = requiredText(mapping, "source_field", ...
+                itemLocation + ".source_field");
+            [timebase, hasTimebase] = requiredText(mapping, "timebase_key", ...
+                itemLocation + ".timebase_key");
+            if hasTimebase && ~isempty(declaredTimebases) && ...
+                    ~ismember(timebase, declaredTimebases)
+                addIssue("error", "PROFILE_INVALID_FIELD", itemLocation + ".timebase_key", ...
+                    "Wide stream timebase_key is not declared: " + timebase + ".");
+            end
+            if hasSource
+                sourceFields(end + 1, 1) = sourceField; %#ok<AGROW>
+            end
+        end
+        if isempty(mappings) || numel(unique(sourceFields)) ~= numel(sourceFields)
+            addIssue("error", "PROFILE_INVALID_FIELD", location + ".stream_columns", ...
+                "Wide stream columns must be nonempty and use unique source_field values.");
+        end
+    end
+
+    function validateTimeUnit(unit, location)
+        if ~ismember(lower(unit), ["s", "sec", "second", "seconds", ...
+                "ms", "millisecond", "milliseconds"])
+            addIssue("error", "TIME_UNIT_UNSUPPORTED", location, ...
+                "Unsupported native time unit: " + unit + ".");
+        end
+    end
+
+    function validateFiniteScalarField(container, field, location)
+        if ~requireField(container, field, location + "." + field)
+            return
+        end
+        value = container.(char(field));
+        if ~isnumeric(value) || ~isscalar(value) || ~isfinite(double(value))
+            addIssue("error", "PROFILE_INVALID_FIELD", location + "." + field, ...
+                "Coverage timestamp must be a finite numeric scalar.");
+        end
     end
 
     function validateArtifactRegexes(entry, location)
@@ -571,6 +941,13 @@ report = finalizeReport(report);
                     "event_identity", "field_mapping_source", "field_mappings", ...
                     "settings_capture", "validation", "provenance", ...
                     "consilience_defaults", "native_processing_notes", "sequence_policy"];
+            case "external_stream_mapping"
+                allowed = ["profile", "source", "context", "columns", ...
+                    "normalized_event_mapping", "attributes", "coverage", ...
+                    "mapping_policy", "validation"];
+            case "alignment_anchor_mapping"
+                allowed = ["profile", "source", "layout", "context", "columns", ...
+                    "mapping_policy", "validation"];
             otherwise
                 allowed = "profile";
         end
@@ -793,7 +1170,7 @@ report.profile_ids = strings(0, 1);
 report.profile_kinds = strings(0, 1);
 report.profile_schema_versions = strings(0, 1);
 report.profile_version_labels = strings(0, 1);
-report.supported_profile_schema_versions = "0.2-draft";
+report.supported_profile_schema_versions = ["0.2-draft"; "0.3-draft"];
 report.deferred_checks = strings(0, 1);
 report.issues = struct("severity", {}, "code", {}, "profile_location", {}, "message", {});
 report.issue_table = emptyIssueTable();

@@ -6,12 +6,17 @@ This document is the data dictionary for VAWLUME's temporal-alignment relational
 grammar: what each table means, which table is authoritative for what, and which
 invariants the database enforces versus which are left to application code.
 
-It describes **structure only**. No parser, manifest orchestration, transform
-fitting, aligned-timestamp generation, or timeline construction exists yet. The
+It describes the relational structure. External event and anchor table source
+mapping now exists as a database-free IR layer; manifest orchestration, database
+registration, transform fitting, aligned-timestamp generation, and timeline
+construction do not yet exist. The
 governing design contract is
 [`../design/02_temporal_alignment_contract.md`](../design/02_temporal_alignment_contract.md).
 
-Schema version `0.3-draft`, `PRAGMA user_version = 3`.
+Schema version `0.4-draft`, `PRAGMA user_version = 4`. The only `0.3` to `0.4`
+DDL change is the addition of `alignment_anchor_mapping` to the closed
+`config_profiles.profile_kind` vocabulary, so anchor mapping profiles can later
+be registered without misclassifying them as event-stream profiles.
 
 ## The eight distinct concepts
 

@@ -4,7 +4,8 @@ tests = functiontests({ ...
     @testExtractorPreviewsSummarizeShippedMappings, ...
     @testInvalidIRProducesNotReadyVerdict, ...
     @testDryRunIsDeterministicAndPortableAcrossRoots, ...
-    @testDryRunDoesNotWriteToPhase1Database});
+    @testDryRunDoesNotWriteToPhase1Database, ...
+    @testExternalAndAnchorDryRunsDoNotWriteToPhase1Database});
 end
 
 function testProjectPreviewShowsHierarchyRolesAndVerdict(testCase)
@@ -154,6 +155,42 @@ verifyEqual(testCase, afterForeignKeys, beforeForeignKeys);
 verifyEmpty(testCase, afterForeignKeys);
 
 clear cleanupPath cleanupDb cleanupRoot
+end
+
+function testExternalAndAnchorDryRunsDoNotWriteToPhase1Database(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+[conn, dbFile] = createFixtureDatabase(repoRoot);
+cleanupDb = onCleanup(@() cleanupDatabase(conn, dbFile));
+
+beforeCounts = databaseCounts(conn);
+beforeForeignKeys = fetch(conn, "PRAGMA foreign_key_check");
+events = table(["e1"; "e2"], ["Sniffing"; "SYNC_FLASH"], [20; 30], ...
+    [NaN; 30], ["M01"; ""], ["center"; "sync"], ...
+    VariableNames=["event_id", "event", "start_time_s", "end_time_s", ...
+    "subject", "zone"]);
+eventIR = vawlume.source_mapping.mapTableToIR(events, fullfile(repoRoot, ...
+    "config", "01_mapping_profiles", "external_streams", ...
+    "behavior_video_event_mapping_profile.json"), RepoRoot=repoRoot);
+anchors = table(["sync01"; "sync02"], [4.216; 485.638], ...
+    [67.833; 549.275], [121.482; 602.911], ...
+    VariableNames=["marker", "audio", "video", "neural"]);
+anchorIR = vawlume.source_mapping.mapTableToIR(anchors, fullfile(repoRoot, ...
+    "config", "01_mapping_profiles", "alignment_anchors", ...
+    "wide_anchor_mapping_profile.json"), RepoRoot=repoRoot);
+eventReport = vawlume.source_mapping.preview(eventIR);
+anchorReport = vawlume.source_mapping.preview(anchorIR);
+afterCounts = databaseCounts(conn);
+afterForeignKeys = fetch(conn, "PRAGMA foreign_key_check");
+
+verifyEqual(testCase, eventReport.verdict, "READY FOR INGEST");
+verifyEqual(testCase, anchorReport.verdict, "READY FOR INGEST");
+verifyEqual(testCase, afterCounts, beforeCounts);
+verifyEqual(testCase, afterForeignKeys, beforeForeignKeys);
+verifyEmpty(testCase, afterForeignKeys);
+
+clear cleanupPath cleanupDb
 end
 
 function ir = withoutRuntimePaths(ir)

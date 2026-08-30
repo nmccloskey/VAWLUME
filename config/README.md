@@ -80,7 +80,38 @@ config/01_mapping_profiles/extractors/deepsqueak/
 config/01_mapping_profiles/extractors/mupet/
 ```
 
-### 3. Recording-device profile
+### 3. External-stream source mapping profile
+
+Defines how one user event table becomes a logical stream on a logical timebase,
+including native and normalized labels, start/end timestamps, native time units,
+typed attributes, and declared observed coverage segments. The mapping is reusable;
+the source table itself and the later session alignment manifest are not embedded
+in the profile.
+
+Synthetic examples:
+
+```text
+config/01_mapping_profiles/external_streams/
+```
+
+### 4. Alignment-anchor source mapping profile
+
+Defines explicit logical anchors and their per-clock observations. Long layouts
+declare anchor, stream/timebase, timestamp, role, inclusion, uncertainty, and
+optional event-reference columns. Wide layouts explicitly enumerate the columns
+that represent participating streams; numeric columns are never auto-detected as
+clocks. Both layouts normalize to the same anchor/observation IR.
+
+Synthetic examples:
+
+```text
+config/01_mapping_profiles/alignment_anchors/
+```
+
+This profile is reusable. A session-specific alignment manifest remains a source
+artifact handled by the alignment intake layer, not a mapping-profile kind.
+
+### 5. Recording-device profile
 
 Describes acquisition hardware/context, for example:
 
@@ -99,7 +130,7 @@ Recommended location:
 config/02_device_profiles/
 ```
 
-### 4. Experimental-setup profile
+### 6. Experimental-setup profile
 
 Describes the physical/behavioral recording context, for example:
 
@@ -121,7 +152,7 @@ Recommended location:
 config/03_setup_profiles/
 ```
 
-### 5. Extractor settings profile
+### 7. Extractor settings profile
 
 Captures the detailed settings used for one extraction context.
 
@@ -129,7 +160,7 @@ Unlike the built-in output mapping profile, an extractor settings profile descri
 
 Settings artifacts may remain external to the repository for real projects, with file identity/checksum recorded in provenance.
 
-### 6. Matching and consilience specification
+### 8. Matching and consilience specification
 
 Governs one cross-extractor matching analysis: which run pair is legal, what
 makes a detection pair a temporally plausible candidate, how ambiguity is
@@ -160,7 +191,7 @@ threshold in it is a deterministic demonstration value chosen to exercise
 algorithm behaviour on synthetic fixtures. None is empirically calibrated, and
 none should be reported as optimal or recommended.
 
-### 7. Cross-profile examples
+### 9. Cross-profile examples
 
 Examples that demonstrate how multiple profile kinds are associated can live in:
 
@@ -243,8 +274,9 @@ checksum_sha256
 
 `profile_version` is the authored VAWLUME mapping contract version, currently
 `0.1.0` for the shipped executable source-mapping profiles.
-`profile_schema_version` is the VAWLUME profile-language version, currently
-`0.2-draft` for executable source-mapping profiles. Recording-device and
+`profile_schema_version` is the VAWLUME profile-language version. Existing
+project-input and extractor-output profiles remain `0.2-draft`; external-stream
+and alignment-anchor profiles use the additive `0.3-draft` language. Recording-device and
 experimental-setup examples are separate profile languages and currently keep
 their own `0.1-draft` schema declarations.
 
@@ -301,8 +333,9 @@ The profile loader should reject or clearly flag:
 The current source-mapping preview surfaces mapping conflicts and readiness
 diagnostics without performing database insertion.
 
-`vawlume.source_mapping.loadProfile` accepts only the two source-mapping kinds,
-`project_input` and `extractor_output`. Settings profiles and the matching and
+`vawlume.source_mapping.loadProfile` accepts four source-mapping kinds:
+`project_input`, `extractor_output`, `external_stream_mapping`, and
+`alignment_anchor_mapping`. Settings profiles and the matching and
 consilience specification are not source-mapping profiles: they declare no
 fields, transforms, or discovery rules, and are read directly with `fileread`
 and `jsondecode`, then registered as checksum-bearing `config_profile_versions`

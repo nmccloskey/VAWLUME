@@ -1,0 +1,86 @@
+{
+  "profile": {
+    "id": "vawlume.alignment.anchor.long.synthetic.v1",
+    "name": "Synthetic long-layout alignment anchors",
+    "kind": "alignment_anchor_mapping",
+    "profile_schema_version": "0.3-draft",
+    "profile_version": "0.1.0"
+  },
+  "source": {
+    "table_role": "alignment_anchor_observations_long",
+    "source_key_default": "source:anchors:long:synthetic"
+  },
+  "layout": {
+    "kind": "long"
+  },
+  "context": {
+    "native_time_unit": "s",
+    "default_anchor_type": "sync_marker",
+    "event_source_key_default": "source:neural_ttl:synthetic",
+    "declared_timebases": ["audio_native", "video_native", "neural_native"],
+    "stream_timebases": [
+      {
+        "native_value": "audio",
+        "stream_key": "audio_sync",
+        "timebase_key": "audio_native"
+      },
+      {
+        "native_value": "video",
+        "stream_key": "video_sync",
+        "timebase_key": "video_native"
+      },
+      {
+        "native_value": "neural",
+        "stream_key": "neural_ttl",
+        "timebase_key": "neural_native"
+      }
+    ],
+    "fit_pairs": [
+      {
+        "source_timebase_key": "audio_native",
+        "reference_timebase_key": "neural_native"
+      },
+      {
+        "source_timebase_key": "video_native",
+        "reference_timebase_key": "neural_native"
+      }
+    ]
+  },
+  "columns": {
+    "anchor_key": {
+      "source_field": "marker",
+      "required": true
+    },
+    "observation_identity": {
+      "source_field": "stream",
+      "required": true
+    },
+    "timestamp": {
+      "source_field": "timestamp_s",
+      "default_source_fields": ["timestamp_s"],
+      "required": true
+    },
+    "observation_role": {
+      "source_field": "role",
+      "required": false
+    },
+    "included_in_fit": {
+      "source_field": "include",
+      "required": false
+    },
+    "uncertainty": {
+      "source_field": "uncertainty_s",
+      "required": false
+    },
+    "event_reference": {
+      "source_field": "event_id",
+      "required": false
+    }
+  },
+  "mapping_policy": {
+    "unknown_fields": "preserve_and_warn"
+  },
+  "validation": {
+    "require_explicit_resolution_for_duplicates": true
+  }
+}

@@ -1,9 +1,10 @@
 function result = mapTableToIR(tbl, profileInput, options)
-%MAPTABLETOIR Map an in-memory extractor table into the unified IR contract.
+%MAPTABLETOIR Map an in-memory source table into the unified IR contract.
 %
-% PROFILEINPUT may be a loaded profile bundle, one decoded extractor-output
-% profile document, or a JSON profile path. Artifact reading remains outside
-% this function; TBL must already be loaded by the caller.
+% PROFILEINPUT may be a loaded profile bundle, one decoded table-mapping
+% profile document, or a JSON profile path. Extractor-output, external-stream,
+% and alignment-anchor profiles share this entry point. Artifact reading and
+% every database operation remain outside this function.
 
 arguments
     tbl table
@@ -15,21 +16,37 @@ arguments
     options.RelativePath (1,1) string = ""
     options.Filename (1,1) string = ""
     options.RepoRoot (1,1) string = ""
+    options.EventContext (1,1) struct = struct()
 end
 
 if ischar(profileInput) || (isstring(profileInput) && isscalar(profileInput))
     loaded = vawlume.source_mapping.loadProfile( ...
-        string(profileInput), ExpectedKind="extractor_output", ...
-        RepoRoot=options.RepoRoot);
+        string(profileInput), RepoRoot=options.RepoRoot);
 else
     loaded = profileInput;
 end
 
-[profile, ~, profileLocation] = profileProvenance(loaded, options.ProfileId);
+[profile, profileEntry, profileLocation] = profileProvenance(loaded, options.ProfileId);
 result = emptyIntermediateRepresentation(profile);
 if isstruct(loaded) && hasProfileField(loaded, "issues")
     issues = selectedProfileIssues(loaded.issues, profileLocation);
     result.issues = [result.issues; normalizeIssuesForIR(issues)];
+end
+
+switch string(profile.profile_kind)
+    case "external_stream_mapping"
+        result = mapExternalStreamTableToIR( ...
+            tbl, result, profileEntry, profileLocation, options);
+        return
+    case "alignment_anchor_mapping"
+        result = mapAlignmentAnchorTableToIR( ...
+            tbl, result, profileEntry, profileLocation, options);
+        return
+    case "extractor_output"
+        % Continue through the inherited generic extractor field mapper.
+    otherwise
+        error("vawlume:source_mapping:UnexpectedProfileKind", ...
+            "mapTableToIR does not map profile kind %s.", profile.profile_kind);
 end
 
 sourceKey = options.SourceKey;

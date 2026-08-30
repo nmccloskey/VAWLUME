@@ -2,15 +2,101 @@ function result = emptyIntermediateRepresentation(profile)
 %EMPTYINTERMEDIATERESULT Construct the transparent source-mapping IR shape.
 
 result = struct();
-result.ir_schema_version = "0.1-draft";
+result.ir_schema_version = "0.2-draft";
 result.profile = profile;
 result.sources = emptySourcesTable();
 result.records = emptyRecordsTable();
 result.values = emptyValuesTable();
 result.relationships = emptyRelationshipsTable();
+result.streams = emptyStreamsTable();
+result.events = emptyEventsTable();
+result.event_attributes = emptyEventAttributesTable();
+result.coverage = emptyCoverageTable();
+result.anchors = emptyAnchorsTable();
+result.anchor_observations = emptyAnchorObservationsTable();
+result.anchor_fit_pairs = emptyAnchorFitPairsTable();
 result.issues = emptyIssuesTable();
 result.summary = struct();
 result.valid_for_ingest = false;
+end
+
+function value = emptyStreamsTable()
+names = ["stream_key", "source_key", "timebase_key", "stream_kind", ...
+    "modality", "native_time_unit", "normalized_time_unit", "status"];
+value = typedEmptyTable(names, repmat("string", 1, numel(names)));
+end
+
+function value = emptyEventsTable()
+names = ["event_key", "source_key", "stream_key", "timebase_key", ...
+    "source_row", "source_locator", "native_event_id", "native_event_label", ...
+    "normalized_event_key", "start_time_native", "end_time_native", ...
+    "start_time_s", "end_time_s", "native_time_unit", "time_transform", ...
+    "start_source_field", "end_source_field", "start_column_resolution", ...
+    "end_column_resolution", "entity_key", "scalar_raw_value", ...
+    "scalar_value_real", "scalar_value_integer", "scalar_value_text", ...
+    "scalar_value_boolean", "scalar_value_type", "scalar_native_unit", ...
+    "scalar_unit", ...
+    "mapping_rule", "status"];
+types = repmat("string", 1, numel(names));
+types(ismember(names, ["source_row", "start_time_native", "end_time_native", ...
+    "start_time_s", "end_time_s", "scalar_value_real", "scalar_value_integer", ...
+    "scalar_value_boolean"])) = "double";
+value = typedEmptyTable(names, types);
+end
+
+function value = emptyEventAttributesTable()
+names = ["attribute_key", "event_key", "source_key", "source_row", ...
+    "source_locator", "native_field", "actual_source_field", "attribute_name", ...
+    "raw_value", "value_type", "value_real", "value_integer", "value_text", ...
+    "value_boolean", "native_unit", "normalized_unit", "transform_key", ...
+    "mapping_rule", "status"];
+types = repmat("string", 1, numel(names));
+types(ismember(names, ["source_row", "value_real", "value_integer", ...
+    "value_boolean"])) = "double";
+value = typedEmptyTable(names, types);
+end
+
+function value = emptyCoverageTable()
+names = ["coverage_key", "source_key", "stream_key", "timebase_key", ...
+    "segment_index", "start_time_native", "end_time_native", "start_time_s", ...
+    "end_time_s", "native_time_unit", "time_transform", "source_locator", ...
+    "mapping_rule", "observation_status", "status"];
+types = repmat("string", 1, numel(names));
+types(ismember(names, ["segment_index", "start_time_native", "end_time_native", ...
+    "start_time_s", "end_time_s"])) = "double";
+value = typedEmptyTable(names, types);
+end
+
+function value = emptyAnchorsTable()
+names = ["anchor_key", "source_key", "source_row", "source_locator", ...
+    "anchor_type", "expected_order", "mapping_rule", "status"];
+types = repmat("string", 1, numel(names));
+types(ismember(names, ["source_row", "expected_order"])) = "double";
+value = typedEmptyTable(names, types);
+end
+
+function value = emptyAnchorObservationsTable()
+names = ["observation_key", "anchor_key", "source_key", "source_row", ...
+    "source_locator", "stream_key", "timebase_key", "observed_time_native", ...
+    "observed_time_s", "native_time_unit", "time_transform", ...
+    "timestamp_source_field", "timestamp_column_resolution", "observation_role", ...
+    "included_in_fit", "uncertainty_s", "event_source_key", ...
+    "event_native_event_id", "mapping_rule", "status"];
+types = repmat("string", 1, numel(names));
+types(ismember(names, ["source_row", "observed_time_native", "observed_time_s", ...
+    "included_in_fit", "uncertainty_s"])) = "double";
+value = typedEmptyTable(names, types);
+end
+
+function value = emptyAnchorFitPairsTable()
+names = ["source_timebase_key", "reference_timebase_key", ...
+    "fit_eligible_anchor_count", "status"];
+value = typedEmptyTable(names, ["string", "string", "double", "string"]);
+end
+
+function value = typedEmptyTable(names, types)
+value = table(Size=[0, numel(names)], VariableTypes=cellstr(types), ...
+    VariableNames=cellstr(names));
 end
 
 function value = emptySourcesTable()

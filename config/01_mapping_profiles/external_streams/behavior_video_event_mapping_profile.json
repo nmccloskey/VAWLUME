@@ -1,0 +1,93 @@
+{
+  "profile": {
+    "id": "vawlume.external.behavior_video.synthetic.v1",
+    "name": "Synthetic behavior and video event table",
+    "kind": "external_stream_mapping",
+    "profile_schema_version": "0.3-draft",
+    "profile_version": "0.1.0"
+  },
+  "source": {
+    "table_role": "behavior_video_events",
+    "source_key_default": "source:behavior_video:synthetic"
+  },
+  "context": {
+    "stream_key": "video_behavior",
+    "timebase_key": "video_native",
+    "stream_kind": "annotation",
+    "modality": "behavior",
+    "native_time_unit": "s"
+  },
+  "columns": {
+    "native_event_id": {
+      "source_field": "event_id",
+      "required": true
+    },
+    "native_event_label": {
+      "source_field": "event",
+      "aliases": ["marker"],
+      "required": true
+    },
+    "start_time": {
+      "source_field": "start_time_s",
+      "aliases": ["timestamp_s"],
+      "default_source_fields": ["start_time_s", "timestamp_s"],
+      "required": true
+    },
+    "end_time": {
+      "source_field": "end_time_s",
+      "required": false
+    },
+    "entity_key": {
+      "source_field": "subject",
+      "required": false
+    }
+  },
+  "normalized_event_mapping": {
+    "controlled_targets": ["female_entry", "investigation", "sync_marker"],
+    "unmapped_native_label": "preserve_native",
+    "mappings": [
+      {
+        "native_value": "Intruder enters",
+        "normalized_value": "female_entry"
+      },
+      {
+        "native_value": "Sniffing",
+        "normalized_value": "investigation"
+      },
+      {
+        "native_value": "SYNC_FLASH",
+        "normalized_value": "sync_marker"
+      }
+    ]
+  },
+  "attributes": [
+    {
+      "source_field": "zone",
+      "attribute_name": "zone",
+      "data_type": "string",
+      "native_unit": "",
+      "normalized_unit": "",
+      "transform": "identity",
+      "required": true
+    }
+  ],
+  "coverage": {
+    "mode": "constant_segments",
+    "segments": [
+      {
+        "start_time_native": 0.0,
+        "end_time_native": 240.0
+      },
+      {
+        "start_time_native": 300.0,
+        "end_time_native": 600.0
+      }
+    ]
+  },
+  "mapping_policy": {
+    "unknown_fields": "preserve_and_warn"
+  },
+  "validation": {
+    "native_event_id_unique": true
+  }
+}

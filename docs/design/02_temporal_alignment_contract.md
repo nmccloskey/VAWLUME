@@ -2,18 +2,22 @@
 
 ## Status
 
-**Design target. Nothing described here is implemented yet.**
+**Implementation checkpoint.** The normalized relational grammar and the
+database-free external-event/anchor source-mapping layer are implemented.
+Alignment intake/registration, manifest orchestration, transform fitting,
+common-time projection, and regularized timelines remain design targets.
 
 This document is the governing contract for VAWLUME's first external-stream
 temporal-alignment implementation. It defines vocabulary, invariants, schema
 direction, the input/output boundary, and exit criteria, and it records an audit
 of what the inherited draft schema already supports.
 
-At the time of writing, the alignment and sequence tables in `schema/schema.sql`
-are the original design draft. They are populated only by the Phase 1 synthetic
-fixture, which hand-seeds them to demonstrate that the relational grammar can
-express alignment. No VAWLUME code fits a transform, registers an external
-stream, or projects an event onto another clock.
+The original pairwise alignment draft has been replaced by timebases, logical
+streams and sources, events and attributes, coverage, alignment sets, logical
+anchors and observations, pairwise transforms, and per-anchor residual evidence.
+Versioned JSON mapping profiles can now normalize synthetic external event and
+long/wide anchor tables into one validated IR. No VAWLUME code yet registers that
+IR, fits a transform, or projects an event onto another clock.
 
 Read this document before changing anything under the alignment tables. Read
 `07_matching_and_consensus.md` in `docs/development/` for what the correspondence
@@ -394,19 +398,21 @@ requires.
 - **`analysis_runs` supports the set/child pattern.** `run_type` is free text and
   `parent_analysis_run_id` exists, with the Phase 6 matching → agreement
   parent/child relationship as working precedent.
-- **`config_profiles.profile_kind` already includes `external_stream_mapping`.**
-  No new profile kind is required for reusable stream and anchor mapping rules.
+- **`config_profiles.profile_kind` already included `external_stream_mapping`.**
+  Pass 3 added `alignment_anchor_mapping` because long/wide anchor layout and
+  required observation identity are materially different from event-stream
+  rules. No `alignment_manifest` kind was added.
 - **`artifacts` and `source_files` carry `path_or_uri` plus `checksum_sha256`.**
   A session manifest can be registered as provenance-bearing evidence without
   inventing an `alignment_manifest` profile kind.
-- **`+source_mapping` is verified database-free.** A search for `conn`, `fetch`,
-  `execute`, `sqlwrite`, `sqlite`, and `database` across the namespace returns
-  nothing. This invariant must survive the phase.
+- **`+source_mapping` is verified database-free.** It exposes no connection
+  argument and calls no SQLite, `fetch`, `execute`, or `sqlwrite` API. This
+  invariant must survive the phase.
 - **`mapTableToIR` already accepts an arbitrary MATLAB table plus a profile** and
   returns the validated IR, so external event and anchor tables need a profile
   kind and validation rules rather than a new entry point. Its documented
-  `profile_kind` vocabulary is currently `project_input` or `extractor_output`
-  and will need extending.
+  vocabulary now includes `external_stream_mapping` and
+  `alignment_anchor_mapping` beside the inherited two kinds.
 - **`external_streams.stream_kind`** already permits `event`, `annotation`,
   `video`, `ttl`, `continuous`, and `other`, covering the motivating workflow.
 - **`sequences`, `sequence_members`, `bouts`, and `bout_members` are entirely

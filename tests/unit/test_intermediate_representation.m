@@ -103,15 +103,29 @@ verifyEqual(testCase, string(fieldnames(result)), [
     "records"
     "values"
     "relationships"
+    "streams"
+    "events"
+    "event_attributes"
+    "coverage"
+    "anchors"
+    "anchor_observations"
+    "anchor_fit_pairs"
     "issues"
     "summary"
     "valid_for_ingest"
     ]);
-verifyEqual(testCase, result.ir_schema_version, "0.1-draft");
+verifyEqual(testCase, result.ir_schema_version, "0.2-draft");
 verifyTrue(testCase, istable(result.sources));
 verifyTrue(testCase, istable(result.records));
 verifyTrue(testCase, istable(result.values));
 verifyTrue(testCase, istable(result.relationships));
+verifyTrue(testCase, istable(result.streams));
+verifyTrue(testCase, istable(result.events));
+verifyTrue(testCase, istable(result.event_attributes));
+verifyTrue(testCase, istable(result.coverage));
+verifyTrue(testCase, istable(result.anchors));
+verifyTrue(testCase, istable(result.anchor_observations));
+verifyTrue(testCase, istable(result.anchor_fit_pairs));
 verifyTrue(testCase, istable(result.issues));
 end
 

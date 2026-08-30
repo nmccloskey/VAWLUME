@@ -1,5 +1,5 @@
 -- VAWLUME prototype relational schema
--- Version: 0.3-draft
+-- Version: 0.4-draft
 -- Date: 2026-08-30
 -- Target: SQLite (MATLAB-centered workflow)
 --
@@ -44,9 +44,9 @@ CREATE TABLE schema_info (
 );
 
 INSERT OR IGNORE INTO schema_info(schema_version, description)
-VALUES ('0.3-draft', 'Phase 7 temporal-alignment ontology: recording-native timebases, logical streams with source provenance and coverage, logical anchors with per-timebase observations, alignment sets, and per-anchor residual evidence');
+VALUES ('0.4-draft', 'Phase 7 source mapping: alignment-anchor mapping profiles added to the temporal-alignment ontology');
 
-PRAGMA user_version = 3;
+PRAGMA user_version = 4;
 
 -- ============================================================================
 -- 1. Project and configuration-profile infrastructure
@@ -74,6 +74,7 @@ CREATE TABLE config_profiles (
                             'recording_device',
                             'experimental_setup',
                             'external_stream_mapping',
+                            'alignment_anchor_mapping',
                             'analysis_settings',
                             'consilience_policy',
                             'other'

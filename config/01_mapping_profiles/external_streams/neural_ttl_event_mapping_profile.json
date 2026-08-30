@@ -1,0 +1,81 @@
+{
+  "profile": {
+    "id": "vawlume.external.neural_ttl.synthetic.v1",
+    "name": "Synthetic neural TTL event table",
+    "kind": "external_stream_mapping",
+    "profile_schema_version": "0.3-draft",
+    "profile_version": "0.1.0"
+  },
+  "source": {
+    "table_role": "neural_ttl_events",
+    "source_key_default": "source:neural_ttl:synthetic"
+  },
+  "context": {
+    "stream_key": "neural_ttl",
+    "timebase_key": "neural_native",
+    "stream_kind": "ttl",
+    "modality": "neural",
+    "native_time_unit": "ms"
+  },
+  "columns": {
+    "native_event_id": {
+      "source_field": "pulse_id",
+      "required": true
+    },
+    "native_event_label": {
+      "source_field": "marker",
+      "aliases": ["event"],
+      "required": true
+    },
+    "start_time": {
+      "source_field": "timestamp_ms",
+      "default_source_fields": ["timestamp_ms"],
+      "required": true
+    }
+  },
+  "normalized_event_mapping": {
+    "controlled_targets": ["sync_marker"],
+    "unmapped_native_label": "preserve_native",
+    "mappings": [
+      {
+        "native_value": "TTL1_HIGH",
+        "normalized_value": "sync_marker"
+      }
+    ]
+  },
+  "attributes": [
+    {
+      "source_field": "amplitude_v",
+      "attribute_name": "amplitude",
+      "data_type": "float",
+      "native_unit": "V",
+      "normalized_unit": "V",
+      "transform": "identity",
+      "required": true
+    },
+    {
+      "source_field": "channel",
+      "attribute_name": "channel",
+      "data_type": "integer",
+      "native_unit": "",
+      "normalized_unit": "",
+      "transform": "identity",
+      "required": true
+    }
+  ],
+  "coverage": {
+    "mode": "constant_segments",
+    "segments": [
+      {
+        "start_time_native": 0.0,
+        "end_time_native": 650000.0
+      }
+    ]
+  },
+  "mapping_policy": {
+    "unknown_fields": "preserve_and_warn"
+  },
+  "validation": {
+    "native_event_id_unique": true
+  }
+}

@@ -41,13 +41,16 @@ The current design includes:
 
 - an executable `schema/schema.sql` draft with Phase 1 integrity triggers and query views;
 - DeepSqueak and MUPET extractor design references;
-- built-in DeepSqueak and MUPET JSON output-mapping profiles;
+- built-in DeepSqueak and MUPET JSON output-mapping profiles plus synthetic
+  external-event and long/wide alignment-anchor mapping profiles;
 - example project-input, recording-device, experimental-setup, and profile-linkage JSON;
 - a specified source-mapping architecture;
 - semantic seed registration for shipped DeepSqueak/MUPET output-mapping profiles;
 - a deterministic Phase 1 synthetic fixture with representative acceptance queries and MATLAB tests;
 - project-source discovery/path parsing and extractor table-field mapping;
-- one provenance-bearing, validated source-mapping intermediate representation for project files and supplied extractor tables;
+- one provenance-bearing, validated source-mapping intermediate representation
+  for project files, supplied extractor tables, external event streams, and
+  long/wide alignment-anchor tables;
 - a structured, human-readable, IR-only source-mapping dry-run preview with explicit readiness verdicts;
 - transactional project intake that materializes portable sources, configurable
   experimental entity graphs, recordings, profile linkage, and immutable
@@ -66,8 +69,10 @@ The reusable `source_mapping` engine now completes the Phase 2 checkpoint and
 the Phase 2.5 native-configuration cleanup: it loads canonical JSON profiles
 with MATLAB-native decoding, validates explicit profile content and language
 versions, discovers and parses project sources, maps supplied extractor tables
-through registered transforms, produces a validated intermediate
-representation, and renders a database-free dry-run preview. Project intake is
+through registered transforms, maps declared external events, typed attributes,
+coverage segments, and long/wide anchor observations without SQLite IDs,
+produces a validated intermediate representation, and renders a database-free
+dry-run preview. Project intake is
 now implemented as the transactional boundary from that IR to the relational
 project/entity/recording graph.
 
@@ -209,6 +214,8 @@ Tracked configuration artifacts should describe reusable semantics or examples:
 
 - extractor-output mapping profiles;
 - project-input source mapping profiles;
+- external-stream event mapping profiles;
+- alignment-anchor mapping profiles;
 - example device profiles;
 - example experimental-setup profiles;
 - profile-linkage examples.
@@ -271,13 +278,18 @@ proper — transitions, motifs, bouts, string methods — is deferred to a later
 phase. The design contract is
 [`docs/design/02_temporal_alignment_contract.md`](docs/design/02_temporal_alignment_contract.md).
 
-The relational grammar for that work now exists: timebases with one resolvable
+The relational grammar and database-free source-mapping layer for that work now
+exist: timebases with one resolvable
 native audio clock per recording, logical external streams with separate source
 provenance and observed coverage, native and normalized event vocabularies with
 extensible attributes, alignment sets owning a reference timebase, pairwise
 transforms as their children, and logical anchors observed on many clocks with
-per-anchor residual evidence. **No behaviour is implemented on it yet** — no
-parser, manifest orchestration, transform fitting, or timeline construction. See
+per-anchor residual evidence. Versioned JSON profiles now map synthetic
+behavior/video and neural/TTL tables plus equivalent long/wide anchor tables into
+one provenance-bearing IR, preserving native time, normalized seconds, native
+labels, attributes, coverage gaps, redundant observations, and source locators.
+Database registration, manifest orchestration, transform fitting, and timeline
+construction remain later Phase 7 passes. See
 [`docs/development/11_temporal_alignment_schema.md`](docs/development/11_temporal_alignment_schema.md).
 
 **Every matching, tolerance, and manual-reference threshold shipped with the
@@ -300,7 +312,7 @@ metric identity is never asserted.
 ## Documentation
 
 - [`docs/design/01_prototype_development_outline.md`](docs/design/01_prototype_development_outline.md) — current prototype development plan
-- [`docs/design/02_temporal_alignment_contract.md`](docs/design/02_temporal_alignment_contract.md) — Phase 7 temporal-alignment design contract, exit criteria, and inherited-schema audit (design target; not yet implemented)
+- [`docs/design/02_temporal_alignment_contract.md`](docs/design/02_temporal_alignment_contract.md) — Phase 7 temporal-alignment design contract, exit criteria, inherited-schema audit, and current implementation boundary
 - [`docs/development/01_repo_structure.md`](docs/development/01_repo_structure.md) — repository policy and MATLAB-specific layout
 - [`docs/development/02_development_workflow.md`](docs/development/02_development_workflow.md) — development conventions for the prototype
 - [`docs/development/03_source_mapping_intermediate_representation.md`](docs/development/03_source_mapping_intermediate_representation.md) — source-mapping IR and dry-run contract

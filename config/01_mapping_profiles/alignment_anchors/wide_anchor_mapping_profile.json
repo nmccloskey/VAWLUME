@@ -1,0 +1,60 @@
+{
+  "profile": {
+    "id": "vawlume.alignment.anchor.wide.synthetic.v1",
+    "name": "Synthetic wide-layout alignment anchors",
+    "kind": "alignment_anchor_mapping",
+    "profile_schema_version": "0.3-draft",
+    "profile_version": "0.1.0"
+  },
+  "source": {
+    "table_role": "alignment_anchor_observations_wide",
+    "source_key_default": "source:anchors:wide:synthetic"
+  },
+  "layout": {
+    "kind": "wide",
+    "stream_columns": [
+      {
+        "source_field": "audio",
+        "stream_key": "audio_sync",
+        "timebase_key": "audio_native"
+      },
+      {
+        "source_field": "video",
+        "stream_key": "video_sync",
+        "timebase_key": "video_native"
+      },
+      {
+        "source_field": "neural",
+        "stream_key": "neural_ttl",
+        "timebase_key": "neural_native"
+      }
+    ]
+  },
+  "context": {
+    "native_time_unit": "s",
+    "default_anchor_type": "sync_marker",
+    "declared_timebases": ["audio_native", "video_native", "neural_native"],
+    "fit_pairs": [
+      {
+        "source_timebase_key": "audio_native",
+        "reference_timebase_key": "neural_native"
+      },
+      {
+        "source_timebase_key": "video_native",
+        "reference_timebase_key": "neural_native"
+      }
+    ]
+  },
+  "columns": {
+    "anchor_key": {
+      "source_field": "marker",
+      "required": true
+    }
+  },
+  "mapping_policy": {
+    "unknown_fields": "preserve_and_warn"
+  },
+  "validation": {
+    "require_explicit_resolution_for_duplicates": true
+  }
+}

@@ -21,6 +21,8 @@ report.discovery = discoverySection(result);
 [report.project_hierarchy, report.project_hierarchy_columns] = ...
     projectHierarchySection(result);
 report.table_mapping = tableMappingSection(result);
+report.external_streams = externalStreamSection(result);
+report.anchor_mapping = anchorMappingSection(result);
 report.issue_summary = issueSummarySection(result.issues);
 detailCount = min(height(result.issues), options.MaxIssueDetails);
 report.issue_details = result.issues(1:detailCount, :);
@@ -37,14 +39,18 @@ end
 
 function validateIntermediateRepresentation(result)
 required = ["ir_schema_version", "profile", "sources", "records", ...
-    "values", "relationships", "issues", "summary", "valid_for_ingest"];
+    "values", "relationships", "streams", "events", "event_attributes", ...
+    "coverage", "anchors", "anchor_observations", "anchor_fit_pairs", ...
+    "issues", "summary", "valid_for_ingest"];
 missing = required(~isfield(result, cellstr(required)));
 if ~isempty(missing)
     error("vawlume:source_mapping:InvalidIntermediateRepresentation", ...
         "Preview requires the unified source-mapping IR; missing field(s): %s.", ...
         strjoin(missing, ", "));
 end
-tableFields = ["sources", "records", "values", "relationships", "issues"];
+tableFields = ["sources", "records", "values", "relationships", "streams", ...
+    "events", "event_attributes", "coverage", "anchors", ...
+    "anchor_observations", "anchor_fit_pairs", "issues"];
 for index = 1:numel(tableFields)
     field = tableFields(index);
     if ~istable(result.(field))
@@ -187,6 +193,65 @@ for sourceIndex = 1:height(tableSources)
 end
 end
 
+function summary = externalStreamSection(result)
+summary = table(strings(0, 1), strings(0, 1), strings(0, 1), NaN(0, 1), ...
+    NaN(0, 1), NaN(0, 1), strings(0, 1), NaN(0, 1), strings(0, 1), ...
+    strings(0, 1), strings(0, 1), ...
+    VariableNames=["source_key", "stream_key", "timebase_key", "event_count", ...
+    "time_start_s", "time_end_s", "coverage_status", "coverage_segment_count", ...
+    "native_labels", "normalized_event_keys", "attribute_fields"]);
+for streamIndex = 1:height(result.streams)
+    stream = result.streams(streamIndex, :);
+    sourceKey = string(stream.source_key);
+    streamKey = string(stream.stream_key);
+    events = result.events(result.events.source_key == sourceKey & ...
+        result.events.stream_key == streamKey, :);
+    coverage = result.coverage(result.coverage.source_key == sourceKey & ...
+        result.coverage.stream_key == streamKey, :);
+    attributes = result.event_attributes(result.event_attributes.source_key == sourceKey, :);
+    startTime = NaN;
+    endTime = NaN;
+    validStarts = events.start_time_s(isfinite(events.start_time_s));
+    validEnds = events.end_time_s(isfinite(events.end_time_s));
+    if ~isempty(validStarts)
+        startTime = min(validStarts);
+    end
+    if ~isempty(validEnds)
+        endTime = max(validEnds);
+    end
+    coverageStatus = "not_declared";
+    if ~isempty(coverage)
+        coverageStatus = "declared_observed_segments";
+        if any(coverage.status == "invalid")
+            coverageStatus = "invalid";
+        end
+    end
+    summary(end + 1, :) = {sourceKey, streamKey, string(stream.timebase_key), ...
+        height(events), startTime, endTime, coverageStatus, height(coverage), ...
+        strjoin(sortedNonempty(events.native_event_label), ", "), ...
+        strjoin(sortedNonempty(events.normalized_event_key), ", "), ...
+        strjoin(sortedNonempty(attributes.attribute_name), ", ")}; %#ok<AGROW>
+end
+end
+
+function summary = anchorMappingSection(result)
+timebases = sortedNonempty(result.anchor_observations.timebase_key);
+counts = NaN(numel(timebases), 1);
+for index = 1:numel(timebases)
+    counts(index) = sum(result.anchor_observations.timebase_key == timebases(index));
+end
+byTimebase = table(timebases, counts, ...
+    VariableNames=["timebase_key", "observation_count"]);
+summary = struct( ...
+    logical_anchor_count=height(result.anchors), ...
+    observation_count=height(result.anchor_observations), ...
+    observations_by_timebase=byTimebase, ...
+    ambiguous_primary_count=sum(result.issues.code == "ANCHOR_PRIMARY_AMBIGUOUS"), ...
+    unresolved_event_reference_count=sum(result.issues.code == "EVENT_REFERENCE_UNRESOLVED"), ...
+    fit_pairs=result.anchor_fit_pairs, ...
+    ready=result.valid_for_ingest && ~isempty(result.anchors));
+end
+
 function summary = issueSummarySection(issues)
 summary = table(strings(0, 1), strings(0, 1), NaN(0, 1), ...
     VariableNames=["severity", "code", "count"]);
@@ -235,6 +300,41 @@ if ~isempty(report.table_mapping)
     lines(end + 1) = "";
     lines(end + 1) = "TABLE MAPPING";
     lines = [lines; tableMappingLines(report.table_mapping)];
+end
+if ~isempty(report.external_streams)
+    lines(end + 1) = "";
+    lines(end + 1) = "EXTERNAL EVENT STREAMS";
+    for index = 1:height(report.external_streams)
+        row = report.external_streams(index, :);
+        lines(end + 1) = "Stream " + row.stream_key + " on " + row.timebase_key + ...
+            ": events=" + row.event_count + ", time range s=[" + ...
+            numberText(row.time_start_s) + ", " + numberText(row.time_end_s) + ...
+            "], coverage=" + row.coverage_status + " (" + ...
+            row.coverage_segment_count + " segment(s)), native labels={" + ...
+            displayOr(row.native_labels, "none") + "}, normalized keys={" + ...
+            displayOr(row.normalized_event_keys, "none") + "}, attributes={" + ...
+            displayOr(row.attribute_fields, "none") + "}"; %#ok<AGROW>
+    end
+end
+if report.anchor_mapping.logical_anchor_count > 0 || ...
+        report.anchor_mapping.observation_count > 0
+    lines(end + 1) = "";
+    lines(end + 1) = "ALIGNMENT ANCHORS";
+    lines(end + 1) = "Logical anchors: " + report.anchor_mapping.logical_anchor_count;
+    lines(end + 1) = "Observations: " + report.anchor_mapping.observation_count;
+    for index = 1:height(report.anchor_mapping.observations_by_timebase)
+        row = report.anchor_mapping.observations_by_timebase(index, :);
+        lines(end + 1) = "Observations on " + row.timebase_key + ": " + ...
+            row.observation_count; %#ok<AGROW>
+    end
+    lines(end + 1) = "Ambiguous primary groups: " + ...
+        report.anchor_mapping.ambiguous_primary_count;
+    for index = 1:height(report.anchor_mapping.fit_pairs)
+        row = report.anchor_mapping.fit_pairs(index, :);
+        lines(end + 1) = "Fit pair " + row.source_timebase_key + " -> " + ...
+            row.reference_timebase_key + ": eligible anchors=" + ...
+            row.fit_eligible_anchor_count + " [" + row.status + "]"; %#ok<AGROW>
+    end
 end
 
 lines(end + 1) = "";
@@ -315,6 +415,14 @@ function value = displayOr(value, fallback)
 value = string(value);
 if ismissing(value) || strlength(value) == 0
     value = string(fallback);
+end
+end
+
+function value = numberText(number)
+if isfinite(number)
+    value = string(sprintf("%.15g", number));
+else
+    value = "n/a";
 end
 end
 

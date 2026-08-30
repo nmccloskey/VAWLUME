@@ -15,8 +15,8 @@ cleanupDb = onCleanup(@() cleanupDatabase(conn, dbFile));
 summary = vawlume.db.applySchema(conn, fullfile(repoRoot, "schema", "schema.sql"));
 
 verifyGreaterThan(testCase, summary.statements_executed, 0);
-verifyEqual(testCase, string(firstValue(conn, "SELECT schema_version FROM schema_info")), "0.3-draft");
-verifyEqual(testCase, double(firstValue(conn, "PRAGMA user_version")), 3);
+verifyEqual(testCase, string(firstValue(conn, "SELECT schema_version FROM schema_info")), "0.4-draft");
+verifyEqual(testCase, double(firstValue(conn, "PRAGMA user_version")), 4);
 verifyEqual(testCase, double(firstValue(conn, "PRAGMA foreign_keys")), 1);
 verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
 
@@ -85,6 +85,16 @@ cleanupDb = onCleanup(@() cleanupDatabase(conn, dbFile));
 vawlume.db.applySchema(conn, fullfile(repoRoot, "schema", "schema.sql"));
 
 execute(conn, "INSERT INTO projects(project_key, project_name) VALUES ('schema_test_project', 'Schema test project')");
+execute(conn, ...
+    "INSERT INTO config_profiles(project_id, profile_key, profile_name, profile_kind) " + ...
+    "VALUES (1, 'external_map', 'External map', 'external_stream_mapping')");
+execute(conn, ...
+    "INSERT INTO config_profiles(project_id, profile_key, profile_name, profile_kind) " + ...
+    "VALUES (1, 'anchor_map', 'Anchor map', 'alignment_anchor_mapping')");
+kinds = fetch(conn, ...
+    "SELECT profile_kind FROM config_profiles ORDER BY profile_kind");
+verifyEqual(testCase, string(kinds.profile_kind), ...
+    ["alignment_anchor_mapping"; "external_stream_mapping"]);
 
 verifySqlFails(testCase, conn, ...
     "INSERT INTO config_profiles(project_id, profile_key, profile_name, profile_kind) " + ...
