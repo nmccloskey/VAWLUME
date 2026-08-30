@@ -1254,6 +1254,64 @@ JOIN extraction_runs er ON er.extraction_run_id = d.extraction_run_id
 JOIN extractor_versions ev ON ev.extractor_version_id = er.extractor_version_id
 JOIN extractors e ON e.extractor_id = ev.extractor_id;
 
+-- Registered cross-extractor feature comparability. This is the only defensible
+-- route for comparing measurements across extractors: a shared canonical_name is
+-- neither necessary nor sufficient. DeepSqueak's contour median and MUPET's
+-- filterbank mean carry different canonical names and are reachable only through
+-- equivalence_class plus this relationship; conversely, sharing an equivalence
+-- class does not make a pair eligible, which is why relationship_type and
+-- consilience_eligible are exposed verbatim and nothing is filtered here.
+-- feature_a/feature_b order follows feature_relationships' ascending-id CHECK and
+-- carries no extractor or directional meaning; consumers must orient themselves
+-- by extractor_a_name / extractor_b_name.
+CREATE VIEW v_cross_extractor_feature_pairs AS
+SELECT
+    fr.feature_relationship_id,
+    fr.relationship_type,
+    fr.consilience_eligible,
+    fr.comparison_method,
+    fr.unit_normalization,
+    fr.default_role,
+    fr.justification,
+    a.extractor_feature_id AS feature_a_id,
+    ea.extractor_name      AS extractor_a_name,
+    eva.version_label      AS extractor_a_version,
+    a.native_name          AS feature_a_native_name,
+    a.native_unit          AS feature_a_native_unit,
+    a.derivation_stage     AS feature_a_derivation_stage,
+    a.operational_variant  AS feature_a_operational_variant,
+    a.measurement_method   AS feature_a_measurement_method,
+    a.native_definition    AS feature_a_native_definition,
+    a.equivalence_class    AS feature_a_equivalence_class,
+    cfa.canonical_name     AS feature_a_canonical_name,
+    cfa.canonical_unit     AS feature_a_canonical_unit,
+    cfa.feature_domain     AS feature_a_domain,
+    b.extractor_feature_id AS feature_b_id,
+    eb.extractor_name      AS extractor_b_name,
+    evb.version_label      AS extractor_b_version,
+    b.native_name          AS feature_b_native_name,
+    b.native_unit          AS feature_b_native_unit,
+    b.derivation_stage     AS feature_b_derivation_stage,
+    b.operational_variant  AS feature_b_operational_variant,
+    b.measurement_method   AS feature_b_measurement_method,
+    b.native_definition    AS feature_b_native_definition,
+    b.equivalence_class    AS feature_b_equivalence_class,
+    cfb.canonical_name     AS feature_b_canonical_name,
+    cfb.canonical_unit     AS feature_b_canonical_unit,
+    cfb.feature_domain     AS feature_b_domain
+FROM feature_relationships fr
+JOIN extractor_features a ON a.extractor_feature_id = fr.feature_a_id
+JOIN extractor_features b ON b.extractor_feature_id = fr.feature_b_id
+JOIN extractor_versions eva ON eva.extractor_version_id = a.extractor_version_id
+JOIN extractors ea ON ea.extractor_id = eva.extractor_id
+JOIN extractor_versions evb ON evb.extractor_version_id = b.extractor_version_id
+JOIN extractors eb ON eb.extractor_id = evb.extractor_id
+LEFT JOIN feature_mappings fma ON fma.extractor_feature_id = a.extractor_feature_id
+LEFT JOIN canonical_features cfa ON cfa.canonical_feature_id = fma.canonical_feature_id
+LEFT JOIN feature_mappings fmb ON fmb.extractor_feature_id = b.extractor_feature_id
+LEFT JOIN canonical_features cfb ON cfb.canonical_feature_id = fmb.canonical_feature_id
+WHERE ea.extractor_id <> eb.extractor_id;
+
 CREATE VIEW v_external_events_aligned AS
 SELECT
     ee.external_event_id,

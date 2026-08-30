@@ -55,7 +55,9 @@ The current design includes:
 - schema support for experimental hierarchy, extractor-native objects, detections, feature semantics, cross-extractor matching, derived analysis, and external event/timebase alignment;
 - a versioned prototype matching/consilience specification and a transactional
   candidate, connected-component assignment, and consensus planner over
-  explicitly selected extraction runs.
+  explicitly selected extraction runs;
+- registry-driven cross-extractor feature-pair discovery and read-only
+  detection- and feature-level agreement summaries with explicit denominators.
 
 The reusable `source_mapping` engine now completes the Phase 2 checkpoint and
 the Phase 2.5 native-configuration cleanup: it loads canonical JSON profiles
@@ -71,8 +73,9 @@ populations, and both are tested importing the same recording side by side
 through one shared relational and semantic architecture. Import itself creates
 no cross-extractor result. Matching is implemented separately from import
 through transparent temporal candidates, ambiguity-preserving match groups,
-and topology-governed consensus lineage. Feature agreement and consilience
-remain later stages.
+and topology-governed consensus lineage. Agreement between those populations is
+then quantified separately again, read-only by default. Consilience statuses and
+manual adjudication remain later stages.
 `vawlume.ingest.deepsqueakExport` reads a
 DeepSqueak Excel call-statistics export and routes it through the tracked
 DeepSqueak output-mapping profile to a validated extractor-output IR, without
@@ -116,6 +119,21 @@ consilience row. See
 [`docs/development/07_matching_candidate_generation.md`](docs/development/07_matching_candidate_generation.md)
 and
 [`docs/development/08_matching_assignment_and_consensus.md`](docs/development/08_matching_assignment_and_consensus.md).
+
+`vawlume.consilience.summarize` then quantifies what those groups say. It is
+read-only by default and resolves the specification from the analysis itself
+rather than from the caller, refusing to summarize groups under a specification
+that did not produce them. Detection agreement reports per-run counts with the
+denominator stated on every proportion, keeps group counts separate from
+detection counts so a split component is never read as several matches, and
+takes its temporal deltas from the stored candidate evidence rather than
+recomputing them. Feature comparison is discovered through
+`extractor_features.equivalence_class` and `feature_relationships` — never
+through canonical name, which finds nothing at all for central frequency — and
+is restricted to unambiguous one-to-one groups. `Apply=true` persists only
+aggregate statistics, under a child analysis run parented to the matching
+analysis. See
+[`docs/development/09_detection_and_feature_agreement.md`](docs/development/09_detection_and_feature_agreement.md).
 
 A disposable all-profile demonstration is available at
 [`examples/project_intake_demo.m`](examples/project_intake_demo.m). It runs the
@@ -207,8 +225,10 @@ semantic collapse, and a runnable MUPET demonstration with a bounded
 co-residence appendix. Item 9, matching and consensus, is underway: its
 versioned contract, temporal candidates, connected-component assignment,
 explicit unmatched groups, and topology-gated consensus lineage are
-implemented. Feature agreement and consilience remain pending, so matching
-creates no agreement statistic or consilience assessment.
+implemented, as are registry-driven feature-pair discovery and detection- and
+feature-level agreement. Consilience statuses, manual QC, and threshold
+sensitivity remain pending, so nothing yet writes a consilience assessment or a
+manual review.
 
 The dual-extractor result is worth stating precisely, because it is what
 distinguishes a shared architecture from two special cases. Both extractors
@@ -231,6 +251,7 @@ metric identity is never asserted.
 - [`docs/development/06_mupet_import.md`](docs/development/06_mupet_import.md) — MUPET import contract, syllable identity, the deliberate curation/classification absences, and the shared extractor core
 - [`docs/development/07_matching_candidate_generation.md`](docs/development/07_matching_candidate_generation.md) — explicit run-pair resolution, temporal candidate evidence, provenance, planning, and atomic apply
 - [`docs/development/08_matching_assignment_and_consensus.md`](docs/development/08_matching_assignment_and_consensus.md) — connected-component topology, explicit unmatched groups, consensus lineage, and rerun semantics
+- [`docs/development/09_detection_and_feature_agreement.md`](docs/development/09_detection_and_feature_agreement.md) — agreement denominators, registry-driven feature-pair discovery, comparison scope, and what is and is not persisted
 
 Extractor-specific design references should live under:
 

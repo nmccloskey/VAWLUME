@@ -2,7 +2,7 @@
 
 **Status:** Revised working development plan  
 **Updated:** 2026-08-30
-**Project stage:** Implemented through Phase 6 ambiguity-preserving assignment and consensus lineage; agreement and consilience remain next
+**Project stage:** Implemented through Phase 6 detection- and feature-level agreement; consilience statuses, manual QC, and threshold sensitivity remain next
 **Primary implementation environment:** MATLAB + SQLite  
 **Prototype objective:** Poster-ready, vertically integrated demonstration
 
@@ -787,8 +787,9 @@ exit review has now been run and passed, so extractor-output ingestion is
 complete for the two prototype extractors. Phase 1F's remaining scope —
 cross-extractor correspondence — belongs to Goal 3 and Step 9. Its contract,
 versioned specification, temporal candidates, connected-component assignment,
-and topology-gated consensus lineage are now implemented; agreement and later
-correspondence stages remain pending.
+topology-gated consensus lineage, and registry-driven detection- and
+feature-level agreement are now implemented; consilience classification, manual
+QC, and threshold sensitivity remain pending.
 
 ### DeepSqueak minimum
 
@@ -1524,8 +1525,8 @@ Phase 1 completed Steps 1-4, Phase 2 completed Step 5, Phase 3 completed Step 6,
 Phase 4 completed Step 7, and Phase 5 completed Step 8 as tested relational
 checkpoints. The recommended sequence below remains the implementation spine,
 with Step 9 — matching and consensus — as the active target. Its candidate
-generation, assignment, and consensus-lineage stages are complete; agreement
-and consilience remain next.
+generation, assignment, consensus-lineage, and agreement stages are complete;
+consilience classification and manual QC remain next.
 
 ## Step 1 — Stabilize schema vocabulary
 

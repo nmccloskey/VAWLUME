@@ -266,7 +266,8 @@ DeepSqueak import   complete
 MUPET import        complete
 matching candidates complete
 assignment/consensus complete
-agreement/consilience next, unimplemented
+detection/feature agreement complete
+consilience + manual QC next, unimplemented
 ```
 
 The first cross-extractor correspondence stage is implemented as
@@ -274,10 +275,17 @@ The first cross-extractor correspondence stage is implemented as
 temporally plausible candidates from two caller-selected runs using a versioned,
 checksum-bearing specification. It preserves all edges, partitions detections
 into deterministic connected-component groups (including explicit unmatched
-groups), and emits only the consensus lineage permitted by topology. Feature
-agreement and consilience remain later stages. See
-[`07_matching_candidate_generation.md`](07_matching_candidate_generation.md)
-and [`08_matching_assignment_and_consensus.md`](08_matching_assignment_and_consensus.md).
+groups), and emits only the consensus lineage permitted by topology.
+
+`vawlume.consilience.summarize` quantifies those results. It is read-only by
+default, states the denominator on every proportion, discovers comparable
+features through the registered `equivalence_class` and `feature_relationships`
+rather than through canonical name, and restricts quantitative feature
+comparison to unambiguous one-to-one groups. Consilience statuses, manual QC,
+and threshold sensitivity remain later stages. See
+[`07_matching_candidate_generation.md`](07_matching_candidate_generation.md),
+[`08_matching_assignment_and_consensus.md`](08_matching_assignment_and_consensus.md),
+and [`09_detection_and_feature_agreement.md`](09_detection_and_feature_agreement.md).
 
 ## 12. Generated artifacts
 

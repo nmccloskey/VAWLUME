@@ -49,6 +49,7 @@ expectedViews = [
     "v_recording_entity_context"
     "v_event_measurements_long"
     "v_match_group_members"
+    "v_cross_extractor_feature_pairs"
     "v_external_events_aligned"
     "v_sequence_members"
 ];
