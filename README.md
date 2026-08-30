@@ -52,7 +52,9 @@ The current design includes:
 - transactional project intake that materializes portable sources, configurable
   experimental entity graphs, recordings, profile linkage, and immutable
   ingestion-attempt provenance from validated project-input IR;
-- schema support for experimental hierarchy, extractor-native objects, detections, feature semantics, cross-extractor matching, derived analysis, and external event/timebase alignment.
+- schema support for experimental hierarchy, extractor-native objects, detections, feature semantics, cross-extractor matching, derived analysis, and external event/timebase alignment;
+- a versioned prototype matching/consilience specification and a transactional
+  temporal candidate planner over explicitly selected extraction runs.
 
 The reusable `source_mapping` engine now completes the Phase 2 checkpoint and
 the Phase 2.5 native-configuration cleanup: it loads canonical JSON profiles
@@ -65,8 +67,10 @@ project/entity/recording graph.
 
 DeepSqueak import and MUPET import are both **implemented** through their event
 populations, and both are tested importing the same recording side by side
-through one shared relational and semantic architecture. No cross-extractor
-matching, consensus, or consilience exists yet, and none is created by import.
+through one shared relational and semantic architecture. Import itself creates
+no cross-extractor result. The first matching stage is now implemented
+separately: transparent temporal candidate generation exists, while assignment,
+match groups, consensus, feature agreement, and consilience do not yet.
 `vawlume.ingest.deepsqueakExport` reads a
 DeepSqueak Excel call-statistics export and routes it through the tracked
 DeepSqueak output-mapping profile to a validated extractor-output IR, without
@@ -97,6 +101,16 @@ detector score, a MUPET import creates no curation or classification rows and no
 detection score. Both importers share one extractor-neutral core for feature
 resolution, event routing, profile-declared validation, and detection and
 measurement population.
+
+`vawlume.matching.compare` consumes two explicitly selected runs on one
+recording and the tracked matching specification. Planning is read-only and
+returns every positive-overlap pair meeting the configured temporal-IoU floor,
+with overlap, IoU, and signed onset/offset/duration differences plus unmatched
+counts. `Apply=true` atomically registers the checksum-bearing specification,
+the derived analysis parent, the ordered `run_a`/`run_b` inputs, and candidate
+rows. It deliberately creates no group, consensus, agreement, or consilience
+row. See
+[`docs/development/07_matching_candidate_generation.md`](docs/development/07_matching_candidate_generation.md).
 
 A disposable all-profile demonstration is available at
 [`examples/project_intake_demo.m`](examples/project_intake_demo.m). It runs the
@@ -185,9 +199,11 @@ end-to-end demonstration. Phase 5 completed item 8: the MUPET CSV adapter, the
 run and provenance graph, the atomic syllable and measurement population, the
 dual-extractor proof that both importers reach one relational model without
 semantic collapse, and a runnable MUPET demonstration with a bounded
-co-residence appendix. Item 9, matching and consensus, is next and is still
-entirely absent: no code path creates a candidate pair, a match group, a
-consensus event, or a consilience assessment.
+co-residence appendix. Item 9, matching and consensus, is now underway: its
+versioned contract and temporal candidate stage are implemented, and a matching
+apply can create candidate pairs. Assignment and every later stage remain
+pending, so no code path yet creates a match group, consensus event, agreement
+statistic, or consilience assessment.
 
 The dual-extractor result is worth stating precisely, because it is what
 distinguishes a shared architecture from two special cases. Both extractors
@@ -208,6 +224,7 @@ metric identity is never asserted.
 - [`docs/development/04_project_intake.md`](docs/development/04_project_intake.md) — transactional project-intake boundary and identity contract
 - [`docs/development/05_deepsqueak_import.md`](docs/development/05_deepsqueak_import.md) — DeepSqueak import contract, identity, provenance, and limitations
 - [`docs/development/06_mupet_import.md`](docs/development/06_mupet_import.md) — MUPET import contract, syllable identity, the deliberate curation/classification absences, and the shared extractor core
+- [`docs/development/07_matching_candidate_generation.md`](docs/development/07_matching_candidate_generation.md) — explicit run-pair resolution, temporal candidate evidence, provenance, planning, and atomic apply
 
 Extractor-specific design references should live under:
 

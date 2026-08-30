@@ -264,13 +264,17 @@ source mapping      complete
 project intake      complete
 DeepSqueak import   complete
 MUPET import        complete
-matching/consensus  next, unimplemented
+matching candidates complete
+assignment/consensus next, unimplemented
 ```
 
-Cross-extractor matching and consensus remain unimplemented, so no comparison
-between extractors is yet possible. Both extractors can import the same
-recording, and their populations are jointly queryable, but nothing decides what
-any correspondence between them means.
+The first cross-extractor correspondence stage is implemented as
+`vawlume.matching.compare`. It generates and can atomically persist all
+temporally plausible candidates from two caller-selected runs using a versioned,
+checksum-bearing specification. It does not assign candidates or create match
+groups, consensus events, feature agreement, or consilience; those remain the
+next implementation stages. See
+[`07_matching_candidate_generation.md`](07_matching_candidate_generation.md).
 
 ## 12. Generated artifacts
 

@@ -1,8 +1,8 @@
 # VAWLUME Prototype Development Outline
 
 **Status:** Revised working development plan  
-**Updated:** 2026-08-29
-**Project stage:** Implemented through Phase 5 dual-extractor integration; DeepSqueak and MUPET both import one recording through shared infrastructure. Cross-extractor matching is next
+**Updated:** 2026-08-30
+**Project stage:** Implemented through Phase 6 temporal candidate generation; assignment, consensus, agreement, and consilience remain next
 **Primary implementation environment:** MATLAB + SQLite  
 **Prototype objective:** Poster-ready, vertically integrated demonstration
 
@@ -785,8 +785,9 @@ atomic syllable and measurement population, and its own runnable demonstration,
 with both extractors tested importing one recording side by side. The Step 8
 exit review has now been run and passed, so extractor-output ingestion is
 complete for the two prototype extractors. Phase 1F's remaining scope —
-cross-extractor correspondence — belongs to Goal 3 and Step 9, and no part of it
-is implemented.
+cross-extractor correspondence — belongs to Goal 3 and Step 9. Its contract,
+versioned specification, and temporal candidate generation are now implemented;
+assignment and later correspondence stages remain pending.
 
 ### DeepSqueak minimum
 
@@ -1521,7 +1522,8 @@ That has now occurred conceptually and as a first executable draft.
 Phase 1 completed Steps 1-4, Phase 2 completed Step 5, Phase 3 completed Step 6,
 Phase 4 completed Step 7, and Phase 5 completed Step 8 as tested relational
 checkpoints. The recommended sequence below remains the implementation spine,
-with Step 9 — matching and consensus — as the next active target.
+with Step 9 — matching and consensus — as the active target. Its candidate
+generation stage is complete; assignment and consensus remain next.
 
 ## Step 1 — Stabilize schema vocabulary
 
@@ -1649,6 +1651,13 @@ capabilities are produced by its output profile rather than by a MUPET branch.
 ## Step 9 — Implement matching/consensus prototype
 
 Temporal-first, ambiguity-preserving.
+
+**Current checkpoint:** the caller-selected run-pair resolver, versioned
+matching-spec registration, transparent temporal evidence, exhaustive candidate
+generation, unmatched summaries, and atomic candidate persistence are
+implemented. Candidate generation performs no assignment. Connected-component
+groups, consensus timing, agreement statistics, and consilience remain later
+Step 9 stages.
 
 ## Step 10 — Implement a small sequence/alignment analysis
 
