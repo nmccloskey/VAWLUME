@@ -195,9 +195,11 @@ The current schema answers the Phase 3 review questions without another view:
   `source_files`.
 
 The recording's unique `source_file_id` is the extractor-import anchor. The
-DeepSqueak importer now resolves that established portable source/recording
-identity before attaching its extraction run and artifacts; the MUPET planner
-now consumes the same boundary without mutating it.
+DeepSqueak and MUPET importers both resolve that established portable
+source/recording identity before attaching their extraction runs and artifacts,
+and neither mutates the boundary. Intake itself is extractor-agnostic: no
+DeepSqueak or MUPET name, file extension, or native field reaches
+`vawlume.ingest.project` or its private helpers.
 
 ## Current limitations
 

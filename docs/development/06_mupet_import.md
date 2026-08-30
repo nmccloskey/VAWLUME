@@ -29,6 +29,28 @@ reproducible. `Apply=true` without settings raises
 `not_recoverable` settings status: its output profile deliberately omits the
 `required_status` block that gives DeepSqueak that escape.
 
+## File mechanics and text assumptions
+
+The adapter restates no field semantics and hard-codes no file mechanics. The
+artifact key, file format, header row, and delimiter all come from the profile's
+declared artifact block; the shipped MUPET profile declares `"header_row": 1`
+and `"delimiter": ","`. A file whose extension does not match the declared
+format, a file with no bytes, and a file that yields fewer than two columns under
+the declared delimiter are all refused at the adapter layer, before any database
+access.
+
+Text encoding is the one file-mechanic the profile does **not** declare. The
+adapter sets no `Encoding`, so MATLAB's own detection applies — UTF-8 for every
+file exercised so far. A MUPET export written in some other encoding has not been
+tested, and reading one is outside the demonstrated contract until a real
+workspace shows it is needed.
+
+Native headers survive verbatim (`VariableNamingRule="preserve"`), and there is
+no rename table anywhere in the importer: the profile alone maps a native header
+to a canonical concept. Columns whose mapping declares a `missing_value_policy`
+are read as strings with MATLAB's missing-token conversion disabled, which is
+what keeps `NA` a token rather than a `NaN`.
+
 ## Recording reference
 
 MUPET consumes the graph created by project intake. Exactly one of these forms

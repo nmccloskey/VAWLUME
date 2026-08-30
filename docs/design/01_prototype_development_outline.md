@@ -783,8 +783,10 @@ runnable demonstration. The MUPET minimum is implemented on the same terms
 through its tracked per-syllable CSV profile, required settings provenance,
 atomic syllable and measurement population, and its own runnable demonstration,
 with both extractors tested importing one recording side by side. The Step 8
-exit review is still pending; extractor-output ingestion is not being declared
-finished here.
+exit review has now been run and passed, so extractor-output ingestion is
+complete for the two prototype extractors. Phase 1F's remaining scope —
+cross-extractor correspondence — belongs to Goal 3 and Step 9, and no part of it
+is implemented.
 
 ### DeepSqueak minimum
 
@@ -1517,9 +1519,9 @@ The earlier outline proposed beginning with `schema.sql`.
 That has now occurred conceptually and as a first executable draft.
 
 Phase 1 completed Steps 1-4, Phase 2 completed Step 5, Phase 3 completed Step 6,
-and Phase 4 completed Step 7 as tested relational checkpoints. The recommended
-sequence below remains the implementation spine, with Step 8 as the next active
-target.
+Phase 4 completed Step 7, and Phase 5 completed Step 8 as tested relational
+checkpoints. The recommended sequence below remains the implementation spine,
+with Step 9 — matching and consensus — as the next active target.
 
 ## Step 1 — Stabilize schema vocabulary
 
@@ -1623,6 +1625,26 @@ Current checkpoint complete:
 ## Step 8 — Implement MUPET importer
 
 Critical proof that the design is not merely a generalized DeepSqueak schema.
+
+Current checkpoint complete:
+
+- one public planning/apply importer plus one read-only per-syllable CSV adapter;
+- tracked-profile interpretation through the same source-mapping IR, with native
+  and canonical measurement evidence preserved;
+- required settings provenance, plus extraction-run, artifact, and optional
+  native-artifact provenance;
+- atomic and idempotent syllable and measurement population with explicit
+  identity conflicts;
+- portable artifact identity, relocation behavior, and a runnable end-to-end
+  demonstration;
+- **no fabricated curation, classification, or detector-score evidence**, and no
+  experimental hierarchy inferred from MUPET workspace or dataset names;
+- both extractors importing one recording through shared infrastructure, with
+  each extractor's semantics preserved and no matching row created.
+
+The proof this step existed to provide holds: the shared import core carries no
+DeepSqueak or MUPET semantic literal in executable behavior, and MUPET's absent
+capabilities are produced by its output profile rather than by a MUPET branch.
 
 ## Step 9 — Implement matching/consensus prototype
 

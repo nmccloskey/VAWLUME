@@ -91,8 +91,9 @@ A runnable demonstration is at `examples/deepsqueak_import_demo.m`.
 | extractor-native labels as opaque evidence | DeepSqueak classifier or clustering workflows |
 
 MUPET event population, cross-extractor matching, and consensus are not part of
-this importer. The separate MUPET CSV adapter and read-only provenance planner
-are documented in `06_mupet_import.md`.
+this importer. The separate MUPET CSV adapter and its own planning/apply
+importer, which now populates syllables and measurements atomically, are
+documented in `06_mupet_import.md`.
 
 ## Layer responsibilities
 
