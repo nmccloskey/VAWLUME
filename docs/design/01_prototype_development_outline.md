@@ -779,8 +779,12 @@ DeepSqueak + MUPET.
 
 The DeepSqueak minimum is implemented through its tracked call-statistics
 profile, explicit recording resolution, atomic run/artifact/event import, and
-runnable demonstration. MUPET remains the critical second importer and is the
-next implementation target.
+runnable demonstration. The MUPET minimum is implemented on the same terms
+through its tracked per-syllable CSV profile, required settings provenance,
+atomic syllable and measurement population, and its own runnable demonstration,
+with both extractors tested importing one recording side by side. The Step 8
+exit review is still pending; extractor-output ingestion is not being declared
+finished here.
 
 ### DeepSqueak minimum
 

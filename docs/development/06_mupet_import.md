@@ -243,3 +243,58 @@ Capability differences remain visible rather than smoothed over: DeepSqueak
 detections carry curation rows, class assignments, and detector scores; MUPET
 detections carry none of the three. No matching, consensus, or consilience rows
 are created by either importer.
+
+## Demonstration
+
+`examples/mupet_import_demo.m` runs the whole path on generated inputs and
+returns every read-back as a struct:
+
+```matlab
+addpath("examples")
+demonstration = mupet_import_demo;
+```
+
+It establishes one project recording through the real intake path, generates a
+four-syllable CSV and a complete native `config.csv`, previews the mapped IR
+before any write, plans, applies, and then reads back run/artifact/settings
+provenance, the syllables with their exported duration beside the boundary span,
+representative measurements, the terminal `NA`, the two zero capability counts,
+an unchanged rerun, a relocation of all three artifacts, and a short DeepSqueak
+co-residence appendix. Every input is created under the system temporary
+directory and removed before the function returns.
+
+Two of its outputs are worth reading closely because they are contract rather
+than noise. The demonstration reports one `duration_consistency` warning, for
+the one syllable whose exported pre-noise-reduction duration differs from its
+boundary span; both values are stored exactly as exported. And the extraction-run
+read-back reports MUPET's settings as `<native settings artifact>` rather than
+as a profile key or as `<not recoverable>`, which distinguishes "captured and
+hashed as its native artifact" from "genuinely lost".
+
+`tests/integration/test_mupet_import_demonstration.m` asserts against the
+demonstration itself rather than restating its orchestration.
+
+## Limitations
+
+Bounded deliberately, and none of these is scheduled work hidden behind an
+omission:
+
+- only the per-syllable CSV is imported; dataset summary, repertoire, and
+  refinement exports are not;
+- the native processed `.mat` is assigned portable identity and hashed but never
+  parsed, and never accepted as settings evidence;
+- settings capture covers the demonstrated native `config.csv` key set and a
+  caller-supplied VAWLUME settings JSON, and nothing else;
+- built-in support is scoped to the tracked MUPET v2.1 output mapping profile;
+- the native syllable ordinal is run-scoped identity and is never treated as a
+  cross-revision or cross-extractor event key;
+- no numeric tolerance is declared for `duration_consistency` or
+  `bandwidth_consistency`; the shared validator applies a representation-noise
+  fallback rather than an invented empirical threshold;
+- `final_inter_syllable_interval_missingness`, `source_recording_linkage`, and
+  `settings_consistency` are declared by the profile and reported as unevaluated;
+- no matching, consensus, or consilience is implemented, and no VAWLUME-derived
+  sequence metric is computed during import;
+- every MUPET artifact exercised so far is synthetic. No real MUPET workspace has
+  been available, so the fixtures demonstrate the contract rather than validate
+  it against field output.

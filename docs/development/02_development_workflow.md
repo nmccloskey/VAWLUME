@@ -256,10 +256,21 @@ Add integration tests when multiple layers are connected.
 Each bug that changes a semantic or relational invariant should ideally produce a regression test.
 
 The current checkpoint has completed source mapping, transactional project
-intake, DeepSqueak import, and MUPET CSV/provenance planning. MUPET event
-population and atomic apply are the next implementation target.
+intake, DeepSqueak import, and MUPET import, each through atomic apply and each
+with a runnable demonstration under `examples/`:
+
+```text
+source mapping      complete
+project intake      complete
+DeepSqueak import   complete
+MUPET import        complete
+matching/consensus  next, unimplemented
+```
+
 Cross-extractor matching and consensus remain unimplemented, so no comparison
-between extractors is yet possible.
+between extractors is yet possible. Both extractors can import the same
+recording, and their populations are jointly queryable, but nothing decides what
+any correspondence between them means.
 
 ## 12. Generated artifacts
 

@@ -112,15 +112,29 @@ detections, native and canonical measurements, and review and label evidence. It
 also shows an unchanged rerun and an artifact relocation producing no second
 scientific population.
 
+A third covers the MUPET path at
+[`examples/mupet_import_demo.m`](examples/mupet_import_demo.m). It establishes
+one project recording, generates a small synthetic per-syllable CSV and its
+native `config.csv`, previews the mapped IR before any write, imports it, and
+reads back run, artifact, and settings provenance, syllable detections, native
+and canonical measurements, and the terminal inter-syllable `NA` preserved as
+explicit missingness. It shows an unchanged rerun and a relocation of all three
+artifacts, states the zero curation and zero classification counts positively,
+and closes with a short appendix importing DeepSqueak onto the same recording so
+the two populations can be seen coexisting. That appendix computes no
+correspondence between them, and the run ends with zero candidate pairs, match
+groups, consensus events, and consilience assessments.
+
 From the repository root:
 
 ```matlab
 addpath("examples")
 project_intake_demo
 deepsqueak_import_demo
+mupet_import_demo
 ```
 
-Both create every input they need under the system temporary directory and
+All three create every input they need under the system temporary directory and
 remove it before returning.
 
 ## Configuration policy
@@ -168,9 +182,12 @@ demonstration. Phase 4 completed item 7: the DeepSqueak artifact adapter, its
 Excel-to-IR boundary, the transactional run and artifact provenance graph, the
 detection, measurement, review, and label population, and a reproducible
 end-to-end demonstration. Phase 5 completed item 8: the MUPET CSV adapter, the
-run and provenance graph, the atomic syllable and measurement population, and
-the dual-extractor proof that both importers reach one relational model without
-semantic collapse. A MUPET demonstration and item 9 remain next.
+run and provenance graph, the atomic syllable and measurement population, the
+dual-extractor proof that both importers reach one relational model without
+semantic collapse, and a runnable MUPET demonstration with a bounded
+co-residence appendix. Item 9, matching and consensus, is next and is still
+entirely absent: no code path creates a candidate pair, a match group, a
+consensus event, or a consilience assessment.
 
 The dual-extractor result is worth stating precisely, because it is what
 distinguishes a shared architecture from two special cases. Both extractors
@@ -190,8 +207,7 @@ metric identity is never asserted.
 - [`docs/development/03_source_mapping_intermediate_representation.md`](docs/development/03_source_mapping_intermediate_representation.md) — source-mapping IR and dry-run contract
 - [`docs/development/04_project_intake.md`](docs/development/04_project_intake.md) — transactional project-intake boundary and identity contract
 - [`docs/development/05_deepsqueak_import.md`](docs/development/05_deepsqueak_import.md) — DeepSqueak import contract, identity, provenance, and limitations
-
-- [`docs/development/06_mupet_import.md`](docs/development/06_mupet_import.md) — MUPET import contract, syllable identity, and the deliberate curation/classification absences
+- [`docs/development/06_mupet_import.md`](docs/development/06_mupet_import.md) — MUPET import contract, syllable identity, the deliberate curation/classification absences, and the shared extractor core
 
 Extractor-specific design references should live under:
 
