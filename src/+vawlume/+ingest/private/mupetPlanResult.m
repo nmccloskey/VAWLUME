@@ -34,8 +34,9 @@ result = struct(status=status, committed=false, ...
         extraction_run_id=plan.run.existing_extraction_run_id, ...
         input_action=plan.run.input_action), ...
     dataset=plan.context.dataset, extractor_objects=plan.extractor_objects, ...
-    event_population=struct(status="deferred_to_phase_5_pass_4", ...
-        source_row_count=plan.export.artifact.row_count, planned_detection_count=0), ...
+    event_population=struct(status="planned", ...
+        source_row_count=plan.export.artifact.row_count, ...
+        planned_detection_count=numel(plan.events.detections)), ...
     warnings=plan.warnings, conflicts=plan.conflicts, has_conflicts=plan.has_conflicts, ...
     export=struct(source_key=plan.export.source_key, row_count=plan.export.artifact.row_count, ...
         relative_path=plan.export.artifact.relative_path, ...
@@ -46,5 +47,60 @@ result.artifacts = plan.artifacts(:, ["role", "artifact_type", "native_artifact_
     "action", "existing_artifact_id", "metadata_json"]);
 result.artifacts.Properties.VariableNames{9} = 'artifact_id';
 result.run_artifacts = plan.run_artifacts;
+
+result.events = eventSummary(plan);
+result.detections = plan.events.counts;
+result.detections.planned = numel(plan.events.detections);
+
+% MUPET's capability asymmetry is stated positively rather than left to be
+% inferred from missing fields. A reader of the manifest can see that zero
+% curation and zero classification rows are the contract, and why.
+result.curation = plan.events.curation;
+result.classification = plan.events.classification;
+
+result.validation = struct( ...
+    is_valid=plan.validation.is_valid, ...
+    evaluated_checks=plan.validation.evaluated_checks, ...
+    unevaluated_checks=plan.validation.unevaluated_checks, ...
+    warnings=plan.validation.warnings);
+
 result.plan = plan;
+end
+
+function summary = eventSummary(plan)
+%EVENTSUMMARY One row per planned syllable, inspectable before commit.
+%
+% Measurement counts come from the routed evidence rather than from
+% height(ir.values): the native syllable number is identity, not a measurement,
+% so counting IR values would overstate them.
+count = numel(plan.events.detections);
+sourceRow = NaN(count, 1);
+nativeEventId = strings(count, 1);
+startTime = NaN(count, 1);
+endTime = NaN(count, 1);
+exportedDuration = NaN(count, 1);
+measurementCount = NaN(count, 1);
+action = strings(count, 1);
+detectionId = NaN(count, 1);
+
+for index = 1:count
+    detection = plan.events.detections{index};
+    sourceRow(index) = detection.source_row;
+    nativeEventId(index) = detection.native_event_id;
+    startTime(index) = detection.start_time_s;
+    endTime(index) = detection.end_time_s;
+    exportedDuration(index) = detection.duration_s;
+    measurementCount(index) = height(detection.measurements);
+    action(index) = detection.action;
+    detectionId(index) = detection.detection_id;
+end
+
+% The exported duration is shown beside the boundaries rather than in place of
+% either. MUPET exports a pre-noise-reduction onset/offset duration, so it is not
+% expected to equal end minus start and is never used to repair the boundaries.
+summary = table(sourceRow, nativeEventId, startTime, endTime, exportedDuration, ...
+    measurementCount, action, detectionId, ...
+    VariableNames=["source_row", "native_event_id", "start_time_s", ...
+    "end_time_s", "exported_duration_s", "measurement_count", "action", ...
+    "detection_id"]);
 end

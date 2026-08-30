@@ -1,15 +1,13 @@
 function events = deepsqueakResolveEvents(conn, plan, routed)
 %DEEPSQUEAKRESOLVEEVENTS Classify the event population against existing rows.
 %
-% Detection identity is the schema's UNIQUE(extraction_run_id, recording_id,
-% source_artifact_id, native_event_id). Row order is never identity: the same
-% export reordered produces the same population, and the workbook row survives
-% only as provenance in the detection's notes and in each measurement's
-% source_locator.
-%
-% Existing scientific rows are never updated in place. Identical evidence is
-% reused; changed evidence under one run identity is an explicit conflict that a
-% future migration workflow must resolve deliberately.
+% Detections and their measurements are classified by the shared extractor core,
+% because every extractor populates them identically. This function adds only the
+% evidence DeepSqueak actually exports and MUPET does not: the accept flag that
+% becomes curation evidence, and the opaque call label that becomes a
+% classification assignment. Those layers exist here rather than in the shared
+% core so that an extractor without them produces no such rows at all, instead of
+% producing empty or fabricated ones.
 
 arguments
     conn
@@ -18,103 +16,50 @@ arguments
 end
 
 events = struct();
-events.detections = {};
-events.conflicts = strings(0, 1);
 events.classification = classificationPlan(plan, routed);
 
-runId = plan.run.existing_extraction_run_id;
-artifactId = exportArtifactId(plan);
-existing = existingDetections(conn, runId, plan.recording.recording_id, artifactId);
+scope = struct( ...
+    extraction_run_id=plan.run.existing_extraction_run_id, ...
+    recording_id=plan.recording.recording_id, ...
+    source_artifact_id=exportArtifactId(plan));
+[detections, conflicts] = extractorClassifyDetections(conn, scope, routed, "call");
 
-for index = 1:numel(routed.rows)
+for index = 1:numel(detections)
+    detection = detections{index};
     row = routed.rows{index};
-    [detection, conflicts] = classifyDetection(conn, plan, row, existing, ...
-        artifactId, events.classification);
-    events.detections{index, 1} = detection;
-    events.conflicts = [events.conflicts; conflicts];
+    detection.curation = curationDisposition(row);
+    detection.classification = struct( ...
+        present=row.label_present, native_label=row.label_raw_token, action="skip");
+    if row.label_present
+        detection.classification.action = "create";
+    end
+
+    if detection.action == "reuse"
+        [detection, conflicts] = classifyExistingAnnotations(conn, plan, detection, ...
+            conflicts, events.classification);
+    end
+    detections{index} = detection;
 end
 
+events.detections = detections;
+events.conflicts = conflicts;
 events.counts = summarize(events);
 end
 
-function [detection, conflicts] = classifyDetection(conn, plan, row, existing, ...
-        artifactId, classification)
-conflicts = strings(0, 1);
-detection = struct();
-detection.source_row = row.source_row;
-detection.native_event_id = row.native_event_id;
-detection.start_time_s = row.start_time_s;
-detection.end_time_s = row.end_time_s;
-detection.detection_score = row.detection_score;
-detection.source_artifact_id = artifactId;
-detection.action = "create";
-detection.detection_id = NaN;
-detection.measurements = measurementDispositions(row.measurements);
-detection.curation = curationDisposition(row);
-detection.classification = struct( ...
-    present=row.label_present, native_label=row.label_raw_token, action="skip");
-
-if row.label_present
-    detection.classification.action = "create";
-end
-
-match = matchExisting(existing, row.native_event_id);
-if isempty(match)
-    return
-end
-
-detection.detection_id = double(match.detection_id(1));
-[compatible, message] = detectionIsCompatible(match, row);
-if ~compatible
-    detection.action = "conflict";
-    conflicts(end + 1, 1) = "Detection '" + row.native_event_id + "': " + message;
-    return
-end
-
-detection.action = "reuse";
-[detection, conflicts] = classifyExistingChildren(conn, plan, detection, ...
-    conflicts, classification);
-end
-
-function [detection, conflicts] = classifyExistingChildren(conn, plan, detection, ...
+function [detection, conflicts] = classifyExistingAnnotations(conn, plan, detection, ...
         conflicts, classification)
-storedMeasurements = existingMeasurements(conn, detection.detection_id);
-for index = 1:height(detection.measurements)
-    featureId = detection.measurements.extractor_feature_id(index);
-    match = storedMeasurements(storedMeasurements.extractor_feature_id == featureId, :);
-    if isempty(match) || height(match) == 0
-        detection.measurements.action(index) = "conflict";
-        conflicts(end + 1, 1) = "Detection '" + detection.native_event_id + ...
-            "' measurement '" + string(detection.measurements.native_name(index)) + ...
-            "': the stored measurement is missing."; %#ok<AGROW>
-        continue
-    end
-    if height(match) > 1
-        detection.measurements.action(index) = "conflict";
-        conflicts(end + 1, 1) = "Detection '" + detection.native_event_id + ...
-            "' measurement '" + string(detection.measurements.native_name(index)) + ...
-            "': more than one stored measurement uses this feature identity."; %#ok<AGROW>
-        continue
-    end
-    [compatible, message] = measurementIsCompatible(match, ...
-        detection.measurements(index, :), detection.source_artifact_id);
-    if compatible
-        detection.measurements.action(index) = "reuse";
-    else
-        detection.measurements.action(index) = "conflict";
-        conflicts(end + 1, 1) = "Detection '" + detection.native_event_id + ...
-            "' measurement '" + string(detection.measurements.native_name(index)) + ...
-            "': " + message; %#ok<AGROW>
-    end
-end
-
+%CLASSIFYEXISTINGANNOTATIONS Compare stored review and label evidence.
+%
+% Only reached for a detection the shared core already found compatible, so a
+% disagreement here is specifically about annotation evidence rather than about
+% the event itself.
 if detection.curation.present
     [compatible, message] = curationIsCompatible(conn, detection);
     if compatible
         detection.curation.action = "reuse";
     else
         detection.curation.action = "conflict";
-        conflicts(end + 1, 1) = "Detection '" + detection.native_event_id + ...
+        conflicts(end + 1, 1) = "Call '" + detection.native_event_id + ...
             "' curation evidence: " + message;
     end
 end
@@ -125,96 +70,10 @@ if detection.classification.action == "create"
         detection.classification.action = "reuse";
     else
         detection.classification.action = "conflict";
-        conflicts(end + 1, 1) = "Detection '" + detection.native_event_id + ...
+        conflicts(end + 1, 1) = "Call '" + detection.native_event_id + ...
             "' classification evidence: " + message;
     end
 end
-end
-
-function [compatible, message] = detectionIsCompatible(match, row)
-compatible = true;
-message = "";
-tolerance = 1e-9;
-
-if ~valuesAgree(double(match.start_time_s(1)), row.start_time_s, tolerance) || ...
-        ~valuesAgree(double(match.end_time_s(1)), row.end_time_s, tolerance)
-    compatible = false;
-    message = "existing timing differs from the imported evidence.";
-    return
-end
-if ~valuesAgree(nullableReal(match.detection_score(1)), row.detection_score, tolerance)
-    compatible = false;
-    message = "existing detection score differs from the imported evidence.";
-end
-end
-
-function value = nullableReal(stored)
-%NULLABLEREAL Map the SQL NULL sentinel back to NaN.
-%
-% MATLAB's SQLite fetch errors on NULL columns, so nullable reals are selected
-% through IFNULL with an out-of-range sentinel. Converting it back here keeps
-% "absent" distinct from any real measured value.
-value = double(stored);
-if value >= 1e307
-    value = NaN;
-end
-end
-
-function [compatible, message] = measurementIsCompatible(match, planned, sourceArtifactId)
-compatible = true;
-message = "";
-tolerance = 1e-9;
-
-storedType = presentText(match.native_value_type(1));
-if storedType ~= presentText(planned.native_value_type(1))
-    compatible = false;
-    message = "native value type changed from '" + storedType + "' to '" + ...
-        presentText(planned.native_value_type(1)) + "'.";
-    return
-end
-if presentText(match.native_raw_token(1)) ~= presentText(planned.native_raw_token(1))
-    compatible = false;
-    message = "native raw token changed.";
-    return
-end
-if ~valuesAgree(nullableReal(match.native_value_real(1)), planned.native_value_real(1), tolerance) || ...
-        ~valuesAgree(nullableReal(match.native_value_integer(1)), planned.native_value_integer(1), tolerance) || ...
-        ~valuesAgree(nullableReal(match.canonical_value_real(1)), planned.canonical_value_real(1), tolerance) || ...
-        ~valuesAgree(nullableReal(match.canonical_value_integer(1)), planned.canonical_value_integer(1), tolerance) || ...
-        presentText(match.native_value_text(1)) ~= presentText(planned.native_value_text(1)) || ...
-        presentText(match.canonical_value_text(1)) ~= presentText(planned.canonical_value_text(1))
-    compatible = false;
-    message = "stored value differs from the imported value.";
-    return
-end
-
-if double(match.source_artifact_id(1)) ~= sourceArtifactId || ...
-        double(match.canonical_feature_id(1)) ~= double(planned.canonical_feature_id(1)) || ...
-        presentText(match.native_unit(1)) ~= presentText(planned.native_unit(1)) || ...
-        presentText(match.canonical_unit(1)) ~= presentText(planned.canonical_unit(1)) || ...
-        presentText(match.transform_key(1)) ~= presentText(planned.transform_key(1)) || ...
-        presentText(match.operational_variant(1)) ~= presentText(planned.operational_variant(1)) || ...
-        presentText(match.source_locator(1)) ~= presentText(planned.source_locator(1))
-    compatible = false;
-    message = "stored feature or provenance fields differ from the imported evidence.";
-end
-end
-
-function tf = valuesAgree(stored, planned, tolerance)
-if isnan(stored) && isnan(planned)
-    tf = true;
-    return
-end
-if isnan(stored) || isnan(planned)
-    tf = false;
-    return
-end
-tf = abs(stored - planned) <= tolerance;
-end
-
-function dispositions = measurementDispositions(measurements)
-dispositions = measurements;
-dispositions.action = repmat("create", height(measurements), 1);
 end
 
 function curation = curationDisposition(row)
@@ -313,29 +172,6 @@ rows = plan.artifacts(plan.artifacts.role == "event_measurement_export", :);
 id = double(rows.existing_artifact_id(1));
 end
 
-function rows = existingDetections(conn, runId, recordingId, artifactId)
-% A run that does not exist yet can have no detections, so the lookup is skipped
-% rather than issued against an unresolved identifier.
-if isnan(runId)
-    rows = table();
-    return
-end
-rows = fetch(conn, ...
-    "SELECT detection_id, IFNULL(native_event_id, '') AS native_event_id, " + ...
-    "start_time_s, end_time_s, IFNULL(detection_score, 1e308) AS detection_score " + ...
-    "FROM detections WHERE extraction_run_id = " + string(runId) + ...
-    " AND recording_id = " + string(recordingId) + ...
-    " AND IFNULL(source_artifact_id, -1) = " + string(artifactIdOrMissing(artifactId)));
-end
-
-function value = artifactIdOrMissing(artifactId)
-if isnan(artifactId)
-    value = -1;
-else
-    value = artifactId;
-end
-end
-
 function text = presentText(value)
 %PRESENTTEXT Normalize a fetched text value to a comparable string.
 %
@@ -346,34 +182,12 @@ text = string(value);
 text(ismissing(text)) = "";
 end
 
-function match = matchExisting(existing, nativeEventId)
-match = [];
-if isempty(existing) || height(existing) == 0 || strlength(nativeEventId) == 0
-    return
+function value = nullableReal(stored)
+%NULLABLEREAL Map the SQL NULL sentinel back to NaN.
+value = double(stored);
+if value >= 1e307
+    value = NaN;
 end
-matches = presentText(existing.native_event_id) == nativeEventId;
-if any(matches)
-    match = existing(find(matches, 1), :);
-end
-end
-
-function rows = existingMeasurements(conn, detectionId)
-rows = fetch(conn, ...
-    "SELECT extractor_feature_id, IFNULL(canonical_feature_id, -1) AS canonical_feature_id, " + ...
-    "IFNULL(source_artifact_id, -1) AS source_artifact_id, native_value_type, " + ...
-    "IFNULL(native_raw_token, '') AS native_raw_token, " + ...
-    "IFNULL(native_value_real, 1e308) AS native_value_real, " + ...
-    "IFNULL(native_value_integer, 1e308) AS native_value_integer, " + ...
-    "IFNULL(native_value_text, '') AS native_value_text, " + ...
-    "IFNULL(canonical_value_real, 1e308) AS canonical_value_real, " + ...
-    "IFNULL(canonical_value_integer, 1e308) AS canonical_value_integer, " + ...
-    "IFNULL(canonical_value_text, '') AS canonical_value_text, " + ...
-    "IFNULL(native_unit, '') AS native_unit, " + ...
-    "IFNULL(canonical_unit, '') AS canonical_unit, " + ...
-    "IFNULL(transform_key, '') AS transform_key, " + ...
-    "IFNULL(operational_variant, '') AS operational_variant, " + ...
-    "IFNULL(source_locator, '') AS source_locator " + ...
-    "FROM event_measurements WHERE detection_id = " + string(detectionId));
 end
 
 function [compatible, message] = curationIsCompatible(conn, detection)

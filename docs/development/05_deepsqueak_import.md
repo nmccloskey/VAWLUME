@@ -51,8 +51,22 @@ export = vawlume.ingest.deepsqueakExport(artifactPath, RepoRoot=repoRoot)
 ```
 
 It performs no database access and is useful for inspecting a workbook before
-importing it. All other Phase 4 helpers are package-private under
+importing it. All other helpers are package-private under
 `src/+vawlume/+ingest/private/` and are implementation details.
+
+Since MUPET became the second real importer, the parts of that path both
+extractors need are extractor-neutral private helpers rather than DeepSqueak
+code: `extractorFeatureDictionary`, `extractorRouteEventValues`,
+`extractorValidateEvents`, `extractorClassifyDetections`, and
+`extractorApplyEvents` handle feature resolution, semantic routing,
+profile-declared validation, and the detection and measurement population for
+both. DeepSqueak's behaviour is unchanged; what remains DeepSqueak-specific is
+the evidence only DeepSqueak exports — the `Accepted` review state that becomes
+curation evidence, the opaque call label that becomes a classification
+assignment, and the detector score — layered on top of the shared core. An
+extractor whose profile declares none of those roles, as MUPET's does not,
+therefore creates none of those rows without any importer needing to special-case
+it. See `06_mupet_import.md`.
 
 A runnable demonstration is at `examples/deepsqueak_import_demo.m`.
 

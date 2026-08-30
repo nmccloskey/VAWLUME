@@ -2,11 +2,12 @@
 
 ## Current boundary
 
-Phase 5 Pass 3 implements two public entry points:
+MUPET import has two public entry points:
 
 ```matlab
 export = vawlume.ingest.mupetExport(csvPath, ...)
-plan = vawlume.ingest.mupet(conn, csvPath, recordingRef, runSpec, ...)
+result = vawlume.ingest.mupet(conn, csvPath, recordingRef, runSpec, ...)
+result = vawlume.ingest.mupet(..., Apply=true)
 ```
 
 `mupetExport` is database-free. It reads the profile-declared per-syllable CSV,
@@ -14,11 +15,19 @@ preserves native labels and lexical missing tokens, maps values through the
 shared source-mapping IR, evaluates the profile's extractor-version scope, and
 optionally captures every row of native `config.csv`.
 
-`mupet` is read-only in Pass 3. It deterministically classifies the recording,
-extractor/version, output profile, run, artifacts, and run-artifact links as
-`create`, `reuse`, or `conflict`. `Apply=true` is deliberately refused until
-Pass 4 can commit the run and its complete syllable population atomically. This
-prevents a permanent extraction run with no events.
+`mupet` plans by default and writes nothing. It deterministically classifies the
+recording, extractor/version, output profile, run, artifacts, run-artifact
+links, syllable detections, and event measurements as `create`, `reuse`, or
+`conflict`. `Apply=true` commits a conflict-free plan in one transaction. A
+plan that still has conflicts is returned for inspection rather than applied.
+
+Settings provenance is required to apply. MUPET's segmentation and filtering
+behaviour is settings-dependent and MUPET itself reprocesses a recording when its
+configuration changes, so a run without exact settings evidence is not
+reproducible. `Apply=true` without settings raises
+`vawlume:ingest:MupetSettingsRequired`. Unlike DeepSqueak, MUPET has no
+`not_recoverable` settings status: its output profile deliberately omits the
+`required_status` block that gives DeepSqueak that escape.
 
 ## Recording reference
 
@@ -96,11 +105,102 @@ compares its exact profile version and checksum through
 Optional `runSpec.dataset` fields (`workspace_name`, `dataset_name`, and
 `native_dataset_path`) are preserved as extractor provenance in artifact
 metadata. They never create `study`, `group`, `session`, `subject`, or other
-experimental hierarchy rows. Pass 3 also creates no extractor-native objects.
+experimental hierarchy rows. No extractor-native objects are created either: the
+per-syllable CSV declares no emitted container hierarchy.
 
-## Deferred event population
+## Syllable identity
 
-The returned manifest reports the CSV source-row count and an explicit
-`deferred_to_phase_5_pass_4` event-population status. It plans zero detections.
-Pass 4 owns syllable identity, measurements, validation, and the final atomic
-apply transaction.
+A detection's native event id is the exported `Syllable number`, scoped by the
+schema's `UNIQUE(extraction_run_id, recording_id, source_artifact_id,
+native_event_id)`. That is an ordinal, not a durable cross-artifact identifier:
+
+- the same syllable numbers may legally repeat across two MUPET runs;
+- the same numbers may legally coincide with DeepSqueak call ids;
+- duplicate or absent numbers inside one export are refused before any write;
+- CSV row order is provenance, recorded in `detections.notes` and in each
+  measurement's `source_locator`, and never event identity.
+
+No cross-revision MUPET event key exists. A refined or reprocessed export must
+not be assumed to preserve identity merely because its ordinals repeat; that is
+matching and lineage work, not import.
+
+## Event geometry, duration, and interval
+
+Detection boundaries come from the profile-declared geometry equivalence classes
+and are recorded with `timing_basis = profile_selected_event_geometry`. Each
+measurement's derivation stage is answerable through its registered
+`extractor_features` row, where MUPET's boundaries are `segmentation`.
+
+The exported `syllable duration (msec)` is the **pre-noise-reduction
+onset/offset** duration, not the post-noise-reduction duration MUPET filters on
+and does not export. It is stored with its native millisecond value, its
+canonical second value, the `ms_to_s` transform, and
+`operational_variant = pre_noise_reduction`. Neither the duration nor the
+boundaries is ever recomputed from the other.
+
+Because those are different quantities, the profile's `duration_consistency`
+check is expected to report on correct MUPET data. It is declared at warning
+severity, so the import proceeds and both source values are stored as exported.
+The MUPET profile names its tolerance source as export-rounding-aware profile or
+project configuration but declares no numeric value, so the shared validator
+applies a representation-noise fallback rather than an invented empirical
+threshold. A profile that declares a numeric `tolerance` on a check is honoured.
+
+`inter-syllable interval (sec)` is imported as extractor-native
+sequence-derived evidence with `derivation_stage = native_sequence_derived`. The
+terminal syllable has no following syllable, so its exported `NA` sentinel is
+stored as `native_value_type = 'missing'` with `native_raw_token = 'NA'` and no
+typed value. It never becomes zero, and no VAWLUME-derived interval is computed
+or substituted during import.
+
+## Deliberate absences
+
+The per-syllable CSV exports no row-level review state, no class label, and no
+detector score. Therefore a MUPET import creates:
+
+- zero `curation_events` rows;
+- zero `classification_runs`, `classification_classes`, and
+  `classification_assignments` rows;
+- detections whose `detection_score` is NULL.
+
+Surviving MUPET's programmatic duration, energy, and amplitude filtering is not a
+reviewed state and no reviewer is invented. Those filter thresholds are recorded
+once as run-level settings provenance instead of restated per syllable.
+
+This absence is produced by the profile rather than by a MUPET-specific branch:
+the shared router populates review, label, and score fields only when a profile
+declares those roles, and the MUPET profile declares only `identifier`. The
+returned manifest states the two zeros positively, in `result.curation`,
+`result.classification`, and the `curation_rows_expected` /
+`classification_rows_expected` counts. If a future MUPET profile revision does
+declare a curation or label role, the importer refuses with
+`vawlume:ingest:MupetUnsupportedEventEvidence` rather than silently discarding
+that evidence.
+
+## Transaction and reuse
+
+One private apply owner opens one transaction covering the settings profile, the
+exact extractor version, every artifact, the extraction run, its recording input,
+its artifact role links, the syllable detections, and their measurements. A
+failure at any point rolls the whole graph back, restores connection state, and
+rethrows, so the invariant holds:
+
+```text
+an extraction run exists  <=>  its intended syllables were imported
+```
+
+A compatible rerun reuses every scientific row and writes nothing; it is reported
+as committed because no per-attempt audit row exists. Reuse requires full
+evidence comparison, not mere row existence: a stored measurement that is
+missing, duplicated, or differs in value, raw token, unit, transform, operational
+variant, canonical feature, source artifact, or source locator is an explicit
+conflict. Nothing is repaired or updated in place.
+
+## Shared extractor core
+
+Detections and event measurements are planned and written by extractor-neutral
+private helpers that both importers use: `extractorFeatureDictionary`,
+`extractorRouteEventValues`, `extractorValidateEvents`,
+`extractorClassifyDetections`, and `extractorApplyEvents`. DeepSqueak layers its
+curation and classification evidence on top of them; MUPET adds nothing. See
+`05_deepsqueak_import.md` for the DeepSqueak-specific layers.

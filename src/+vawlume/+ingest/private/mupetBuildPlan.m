@@ -36,6 +36,7 @@ plan.artifacts = mupetResolveArtifacts(conn, plan.recording.project_id, ...
 roles = ["event_measurement_export", "extractor_settings", "native_processed_recording"];
 plan.run = extractorResolveRun(conn, plan, roles);
 plan.run_artifacts = extractorRunArtifactPlan(conn, plan);
+plan = appendEventPlan(conn, plan, export);
 plan.extractor_objects = table(strings(0,1), strings(0,1), strings(0,1), ...
     VariableNames=["native_level", "native_id", "action"]);
 plan.settings_status = settingsStatus(plan);
@@ -46,6 +47,43 @@ end
 plan = collectConflicts(plan);
 plan.has_conflicts = ~isempty(plan.conflicts);
 plan.ready_for_event_apply = plan.provenance_complete && ~plan.has_conflicts;
+end
+
+function plan = appendEventPlan(conn, plan, export)
+%APPENDEVENTPLAN Route, validate, and classify the MUPET syllable population.
+%
+% The dictionary is read against the profile's registered feature scope rather
+% than the run's exact extractor version, because seed registration attached
+% extractor_features to the scope row. Routing and validation are the shared
+% extractor core: nothing here restates a MUPET field name or unit.
+
+plan.feature_dictionary = extractorFeatureDictionary(conn, ...
+    plan.extractor.feature_version_id, plan.output_profile.profile_version_id);
+plan.routed = extractorRouteEventValues(export.ir, plan.feature_dictionary, ...
+    string(export.artifact.artifact_key));
+
+if ~isempty(plan.routed.unregistered_fields)
+    % A mapped column with no registered feature and no routing role means the
+    % profile and the seeded vocabulary disagree. Manufacturing a dictionary row
+    % from CSV text would paper over that, so it is refused.
+    error("vawlume:ingest:MupetFeatureUnregistered", ...
+        ['These mapped source fields have no registered extractor feature and ' ...
+        'no routing role: %s. Re-run vawlume.db.registerBuiltinSemantics for ' ...
+        'the current tracked profile.'], ...
+        strjoin(plan.routed.unregistered_fields, ", "));
+end
+
+plan.validation = extractorValidateEvents(plan.routed, export.profile_document, "syllable");
+plan.warnings = [plan.warnings; plan.validation.warnings];
+if ~plan.validation.is_valid
+    error("vawlume:ingest:MupetEventValidationFailed", ...
+        ['The MUPET export failed profile-declared event validation, so no ' ...
+        'rows were planned:%s'], ...
+        newline + strjoin(plan.validation.errors, newline));
+end
+
+plan.events = mupetResolveEvents(conn, plan, plan.routed);
+plan.conflicts = [plan.conflicts; plan.events.conflicts];
 end
 
 function assertReady(export, context)

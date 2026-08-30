@@ -1,26 +1,40 @@
-function [plan, counts] = deepsqueakApplyPlan(conn, plan)
-%DEEPSQUEAKAPPLYPLAN Atomically apply the DeepSqueak provenance graph.
+function [plan, counts] = mupetApplyPlan(conn, plan)
+%MUPETAPPLYPLAN Atomically apply the whole MUPET scientific graph.
 %
-% One function owns one transaction for the whole import. Later passes add the
-% event population inside this same transaction body rather than opening a second
-% one, so a failure while inserting detections can never leave an orphaned
-% extraction run behind. Helpers called from here perform inserts only; none
-% starts, commits, or rolls back a transaction of its own, and semantic seed
-% registration is never invoked from inside it.
+% One function owns one transaction for the whole import: the settings profile,
+% the exact extractor version, every artifact, the extraction run and its
+% recording input, the run-artifact role links, and the complete syllable
+% population with its measurements. A failure at any point rolls all of it back,
+% so the invariant holds:
+%
+%   an extraction run exists  <=>  its intended syllables were imported
+%
+% Helpers called from here insert only; none starts, commits, or rolls back a
+% transaction of its own.
 %
 % Dependency order is fixed by the schema: extraction_run_inputs must exist
 % before any detection, because trg_detection_requires_run_input rejects a
 % detection whose recording is not a registered input to its run.
+%
+% No curation_events, classification_runs, classification_classes, or
+% classification_assignments rows are written, because the MUPET per-syllable CSV
+% exports no review state and no class label. That is a capability difference,
+% not an omission.
+
+arguments
+    conn
+    plan (1,1) struct
+end
 
 if plan.has_conflicts
-    error("vawlume:ingest:DeepSqueakPlanConflict", ...
-        "A DeepSqueak import plan with conflicts cannot be applied.");
+    error("vawlume:ingest:MupetPlanConflict", ...
+        "A MUPET import plan with conflicts cannot be applied.");
 end
 
 oldAutoCommit = string(conn.AutoCommit);
 if oldAutoCommit ~= "on"
     error("vawlume:ingest:TransactionState", ...
-        "DeepSqueak import requires a connection with AutoCommit enabled.");
+        "MUPET import requires a connection with AutoCommit enabled.");
 end
 
 counts = emptyCounts();
@@ -32,7 +46,6 @@ try
     [plan, counts] = applyExtractionRun(conn, plan, counts);
     [plan, counts] = applyRunInputs(conn, plan, counts);
     [plan, counts] = applyRunArtifacts(conn, plan, counts);
-    [plan, counts] = applyClassificationRun(conn, plan, counts);
     [plan, counts] = applyEventPopulation(conn, plan, counts);
     if insertedRowCount(counts) > 0
         commit(conn);
@@ -49,6 +62,13 @@ conn.AutoCommit = oldAutoCommit;
 end
 
 function [plan, counts] = applySettingsProfile(conn, plan, counts)
+%APPLYSETTINGSPROFILE Register a caller-supplied VAWLUME settings JSON.
+%
+% Only the JSON mode creates a config_profiles row. Native config.csv evidence is
+% carried by its own artifact and that artifact's structured capture, because the
+% schema has no truthful lineage edge from a source artifact to a synthesized
+% profile version. Fabricating one would assert a derivation the database cannot
+% describe.
 settings = plan.settings_profile;
 if settings.mode ~= "profile"
     return
@@ -75,7 +95,7 @@ if settings.version_action == "create"
         content_uri=settings.content_uri, ...
         checksum_sha256=settings.checksum_sha256, ...
         is_snapshot=1, ...
-        notes="Extractor settings profile supplied with a DeepSqueak import."), ...
+        notes="Extractor settings profile supplied with a MUPET import."), ...
         "profile_version_id");
     counts.config_profile_versions = counts.config_profile_versions + 1;
 elseif settings.version_action == "reuse"
@@ -88,7 +108,7 @@ end
 function description = settingsDescription(settings)
 description = settings.description;
 if strlength(description) == 0
-    description = "DeepSqueak extractor settings profile.";
+    description = "MUPET extractor settings profile.";
 end
 end
 
@@ -102,15 +122,14 @@ plan.extractor.run_version_id = insertIntakeRow(conn, "extractor_versions", stru
     extractor_id=plan.extractor.extractor_id, ...
     version_label=plan.extractor.run_version_label, ...
     implementation_language="MATLAB", ...
-    notes="Exact extractor version declared for a DeepSqueak import."), ...
+    notes="Exact extractor version declared for a MUPET import."), ...
     "extractor_version_id");
 counts.extractor_versions = counts.extractor_versions + 1;
 end
 
 function [plan, counts] = applyArtifacts(conn, plan, counts)
 for index = 1:height(plan.artifacts)
-    action = string(plan.artifacts.action(index));
-    if action == "reuse"
+    if string(plan.artifacts.action(index)) == "reuse"
         counts.reused_artifacts = counts.reused_artifacts + 1;
         continue
     end
@@ -130,13 +149,33 @@ end
 end
 
 function metadata = artifactMetadata(plan, index)
+%ARTIFACTMETADATA Role provenance merged with the artifact's own capture.
+%
 % The runtime path is diagnostic provenance for this execution, never durable
-% identity, so it is recorded beside the portable path rather than as it.
-metadata = jsonencode(struct( ...
+% identity, so it is recorded beside the portable path rather than as it. The
+% planned metadata - the native config.csv structured capture, and any
+% dataset/workspace provenance - is preserved alongside rather than replaced,
+% because it is the only place the exact 11 captured settings survive.
+metadata = struct( ...
     role=string(plan.artifacts.role(index)), ...
     description=string(plan.artifacts.description(index)), ...
     runtime_path=string(plan.artifacts.runtime_path(index)), ...
-    checksum_status=string(plan.artifacts.checksum_status(index))));
+    checksum_status=string(plan.artifacts.checksum_status(index)));
+
+planned = string(plan.artifacts.metadata_json(index));
+if strlength(planned) > 0
+    try
+        decoded = jsondecode(char(planned));
+    catch
+        decoded = [];
+    end
+    if isstruct(decoded) && isscalar(decoded)
+        for name = string(fieldnames(decoded))'
+            metadata.(char(name)) = decoded.(char(name));
+        end
+    end
+end
+metadata = string(jsonencode(metadata));
 end
 
 function [plan, counts] = applyExtractionRun(conn, plan, counts)
@@ -168,9 +207,13 @@ end
 end
 
 function notes = runNotes(plan)
-% Absent settings and model rows are indistinguishable from "never asked" unless
-% the run says so, so the run records what was and was not recoverable.
-statements = "settings=" + plan.settings_status + "; model=" + plan.model_status;
+% MUPET's segmentation and filtering behaviour is settings-dependent, so the run
+% states which settings source produced it and whether native processed evidence
+% and extractor-native grouping were supplied at all.
+statements = "settings=" + plan.settings_status + ...
+    "; settings_source=" + plan.context.settings.mode + ...
+    "; native_processed=" + plan.context.native_artifact.mode + ...
+    "; dataset=" + plan.context.dataset.status;
 if strlength(plan.run.notes) > 0
     notes = plan.run.notes + " [" + statements + "]";
 else
@@ -208,64 +251,6 @@ for index = 1:height(plan.run_artifacts)
 end
 end
 
-function [plan, counts] = applyClassificationRun(conn, plan, counts)
-%APPLYCLASSIFICATIONRUN Create the run-scoped label context before assignments.
-%
-% classification_* is the only schema surface that can preserve an extractor's
-% label evidence, so the run is recorded, but its method states that the label's
-% provenance is unspecified unless the caller supplied a real one. No class is
-% given a canonical biological meaning and no model is claimed.
-classification = plan.events.classification;
-if ~classification.present
-    return
-end
-
-existing = fetch(conn, ...
-    "SELECT classification_run_id FROM classification_runs " + ...
-    "WHERE parent_extraction_run_id = " + string(plan.run.existing_extraction_run_id) + ...
-    " AND method = '" + replace(classification.method, "'", "''") + "'");
-if ~isempty(existing) && height(existing) > 0
-    classification.classification_run_id = double(existing.classification_run_id(1));
-    classification.action = "reuse";
-    counts.reused_classification_runs = counts.reused_classification_runs + 1;
-else
-    classification.classification_run_id = insertIntakeRow(conn, "classification_runs", struct( ...
-        project_id=plan.recording.project_id, ...
-        parent_extraction_run_id=plan.run.existing_extraction_run_id, ...
-        method=classification.method, ...
-        run_label=classification.run_label, ...
-        number_of_classes=numel(classification.classes), ...
-        notes="Extractor-native labels imported from a DeepSqueak call-statistics export."), ...
-        "classification_run_id");
-    classification.action = "create";
-    counts.classification_runs = counts.classification_runs + 1;
-end
-
-for index = 1:numel(classification.classes)
-    nativeLabel = classification.classes(index);
-    stored = fetch(conn, ...
-        "SELECT classification_class_id FROM classification_classes " + ...
-        "WHERE classification_run_id = " + string(classification.classification_run_id) + ...
-        " AND native_class_id = '" + replace(nativeLabel, "'", "''") + "'");
-    if ~isempty(stored) && height(stored) > 0
-        classification.class_ids(index) = double(stored.classification_class_id(1));
-        classification.class_actions(index) = "reuse";
-        counts.reused_classification_classes = counts.reused_classification_classes + 1;
-        continue
-    end
-    classification.class_ids(index) = insertIntakeRow(conn, "classification_classes", struct( ...
-        classification_run_id=classification.classification_run_id, ...
-        native_class_id=nativeLabel, ...
-        native_class_label=nativeLabel, ...
-        description="Extractor-native label preserved without canonical interpretation."), ...
-        "classification_class_id");
-    classification.class_actions(index) = "create";
-    counts.classification_classes = counts.classification_classes + 1;
-end
-
-plan.events.classification = classification;
-end
-
 function [plan, counts] = applyEventPopulation(conn, plan, counts)
 % The export artifact's row id is read again here rather than taken from the
 % plan. When the artifact is created by this same apply, the plan recorded it as
@@ -273,10 +258,6 @@ function [plan, counts] = applyEventPopulation(conn, plan, counts)
 % NULL. Detection identity is UNIQUE(run, recording, source_artifact_id,
 % native_event_id), and SQLite treats NULLs as distinct, so a NULL there would
 % silently let every rerun insert a second copy of the whole population.
-%
-% Detections and measurements are written by the shared extractor core inside
-% this same transaction. Review and label evidence follow here, because they are
-% DeepSqueak's own exported evidence rather than a universal event property.
 scope = struct( ...
     extraction_run_id=plan.run.existing_extraction_run_id, ...
     recording_id=plan.recording.recording_id, ...
@@ -285,88 +266,34 @@ scope = struct( ...
     timing_basis="profile_selected_event_geometry");
 [plan.events.detections, counts] = extractorApplyEvents(conn, scope, ...
     plan.events.detections, counts);
-
-for index = 1:numel(plan.events.detections)
-    detection = plan.events.detections{index};
-    counts = applyCuration(conn, detection, counts);
-    counts = applyAssignment(conn, plan, detection, counts);
-end
 end
 
 function id = appliedExportArtifactId(plan)
 rows = plan.artifacts(plan.artifacts.role == "event_measurement_export", :);
 id = double(rows.existing_artifact_id(1));
 if isnan(id)
-    error("vawlume:ingest:DeepSqueakArtifactUnresolved", ...
-        "The export artifact was not resolved before the event population.");
+    error("vawlume:ingest:MupetArtifactUnresolved", ...
+        "The event CSV artifact was not resolved before the syllable population.");
 end
-end
-
-function counts = applyCuration(conn, detection, counts)
-if detection.curation.action == "skip"
-    return
-end
-if detection.curation.action == "reuse"
-    counts.reused_curation_events = counts.reused_curation_events + 1;
-    return
-end
-
-insertIntakeRow(conn, "curation_events", struct( ...
-    detection_id=detection.detection_id, ...
-    source_artifact_id=detection.source_artifact_id, ...
-    action_type=detection.curation.action_type, ...
-    status_after=detection.curation.status_after, ...
-    actor_type="extractor", ...
-    actor_label="DeepSqueak " + detection.curation.native_field + " column", ...
-    details_json=jsonencode(struct( ...
-        native_field=detection.curation.native_field, ...
-        native_raw_token=detection.curation.raw_token, ...
-        canonical_status=detection.curation.status_after)), ...
-    notes="Extractor review state, not a biological ground-truth claim."));
-counts.curation_events = counts.curation_events + 1;
-end
-
-function counts = applyAssignment(conn, plan, detection, counts)
-if detection.classification.action == "skip"
-    return
-end
-if detection.classification.action == "reuse"
-    counts.reused_classification_assignments = ...
-        counts.reused_classification_assignments + 1;
-    return
-end
-
-classification = plan.events.classification;
-classIndex = find(classification.classes == detection.classification.native_label, 1);
-if isempty(classIndex)
-    return
-end
-
-insertIntakeRow(conn, "classification_assignments", struct( ...
-    detection_id=detection.detection_id, ...
-    classification_run_id=classification.classification_run_id, ...
-    classification_class_id=classification.class_ids(classIndex), ...
-    assignment_source="extractor", ...
-    notes="Extractor-native label; provenance of the labelling method is not stated by the export."));
-counts.classification_assignments = counts.classification_assignments + 1;
 end
 
 function total = insertedRowCount(counts)
 %INSERTEDROWCOUNT Number of rows this apply actually wrote.
 %
 % A fully compatible rerun reuses every row and therefore writes nothing, which
-% leaves SQLite with no open transaction to commit. Unlike project intake, this
-% importer records no per-attempt audit row, so the no-write case is normal
-% rather than exceptional and must not be reported as a commit failure.
+% leaves SQLite with no open transaction to commit. This importer records no
+% per-attempt audit row, so the no-write case is normal rather than exceptional
+% and must not be reported as a commit failure.
 total = counts.config_profiles + counts.config_profile_versions + ...
     counts.extractor_versions + counts.artifacts + counts.extraction_runs + ...
     counts.extraction_run_inputs + counts.extraction_run_artifacts + ...
-    counts.classification_runs + counts.classification_classes + ...
-    counts.detections + counts.event_measurements + counts.curation_events + ...
-    counts.classification_assignments;
+    counts.detections + counts.event_measurements;
 end
 
 function counts = emptyCounts()
+% curation_events and classification rows have no counter because this importer
+% never writes one. A zero counter would suggest the rows were considered and
+% found empty; their absence from the contract is the accurate statement.
 counts = struct( ...
     config_profiles=0, ...
     config_profile_versions=0, ...
@@ -375,12 +302,8 @@ counts = struct( ...
     extraction_runs=0, ...
     extraction_run_inputs=0, ...
     extraction_run_artifacts=0, ...
-    classification_runs=0, ...
-    classification_classes=0, ...
     detections=0, ...
     event_measurements=0, ...
-    curation_events=0, ...
-    classification_assignments=0, ...
     reused_config_profiles=0, ...
     reused_config_profile_versions=0, ...
     reused_extractor_versions=0, ...
@@ -388,10 +311,6 @@ counts = struct( ...
     reused_extraction_runs=0, ...
     reused_extraction_run_inputs=0, ...
     reused_extraction_run_artifacts=0, ...
-    reused_classification_runs=0, ...
-    reused_classification_classes=0, ...
     reused_detections=0, ...
-    reused_event_measurements=0, ...
-    reused_curation_events=0, ...
-    reused_classification_assignments=0);
+    reused_event_measurements=0);
 end

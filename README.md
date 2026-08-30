@@ -63,9 +63,9 @@ representation, and renders a database-free dry-run preview. Project intake is
 now implemented as the transactional boundary from that IR to the relational
 project/entity/recording graph.
 
-DeepSqueak import is **implemented**. MUPET CSV adaptation and deterministic
-run/provenance planning are implemented; MUPET event population and atomic
-apply are the next target. No cross-extractor matching or validation exists yet.
+DeepSqueak import is **implemented**. MUPET import is **implemented** through
+its syllable and measurement population, so both importers now populate real
+event graphs. No cross-extractor matching or validation exists yet.
 `vawlume.ingest.deepsqueakExport` reads a
 DeepSqueak Excel call-statistics export and routes it through the tracked
 DeepSqueak output-mapping profile to a validated extractor-output IR, without
@@ -80,11 +80,22 @@ in one atomic boundary, so an extraction run never exists without its calls.
 
 `vawlume.ingest.mupetExport` reads a MUPET per-syllable CSV and optionally
 captures native `config.csv` settings without database access.
-`vawlume.ingest.mupet` resolves an established recording and deterministically
-plans the exact extractor version, mapping profile, run, settings artifact,
-event CSV, and optional native processed `.mat` artifact. It is intentionally
-read-only until MUPET syllables can be committed in the same transaction as
-their run.
+`vawlume.ingest.mupet` resolves an established recording and then plans or
+atomically applies the exact extractor version, mapping profile, run, settings
+artifact, event CSV, optional native processed `.mat` artifact, the syllable
+detections, and their native and canonical measurements. Settings provenance is
+required to apply, because MUPET reprocesses a recording when its configuration
+changes and a run without its exact settings is not reproducible.
+
+MUPET's differences from DeepSqueak are preserved rather than smoothed over. The
+exported duration keeps its pre-noise-reduction operational variant and is never
+recomputed from the boundaries; the terminal inter-syllable interval keeps its
+exported `NA` token as explicit missingness rather than becoming zero; and
+because the per-syllable CSV exports no review state, no class label, and no
+detector score, a MUPET import creates no curation or classification rows and no
+detection score. Both importers share one extractor-neutral core for feature
+resolution, event routing, profile-declared validation, and detection and
+measurement population.
 
 A disposable all-profile demonstration is available at
 [`examples/project_intake_demo.m`](examples/project_intake_demo.m). It runs the
@@ -155,9 +166,10 @@ transactional application, provenance read-back, and the all-profile
 demonstration. Phase 4 completed item 7: the DeepSqueak artifact adapter, its
 Excel-to-IR boundary, the transactional run and artifact provenance graph, the
 detection, measurement, review, and label population, and a reproducible
-end-to-end demonstration. Phase 5 now includes the MUPET CSV adapter and
-read-only provenance planner; event/measurement population and atomic apply
-remain next.
+end-to-end demonstration. Phase 5 now covers item 8 through the MUPET CSV
+adapter, the run and provenance graph, and the atomic syllable and measurement
+population. A MUPET demonstration, the dual-extractor independence proof, and
+item 9 remain next.
 
 ## Documentation
 
@@ -168,7 +180,7 @@ remain next.
 - [`docs/development/04_project_intake.md`](docs/development/04_project_intake.md) — transactional project-intake boundary and identity contract
 - [`docs/development/05_deepsqueak_import.md`](docs/development/05_deepsqueak_import.md) — DeepSqueak import contract, identity, provenance, and limitations
 
-- [`docs/development/06_mupet_import.md`](docs/development/06_mupet_import.md) — MUPET adapter and read-only provenance-planning contract
+- [`docs/development/06_mupet_import.md`](docs/development/06_mupet_import.md) — MUPET import contract, syllable identity, and the deliberate curation/classification absences
 
 Extractor-specific design references should live under:
 

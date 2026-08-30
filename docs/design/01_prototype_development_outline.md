@@ -2,7 +2,7 @@
 
 **Status:** Revised working development plan  
 **Updated:** 2026-08-29
-**Project stage:** Implemented through Phase 4 DeepSqueak import; MUPET import is next
+**Project stage:** Implemented through Phase 5 MUPET syllable and measurement population; the dual-extractor independence proof and cross-extractor matching are next
 **Primary implementation environment:** MATLAB + SQLite  
 **Prototype objective:** Poster-ready, vertically integrated demonstration
 

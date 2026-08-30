@@ -4,7 +4,7 @@ tests = functiontests(localfunctions);
 end
 
 function testPlanIsReadOnlyAndExact(testCase)
-[fixture, cleanup] = setUpFixture();
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
 before = tableCounts(fixture.conn);
 result = plan(fixture, defaultRunSpec(fixture));
 verifyEqual(testCase, result.status, "planned");
@@ -19,7 +19,7 @@ verifyEqual(testCase, result.artifacts.artifact_type(result.artifacts.role == "e
     "extractor_event_export");
 verifyFalse(testCase, result.artifacts.is_native(result.artifacts.role == "extractor_settings"));
 verifyTrue(testCase, result.artifacts.is_native(result.artifacts.role == "native_processed_recording"));
-verifyEqual(testCase, result.event_population.planned_detection_count, 0);
+verifyEqual(testCase, result.event_population.planned_detection_count, 4);
 verifyEqual(testCase, result.event_population.source_row_count, 4);
 verifyEqual(testCase, height(result.extractor_objects), 0);
 verifyEqual(testCase, tableCounts(fixture.conn), before);
@@ -27,7 +27,7 @@ clear cleanup
 end
 
 function testSettingsCaptureLivesOnRawArtifactMetadata(testCase)
-[fixture, cleanup] = setUpFixture();
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
 result = plan(fixture, defaultRunSpec(fixture));
 row = result.artifacts(result.artifacts.role == "extractor_settings",:);
 metadata = jsondecode(char(row.metadata_json(1)));
@@ -42,7 +42,7 @@ clear cleanup
 end
 
 function testMissingSettingsCanPlanButCannotApply(testCase)
-[fixture, cleanup] = setUpFixture();
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
 spec = rmfield(defaultRunSpec(fixture), "settings");
 before = tableCounts(fixture.conn);
 result = plan(fixture, spec);
@@ -54,18 +54,32 @@ verifyEqual(testCase, tableCounts(fixture.conn), before);
 clear cleanup
 end
 
-function testCompleteApplyIsDeferredWithoutEmptyRun(testCase)
-[fixture, cleanup] = setUpFixture();
-before = tableCounts(fixture.conn);
-verifyError(testCase, @() apply(fixture, defaultRunSpec(fixture)), ...
-    "vawlume:ingest:MupetApplyNotAvailable");
-verifyEqual(testCase, tableCounts(fixture.conn), before);
+function testCompleteApplyCommitsRunAndSyllablesTogether(testCase)
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+
+% Pass 3 refused apply so that no extraction run could be committed without its
+% syllables. Pass 4 keeps that invariant by committing both in one transaction
+% rather than by refusing.
 verifyEqual(testCase, countOf(fixture.conn, "extraction_runs"), 0);
+result = apply(fixture, defaultRunSpec(fixture));
+
+verifyEqual(testCase, result.status, "committed");
+verifyTrue(testCase, result.committed);
+verifyEqual(testCase, countOf(fixture.conn, "extraction_runs"), 1);
+verifyEqual(testCase, countOf(fixture.conn, "detections"), 4);
+verifyEqual(testCase, countOf(fixture.conn, "extraction_run_artifacts"), 3);
+
+% The run records which settings source produced it, so an absent settings
+% profile row is never mistaken for settings that were never asked about.
+notes = fetch(fixture.conn, "SELECT IFNULL(notes,'') AS notes FROM extraction_runs");
+verifyTrue(testCase, contains(string(notes.notes(1)), "settings=captured"));
+verifyTrue(testCase, contains(string(notes.notes(1)), "settings_source=config_csv"));
+
 clear cleanup
 end
 
 function testVersionBoundaryIsProfileDriven(testCase)
-[fixture, cleanup] = setUpFixture();
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
 for accepted = ["2.1", "2.1.7", "2.1.z"]
     spec = defaultRunSpec(fixture);
     spec.extractor_version = accepted;
@@ -83,7 +97,7 @@ clear cleanup
 end
 
 function testRecordingGrammarAndExtractorSpecificRejections(testCase)
-[fixture, cleanup] = setUpFixture();
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
 spec = defaultRunSpec(fixture);
 byId = vawlume.ingest.mupet(fixture.conn, fixture.export_path, ...
     struct(recording_id=1), spec, RepoRoot=fixture.repo_root, ArtifactRoot=fixture.artifact_root);
@@ -101,7 +115,7 @@ clear cleanup
 end
 
 function testCompatibleExistingGraphReusesEverything(testCase)
-[fixture, cleanup] = setUpFixture();
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
 first = plan(fixture, defaultRunSpec(fixture));
 seedPlannedGraph(fixture.conn, first.plan);
 before = tableCounts(fixture.conn);
@@ -114,7 +128,7 @@ clear cleanup
 end
 
 function testDifferentRunCanReuseArtifactsWithoutDuplicatingThem(testCase)
-[fixture, cleanup] = setUpFixture();
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
 first = plan(fixture, defaultRunSpec(fixture));
 seedPlannedGraph(fixture.conn, first.plan);
 spec = defaultRunSpec(fixture);
@@ -127,7 +141,7 @@ clear cleanup
 end
 
 function testChangedIdentityBearingArtifactsConflict(testCase)
-[fixture, cleanup] = setUpFixture();
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
 initial = plan(fixture, defaultRunSpec(fixture));
 seedPlannedGraph(fixture.conn, initial.plan);
 
@@ -153,7 +167,7 @@ clear cleanup
 end
 
 function testDatasetRemainsProvenanceNotExperimentalHierarchy(testCase)
-[fixture, cleanup] = setUpFixture();
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
 spec = defaultRunSpec(fixture);
 spec.dataset = struct(workspace_name="ws-a", dataset_name="dataset-a", ...
     native_dataset_path="audio/dataset-a");
@@ -168,7 +182,7 @@ clear cleanup
 end
 
 function testSettingsJsonIsPortableIdentityBearingEvidence(testCase)
-[fixture, cleanup] = setUpFixture();
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
 jsonPath = fullfile(fixture.artifact_root, "mupet", "settings.json");
 writeText(jsonPath, jsonencode(struct(profile=struct(id="lab.mupet.settings", ...
     kind="extractor_settings", profile_version="1.0.0"), ...
@@ -189,7 +203,7 @@ clear cleanup
 end
 
 function testRelationalReadbacksCoverRequiredProvenanceQuestions(testCase)
-[fixture, cleanup] = setUpFixture();
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
 planned = plan(fixture, defaultRunSpec(fixture));
 seedPlannedGraph(fixture.conn, planned.plan);
 seedDeepSqueakRun(fixture.conn);
@@ -363,7 +377,7 @@ fprintf(id,"%s",value); delete(cleaner);
 end
 function makeParent(path), parent=fileparts(path); if ~isfolder(parent), mkdir(parent); end; end
 function tearDown(conn, scratch, repoRoot)
-try, close(conn); catch, end
+try close(conn); catch; end
 if isfolder(scratch), rmdir(scratch,"s"); end
 rmpath(fullfile(repoRoot,"src"));
 end

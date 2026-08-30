@@ -113,9 +113,9 @@ function plan = appendEventPlan(conn, plan, export)
 % than the run's exact extractor version, because seed registration attached
 % extractor_features to the scope row.
 
-plan.feature_dictionary = deepsqueakFeatureDictionary(conn, ...
+plan.feature_dictionary = extractorFeatureDictionary(conn, ...
     plan.extractor.feature_version_id, plan.output_profile.profile_version_id);
-plan.routed = deepsqueakRouteEventValues(export.ir, plan.feature_dictionary, ...
+plan.routed = extractorRouteEventValues(export.ir, plan.feature_dictionary, ...
     string(export.artifact.artifact_key));
 
 if ~isempty(plan.routed.unregistered_fields)
@@ -129,7 +129,7 @@ if ~isempty(plan.routed.unregistered_fields)
         strjoin(plan.routed.unregistered_fields, ", "));
 end
 
-plan.validation = deepsqueakValidateEvents(plan.routed, export.profile_document);
+plan.validation = extractorValidateEvents(plan.routed, export.profile_document, "call");
 plan.warnings = [plan.warnings; plan.validation.warnings];
 if ~plan.validation.is_valid
     error("vawlume:ingest:DeepSqueakEventValidationFailed", ...

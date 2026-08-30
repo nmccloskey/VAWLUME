@@ -1,11 +1,32 @@
 function result = mupet(conn, artifactPath, recordingRef, runSpec, options)
-%MUPET Plan MUPET recording/run/profile/settings/artifact provenance.
+%MUPET Plan or atomically apply a MUPET per-syllable CSV import.
 %
-% Planning is read-only. Phase 5 Pass 3 intentionally does not create an
-% extraction run because event population is delivered atomically in Pass 4.
-% Native processed .mat evidence is hashed and registered in the plan only; it
-% is never parsed. MUPET dataset/workspace names remain extractor provenance and
-% never create experimental hierarchy entities.
+% RESULT = vawlume.ingest.mupet(CONN, ARTIFACTPATH, RECORDINGREF, RUNSPEC) reads
+% one supported MUPET per-syllable CSV, resolves it against a recording project
+% intake already established, and classifies the extractor, output mapping
+% profile, settings, artifacts, extraction run, syllable detections, and event
+% measurements as create, reuse, or conflict. Planning is the default and writes
+% nothing.
+%
+% RESULT = vawlume.ingest.mupet(..., Apply=true) commits a conflict-free plan in
+% one transaction covering the run and its complete syllable population, so an
+% extraction run never exists without the syllables it produced.
+%
+% Settings provenance is required to apply. MUPET's segmentation and filtering
+% behaviour is settings-dependent and MUPET itself reprocesses a recording when
+% its configuration changes, so a run without its exact settings evidence is not
+% reproducible. Supply either the native config.csv or a VAWLUME extractor
+% settings JSON; no default configuration is ever substituted and publication
+% defaults are never inserted.
+%
+% No curation or classification rows are created. The per-syllable CSV exports no
+% row-level review state and no class label, and surviving MUPET's programmatic
+% duration/energy/amplitude filtering is not a reviewed state. Those filter
+% thresholds are recorded once as run-level settings provenance.
+%
+% Native processed .mat evidence is hashed and registered but never parsed, and
+% is never accepted as settings evidence. MUPET dataset/workspace names remain
+% extractor provenance and never create experimental hierarchy entities.
 
 arguments
     conn
@@ -39,8 +60,14 @@ if options.Apply
         error("vawlume:ingest:MupetSettingsRequired", ...
             "MUPET apply requires native config.csv or a VAWLUME settings JSON.");
     end
-    error("vawlume:ingest:MupetApplyNotAvailable", ...
-        "MUPET apply is deferred to Phase 5 Pass 4 so the run and its events can be committed atomically.");
+    if ~plan.has_conflicts
+        [plan, appliedCounts] = mupetApplyPlan(conn, plan);
+        result = mupetPlanResult(plan);
+        result.status = "committed";
+        result.committed = true;
+        result.applied_counts = appliedCounts;
+        return
+    end
 end
 result = mupetPlanResult(plan);
 end

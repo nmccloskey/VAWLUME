@@ -1,5 +1,5 @@
-function routed = deepsqueakRouteEventValues(ir, dictionary, artifactKey)
-%DEEPSQUEAKROUTEEVENTVALUES Route mapped IR evidence to its relational destination.
+function routed = extractorRouteEventValues(ir, dictionary, artifactKey)
+%EXTRACTORROUTEEVENTVALUES Route mapped IR evidence to its relational destination.
 %
 % Routing follows declared semantics, never column names. Two authorities decide,
 % and neither lives in this file:
@@ -9,14 +9,21 @@ function routed = deepsqueakRouteEventValues(ir, dictionary, artifactKey)
 %       registration promoted exactly the profile's event_measurement mappings
 %       into that dictionary;
 %   the profile's semantic_role - carried through the IR, deciding which values
-%       additionally populate detection identity, detection geometry, detection
-%       score, review state, or a class label.
+%       additionally populate event identity, event geometry, detection score,
+%       review state, or a class label.
 %
-% A value may have two destinations. Score is both a registered measurement and
-% the detection's indexed confidence; start and end times are both measurements
-% and the detection's canonical event geometry. That duplication is deliberate:
-% the detection columns exist for indexing and matching, while the measurement
-% rows retain native units, transforms, and operational definitions.
+% A value may have two destinations. A detector score is both a registered
+% measurement and the detection's indexed confidence; start and end times are
+% both measurements and the detection's canonical event geometry. That
+% duplication is deliberate: the detection columns exist for indexing and
+% matching, while the measurement rows retain native units, transforms, and
+% operational definitions.
+%
+% This function is extractor-independent by construction. It asserts nothing
+% about which roles an extractor has. A profile that declares no curation state,
+% no class label, and no detector score - as the MUPET per-syllable profile does
+% - simply leaves those fields absent, which is how an extractor's genuine
+% capability asymmetry reaches the database instead of being fabricated.
 
 arguments
     ir (1,1) struct
@@ -92,6 +99,8 @@ end
 
 function result = applySemanticRole(row, value)
 %APPLYSEMANTICROLE Populate detection-level fields declared by semantic role.
+%
+% Each case fires only when a profile declares that role. None is required.
 result = struct(row=row, handled=false);
 switch string(value.semantic_role)
     case "identifier"
@@ -103,8 +112,8 @@ switch string(value.semantic_role)
         end
         result.handled = true;
     case "curation_state"
-        % DeepSqueak's accept flag is extractor review state, never a biological
-        % truth claim, so it populates curation evidence and nothing else.
+        % An extractor's accept flag is review state, never a biological truth
+        % claim, so it populates curation evidence and nothing else.
         result.row.review_present = true;
         result.row.review_raw_token = string(value.raw_value);
         result.row.review_status = string(value.normalized_value_text);
@@ -130,7 +139,8 @@ function row = applyGeometry(row)
 % Equivalence classes rather than canonical field names or native column labels
 % are the selector, because they are the extractor-independent vocabulary the
 % profiles and the seeded feature relationships already share. That keeps the
-% same selection working unchanged for a second extractor.
+% same selection working unchanged across extractors whose native column names
+% have nothing in common.
 for index = 1:height(row.measurements)
     measurement = table2struct(row.measurements(index, :));
     switch string(measurement.equivalence_class)

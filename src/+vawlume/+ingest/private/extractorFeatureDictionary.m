@@ -1,15 +1,19 @@
-function dictionary = deepsqueakFeatureDictionary(conn, featureVersionId, mappingProfileVersionId)
-%DEEPSQUEAKFEATUREDICTIONARY Read the registered native/canonical feature vocabulary.
+function dictionary = extractorFeatureDictionary(conn, featureVersionId, mappingProfileVersionId)
+%EXTRACTORFEATUREDICTIONARY Read the registered native/canonical feature vocabulary.
 %
-% The importer resolves measurement semantics from rows the semantic seed layer
+% An importer resolves measurement semantics from rows the semantic seed layer
 % already registered. It never invents an extractor_features or
-% canonical_features row from workbook text, so an export column that the seed
+% canonical_features row from source text, so an exported column that the seed
 % layer does not know about is a reportable fault rather than a new dictionary
 % entry.
 %
 % Features are registered against the mapping profile's declared compatibility
 % scope, which is why FEATUREVERSIONID is the scope row rather than the exact
 % version an individual run recorded.
+%
+% Nothing here is extractor-specific: the query reads the same tables for every
+% extractor, and the five-part registration identity is the shared vocabulary
+% both built-in profiles are seeded against.
 
 arguments
     conn

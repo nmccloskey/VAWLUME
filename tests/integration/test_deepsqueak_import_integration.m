@@ -350,13 +350,14 @@ end
 function testTransactionOwnershipAndConnectionContract(testCase)
 [fixture, cleanup] = setUpChain(); %#ok<ASGLU>
 
-% Exactly two functions in the ingest namespace own a transaction: project
-% intake's applier and the DeepSqueak applier. No resolver or registrar commits
-% independently, and semantic seed registration is never called from inside the
-% import transaction.
+% Exactly one function per import path in the ingest namespace owns a
+% transaction: project intake's applier, the DeepSqueak applier, and the MUPET
+% applier. No resolver or registrar commits independently, no shared helper
+% opens a transaction of its own, and semantic seed registration is never called
+% from inside an import transaction.
 owners = transactionOwners(fixture.repo_root);
 verifyEqual(testCase, sort(owners), ...
-    sort(["applyEntityPlan.m"; "deepsqueakApplyPlan.m"]));
+    sort(["applyEntityPlan.m"; "deepsqueakApplyPlan.m"; "mupetApplyPlan.m"]));
 
 importerText = readAll(fullfile(fixture.repo_root, "src", "+vawlume", "+ingest"));
 verifyFalse(testCase, contains(importerText, "registerBuiltinSemantics("), ...
