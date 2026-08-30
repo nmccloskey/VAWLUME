@@ -1,0 +1,230 @@
+{
+  "profile": {
+    "id": "vawlume.matching.prototype.v1",
+    "name": "Prototype cross-extractor matching and consilience specification",
+    "kind": "consilience_policy",
+    "profile_schema_version": "0.1-draft",
+    "profile_version": "0.1.0",
+    "description": "Versioned, checksum-bearing specification governing one cross-extractor matching analysis run. Registered as a config_profiles row of kind consilience_policy and linked to its analysis run through analysis_run_profiles."
+  },
+
+  "calibration_status": {
+    "state": "illustrative_prototype",
+    "meaning": "Every numeric threshold below is a deterministic demonstration value chosen to exercise algorithm behaviour on synthetic fixtures. None is empirically calibrated, and none should be reported as an optimal or recommended setting.",
+    "evidence_basis": "synthetic DeepSqueak and MUPET fixtures only; no real paired extractor session has been available",
+    "calibration_requires": "a genuine paired extractor session plus an independent manually reviewed reference subset"
+  },
+
+  "algorithm": {
+    "key": "temporal_overlap_component_matching",
+    "version": "0.1.0",
+    "stages": [
+      "candidate_generation",
+      "candidate_scoring",
+      "assignment",
+      "consensus_grouping",
+      "detection_agreement",
+      "feature_agreement",
+      "consilience_classification",
+      "manual_qc_comparison"
+    ]
+  },
+
+  "run_pair": {
+    "require_same_recording": true,
+    "require_distinct_extraction_runs": true,
+    "require_distinct_extractors": true,
+    "selection_policy": "explicit_caller_supplied",
+    "forbid_automatic_run_discovery": true,
+    "forbid_latest_timestamp_preference": true,
+    "ordering": "The caller names run_a and run_b. That order is recorded as analysis_run_extraction_inputs.input_role and is the only ordering in the analysis; candidate_pairs.detection_a_id/detection_b_id are ordered by detection_id to satisfy the schema CHECK and carry no run meaning."
+  },
+
+  "candidate_generation": {
+    "exhaustive_within_rule": true,
+    "forbid_nearest_neighbour_only": true,
+    "evidence_fields": [
+      "temporal_overlap_s",
+      "temporal_iou",
+      "onset_difference_s",
+      "offset_difference_s",
+      "duration_difference_s"
+    ],
+    "plausibility_rule": {
+      "require_positive_overlap": true,
+      "min_temporal_iou": 0.10
+    },
+    "excluded_evidence": [
+      "detection_score",
+      "extractor_native_class_label",
+      "curation_state",
+      "power_energy_or_amplitude_without_an_eligible_relationship",
+      "experimental_metadata"
+    ],
+    "notes": "Every pair satisfying the plausibility rule is written, so one-to-many, many-to-one, and many-to-many evidence remains visible rather than being collapsed to a best match."
+  },
+
+  "candidate_scoring": {
+    "candidate_score_definition": "temporal_iou",
+    "rationale": "The schema provides a candidate_score column. Rather than invent a weighted blend with no empirical support, the score is defined to be exactly the temporal intersection-over-union already stored beside it. Its meaning is therefore documented and reproducible, and the four other evidence fields are never collapsed into it.",
+    "combined_scalar_score": false
+  },
+
+  "assignment": {
+    "model": "connected_components_over_candidate_edges",
+    "force_one_to_one": false,
+    "topology_source": "member counts per side of the ordered run pair",
+    "topology_vocabulary": ["one_to_one", "one_to_many", "many_to_one", "many_to_many", "unmatched"],
+    "detection_partition": "every detection of either input run belongs to exactly one match group of this analysis run, including unmatched detections in their own single-member group",
+    "display_label_policy": "split and merge are display labels relative to the explicitly ordered run pair, never a claim that one extractor is objectively splitting a true event"
+  },
+
+  "consensus": {
+    "principle": "A consensus event is a derived grouping. It never replaces, retimes, or overwrites its member detections, and it is not an extractor output.",
+    "by_topology": {
+      "one_to_one": { "emit": true, "derivation_method": "mean_boundary_of_members" },
+      "one_to_many": { "emit": true, "derivation_method": "union_boundary_of_members" },
+      "many_to_one": { "emit": true, "derivation_method": "union_boundary_of_members" },
+      "many_to_many": { "emit": false, "reason": "A single interval over a many-to-many group would assert a correspondence the evidence does not support. The match group and its ambiguity topology remain the result." },
+      "unmatched": { "emit": false, "reason": "A consensus event containing one extractor's detection alone would imply cross-extractor agreement that does not exist. Single-extractor evidence is carried by the unmatched match group and its consilience status." }
+    }
+  },
+
+  "feature_support": {
+    "discovery": "registered equivalence_class plus feature_relationships",
+    "forbid_canonical_name_only_join": true,
+    "require_consilience_eligible": true,
+    "restrict_to_match_type": ["one_to_one"],
+    "restrict_reason": "Averaging two MUPET syllables to compare against one DeepSqueak call would require a scientific aggregation model that does not exist yet.",
+    "comparison_unit": "canonical_unit",
+    "timing_classes_reserved_as_primary_evidence": [
+      "vocalization_start_time",
+      "vocalization_end_time",
+      "vocalization_duration"
+    ],
+    "supporting_equivalence_classes": [
+      "vocalization_frequency_min",
+      "vocalization_frequency_max",
+      "vocalization_frequency_bandwidth",
+      "vocalization_frequency_center"
+    ],
+    "discrepancy_tolerance": [
+      { "equivalence_class": "vocalization_frequency_min", "relative_tolerance": 0.10 },
+      { "equivalence_class": "vocalization_frequency_max", "relative_tolerance": 0.10 },
+      { "equivalence_class": "vocalization_frequency_bandwidth", "relative_tolerance": 0.20 },
+      { "equivalence_class": "vocalization_frequency_center", "relative_tolerance": 0.10 }
+    ],
+    "tolerance_basis": "illustrative_prototype",
+    "excluded_equivalence_classes": [
+      { "equivalence_class": "vocalization_power_like_quantity", "reason": "registered as related with consilience_eligible = 0; power, energy, and amplitude are not interchangeable quantities" }
+    ]
+  },
+
+  "detection_agreement": {
+    "statistics": [
+      "detection_count_by_extractor",
+      "detections_in_any_correspondence_group_by_extractor",
+      "one_to_one_matched_proportion_by_extractor",
+      "unmatched_proportion_by_extractor",
+      "ambiguous_group_count_by_topology",
+      "onset_offset_duration_difference_distribution_over_one_to_one_groups"
+    ],
+    "denominator": "that extractor's detection count within its own input run for this analysis",
+    "prohibitions": [
+      "a split group is never counted as two independent one-to-one matches",
+      "ICC is not a detection-agreement metric"
+    ]
+  },
+
+  "feature_agreement": {
+    "scope": "eligible feature pairs on one_to_one groups only",
+    "statistics": ["signed_difference_bias", "absolute_difference", "median_absolute_difference", "mean_absolute_difference"],
+    "secondary_statistics": ["pearson_correlation"],
+    "secondary_minimum_n": 10,
+    "icc": { "enabled": false, "reason": "Not required by the contract, and with synthetic demonstration data it would characterise the fixture rather than extractor agreement." }
+  },
+
+  "consilience": {
+    "statuses": [
+      { "status": "single_extractor", "target": "match_group", "rule": "match_type = unmatched" },
+      { "status": "ambiguous_split_merge", "target": "match_group", "rule": "match_type in one_to_many, many_to_one, many_to_many" },
+      { "status": "temporally_matched", "target": "match_group", "rule": "match_type = one_to_one with no eligible feature pair available" },
+      { "status": "matched_feature_supported", "target": "match_group", "rule": "match_type = one_to_one and every eligible feature pair is within its declared tolerance" },
+      { "status": "matched_feature_discrepant", "target": "match_group", "rule": "match_type = one_to_one and at least one eligible feature pair exceeds its declared tolerance" },
+      { "status": "manually_reviewed", "target": "match_group_or_consensus_event", "rule": "an independent manual review targets this group or its consensus event" },
+      { "status": "adjudicated_positive", "target": "match_group_or_consensus_event", "rule": "manual adjudication confirms the correspondence" },
+      { "status": "adjudicated_negative", "target": "match_group_or_consensus_event", "rule": "manual adjudication rejects the correspondence" }
+    ],
+    "semantics": "A consilience status is an assessment derived from stated evidence under this versioned specification. It is not a probability that a vocalization occurred, and it must not be reported as one.",
+    "rationale_json_required": true
+  },
+
+  "manual_qc": {
+    "independence": "Manual review is independent evidence and is never derived from extractor state.",
+    "excluded_sources": [
+      "deepsqueak_accepted_flag",
+      "curation_events",
+      "classification_assignments",
+      "detection_score"
+    ],
+    "representable": [
+      "true_event_or_false_positive_on_an_existing_detection",
+      "boundary_difference_via_corrected_start_and_end_times",
+      "ambiguous_segmentation_on_a_match_group",
+      "adjudicated_correspondence_on_a_match_group_or_consensus_event"
+    ],
+    "not_representable": [
+      {
+        "case": "missed_event_false_negative",
+        "reason": "manual_reviews requires exactly one of detection_id, match_group_id, or consensus_event_id, so an event that neither extractor detected has nothing to attach to",
+        "handling": "reported as a known limitation; recall against a manual reference is out of scope until the schema can hold a reviewer-authored reference event"
+      }
+    ]
+  },
+
+  "sensitivity": {
+    "purpose": "Demonstrate how results move with an uncalibrated threshold rather than to select a best value.",
+    "min_temporal_iou_sweep": [0.05, 0.10, 0.25, 0.50],
+    "reported_quantities": [
+      "candidate_pair_count",
+      "one_to_one_group_count",
+      "ambiguous_group_count",
+      "unmatched_detection_count_by_extractor",
+      "manual_qc_agreement_where_a_reference_subset_exists"
+    ],
+    "forbid_selecting_best_threshold_from_synthetic_data": true
+  },
+
+  "analysis_identity": {
+    "components": [
+      "project",
+      "recording",
+      "ordered extraction-run pair",
+      "this specification's profile key, version label, and checksum",
+      "algorithm key and version",
+      "analysis run_key"
+    ],
+    "changed_spec_behavior": "A changed specification, threshold, or algorithm version produces a new analysis run under a new run_key. An existing analysis is never rewritten in place.",
+    "rerun_behavior": "A rerun under the same run_key with identical inputs and an identical specification checksum reuses the existing analysis. Any difference in inputs or checksum is an explicit conflict."
+  },
+
+  "upstream_immutability": {
+    "read_only_tables": [
+      "projects",
+      "recordings",
+      "artifacts",
+      "extraction_runs",
+      "detections",
+      "event_measurements",
+      "curation_events",
+      "classification_runs",
+      "classification_classes",
+      "classification_assignments",
+      "extractor_features",
+      "canonical_features",
+      "feature_mappings",
+      "feature_relationships"
+    ],
+    "statement": "Matching consumes these rows and never writes, updates, or deletes any of them."
+  }
+}

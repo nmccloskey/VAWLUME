@@ -291,6 +291,13 @@ profiles = [
     profile(repoRoot, ...
         "config/04_examples/profile_linkage_example", ...
         false, "")
+    % Not executable: a matching/consilience specification declares no fields,
+    % transforms, or discovery rules, so it is not a source-mapping profile and
+    % vawlume.source_mapping.loadProfile does not accept its kind. It is read
+    % directly and registered as a checksum-bearing config profile version.
+    profile(repoRoot, ...
+        "config/05_matching_profiles/prototype_matching_consilience_spec", ...
+        false, "")
     ];
 end
 

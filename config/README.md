@@ -129,7 +129,38 @@ Unlike the built-in output mapping profile, an extractor settings profile descri
 
 Settings artifacts may remain external to the repository for real projects, with file identity/checksum recorded in provenance.
 
-### 6. Cross-profile examples
+### 6. Matching and consilience specification
+
+Governs one cross-extractor matching analysis: which run pair is legal, what
+makes a detection pair a temporally plausible candidate, how ambiguity is
+assigned rather than resolved away, when a consensus event may be derived, which
+feature comparisons are eligible, what a consilience status means, and what
+counts as independent manual review.
+
+These thresholds belong here, to project/consilience configuration, and
+**never** to an extractor output mapping profile or an importer constant. An
+output mapping profile describes how VAWLUME reads one extractor's format; it
+has no business deciding when two extractors agree.
+
+Registered as a `config_profiles` row of kind `consilience_policy`, versioned
+and checksummed in `config_profile_versions`, and linked to its analysis run
+through `analysis_run_profiles`. A changed specification produces a new analysis
+run rather than rewriting an existing one.
+
+Location:
+
+```text
+config/05_matching_profiles/
+```
+
+The shipped
+[`prototype_matching_consilience_spec.json`](05_matching_profiles/prototype_matching_consilience_spec.json)
+carries `calibration_status.state = "illustrative_prototype"`. Every numeric
+threshold in it is a deterministic demonstration value chosen to exercise
+algorithm behaviour on synthetic fixtures. None is empirically calibrated, and
+none should be reported as optimal or recommended.
+
+### 7. Cross-profile examples
 
 Examples that demonstrate how multiple profile kinds are associated can live in:
 
@@ -269,6 +300,15 @@ The profile loader should reject or clearly flag:
 
 The current source-mapping preview surfaces mapping conflicts and readiness
 diagnostics without performing database insertion.
+
+`vawlume.source_mapping.loadProfile` accepts only the two source-mapping kinds,
+`project_input` and `extractor_output`. Settings profiles and the matching and
+consilience specification are not source-mapping profiles: they declare no
+fields, transforms, or discovery rules, and are read directly with `fileread`
+and `jsondecode`, then registered as checksum-bearing `config_profile_versions`
+rows. Their identity block (`profile.id`, `profile.kind`,
+`profile.profile_version`) follows the same convention so provenance reads the
+same way across every profile kind.
 
 ## Current project-intake linkage
 
