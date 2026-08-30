@@ -310,6 +310,13 @@ profiles = [
     profile(repoRoot, ...
         "config/05_matching_profiles/prototype_matching_consilience_spec", ...
         false, "")
+    % Not executable: a session alignment manifest describes one concrete
+    % session rather than how to interpret a table, so it declares no profile
+    % kind and loadProfile does not accept it. Alignment intake reads it
+    % directly and registers it as a checksum-bearing source file.
+    profile(repoRoot, ...
+        "config/06_alignment_manifests/synthetic_session_alignment_manifest", ...
+        false, "")
     ];
 end
 

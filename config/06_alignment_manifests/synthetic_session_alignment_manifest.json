@@ -1,0 +1,61 @@
+{
+  "manifest": {
+    "manifest_schema_version": "0.1-draft",
+    "manifest_version": "0.1.0",
+    "alignment_key": "synthetic_session_01_alignment",
+    "label": "Synthetic multimodal session alignment",
+    "notes": "Illustrative session manifest. Every input is synthetic; no threshold or clock here is calibrated."
+  },
+  "session": {
+    "project_key": "synthetic_alignment_session",
+    "recording": {
+      "native_recording_id": "REC_SESSION_01"
+    }
+  },
+  "reference_timebase": "neural_native",
+  "method": "affine",
+  "timebases": [
+    {
+      "timebase_key": "audio_native",
+      "timebase_kind": "audio_sample_clock",
+      "recording_native": true,
+      "native_unit": "s",
+      "origin_description": "Recording file time zero."
+    },
+    {
+      "timebase_key": "video_native",
+      "timebase_kind": "video_frame_clock",
+      "native_unit": "s",
+      "nominal_rate_hz": 30,
+      "clock_identifier": "CAM_A"
+    },
+    {
+      "timebase_key": "neural_native",
+      "timebase_kind": "acquisition_clock",
+      "native_unit": "s",
+      "nominal_rate_hz": 30000,
+      "clock_identifier": "ACQ_A"
+    }
+  ],
+  "streams": [
+    {
+      "stream_key": "video_behavior",
+      "timebase_key": "video_native",
+      "source": "video_events.csv",
+      "mapping_profile": "config/01_mapping_profiles/external_streams/behavior_video_event_mapping_profile.json",
+      "file_role": "external_event_table"
+    },
+    {
+      "stream_key": "neural_ttl",
+      "timebase_key": "neural_native",
+      "source": "neural_events.csv",
+      "mapping_profile": "config/01_mapping_profiles/external_streams/neural_ttl_event_mapping_profile.json",
+      "file_role": "external_event_table"
+    }
+  ],
+  "anchors": {
+    "source": "sync_anchors.csv",
+    "mapping_profile": "config/01_mapping_profiles/alignment_anchors/long_anchor_mapping_profile.json",
+    "file_role": "alignment_anchor_table"
+  }
+}

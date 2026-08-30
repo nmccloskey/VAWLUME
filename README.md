@@ -288,9 +288,19 @@ per-anchor residual evidence. Versioned JSON profiles now map synthetic
 behavior/video and neural/TTL tables plus equivalent long/wide anchor tables into
 one provenance-bearing IR, preserving native time, normalized seconds, native
 labels, attributes, coverage gaps, redundant observations, and source locators.
-Database registration, manifest orchestration, transform fitting, and timeline
-construction remain later Phase 7 passes. See
-[`docs/development/11_temporal_alignment_schema.md`](docs/development/11_temporal_alignment_schema.md).
+`vawlume.ingest.alignment` now registers all of that from one compact session
+manifest: the manifest and each declared table become checksummed sources, the
+mapping profiles become versioned configuration, the declared clocks are
+registered with the recording's native audio clock ensured rather than assumed,
+and the streams, coverage, events, attributes, logical anchors, per-clock
+observations, alignment set, and one `registered` transform run per participating
+clock all commit in a single transaction. **No transform is fitted:** no segment,
+residual, or aligned timestamp is created, and a registered run says `registered`
+rather than claiming to be estimated. Transform fitting and timeline construction
+remain later Phase 7 passes. See
+[`docs/development/11_temporal_alignment_schema.md`](docs/development/11_temporal_alignment_schema.md)
+and
+[`docs/development/12_alignment_intake_and_registration.md`](docs/development/12_alignment_intake_and_registration.md).
 
 **Every matching, tolerance, and manual-reference threshold shipped with the
 prototype is provisional.** They are deterministic demonstration values chosen
@@ -325,6 +335,7 @@ metric identity is never asserted.
 - [`docs/development/09_detection_and_feature_agreement.md`](docs/development/09_detection_and_feature_agreement.md) — agreement denominators, registry-driven feature-pair discovery, comparison scope, and what is and is not persisted
 - [`docs/development/10_consilience_manual_qc_and_sensitivity.md`](docs/development/10_consilience_manual_qc_and_sensitivity.md) — consilience status rules and precedence, the independent manual reference, and threshold sensitivity
 - [`docs/development/11_temporal_alignment_schema.md`](docs/development/11_temporal_alignment_schema.md) — temporal-alignment data dictionary: timebase/stream/event/coverage/anchor/observation/set/transform/residual, and which invariants the database enforces
+- [`docs/development/12_alignment_intake_and_registration.md`](docs/development/12_alignment_intake_and_registration.md) — session manifest contract, the recording-native clock rule, what one apply registers, and the conflict and transaction semantics
 
 Extractor-specific design references should live under:
 

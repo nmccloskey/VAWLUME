@@ -1,5 +1,5 @@
 -- VAWLUME prototype relational schema
--- Version: 0.4-draft
+-- Version: 0.5-draft
 -- Date: 2026-08-30
 -- Target: SQLite (MATLAB-centered workflow)
 --
@@ -44,9 +44,9 @@ CREATE TABLE schema_info (
 );
 
 INSERT OR IGNORE INTO schema_info(schema_version, description)
-VALUES ('0.4-draft', 'Phase 7 source mapping: alignment-anchor mapping profiles added to the temporal-alignment ontology');
+VALUES ('0.5-draft', 'Phase 7 alignment intake: registered pre-fit status for pairwise transform runs');
 
-PRAGMA user_version = 4;
+PRAGMA user_version = 5;
 
 -- ============================================================================
 -- 1. Project and configuration-profile infrastructure
@@ -1023,7 +1023,10 @@ CREATE TABLE time_alignment_runs (
     n_anchors_used      INTEGER CHECK (n_anchors_used IS NULL OR n_anchors_used >= 0),
     fit_rmse_s          REAL CHECK (fit_rmse_s IS NULL OR fit_rmse_s >= 0),
     max_error_s         REAL CHECK (max_error_s IS NULL OR max_error_s >= 0),
-    status              TEXT NOT NULL DEFAULT 'estimated' CHECK (status IN ('estimated','validated','rejected','failed')),
+    -- 'registered' means the transform's identity, clocks, and anchors exist but
+    -- nothing has been fitted. Defaulting to 'estimated' would have made a row
+    -- with no segments and no residuals claim a fit it does not have.
+    status              TEXT NOT NULL DEFAULT 'registered' CHECK (status IN ('registered','estimated','validated','rejected','failed')),
     notes               TEXT,
     CHECK (source_timebase_id <> target_timebase_id),
     UNIQUE(alignment_set_id, source_timebase_id)

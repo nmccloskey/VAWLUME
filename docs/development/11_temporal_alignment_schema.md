@@ -13,10 +13,13 @@ construction do not yet exist. The
 governing design contract is
 [`../design/02_temporal_alignment_contract.md`](../design/02_temporal_alignment_contract.md).
 
-Schema version `0.4-draft`, `PRAGMA user_version = 4`. The only `0.3` to `0.4`
-DDL change is the addition of `alignment_anchor_mapping` to the closed
-`config_profiles.profile_kind` vocabulary, so anchor mapping profiles can later
-be registered without misclassifying them as event-stream profiles.
+Schema version `0.5-draft`, `PRAGMA user_version = 5`. The `0.3` to `0.4` DDL
+change added `alignment_anchor_mapping` to the closed
+`config_profiles.profile_kind` vocabulary, so anchor mapping profiles can be
+registered without misclassifying them as event-stream profiles. The `0.4` to
+`0.5` change added `registered` to `time_alignment_runs.status` and made it the
+default, so a transform whose clocks and anchors exist but which has not been
+fitted says so instead of claiming to be `estimated`.
 
 ## The eight distinct concepts
 
@@ -161,6 +164,14 @@ silently degrading to a single affine segment.
 
 There are no `identity` runs for the reference clock. The reference is already in
 its own clock, and a row asserting `t = t` would be noise.
+
+Status vocabulary is `registered`, `estimated`, `validated`, `rejected`,
+`failed`, and the default is `registered`. Alignment intake writes a run when a
+clock's identity and anchors exist but nothing has been fitted; such a row has no
+`alignment_segments` and no `alignment_anchor_residuals`, and calling it
+`estimated` would claim a fit that does not exist. `n_anchors_used` on a
+registered run records how many logical anchors are currently fit-eligible, not
+how many a fit consumed.
 
 ## Anchors, observations, residuals
 

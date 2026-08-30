@@ -191,7 +191,31 @@ threshold in it is a deterministic demonstration value chosen to exercise
 algorithm behaviour on synthetic fixtures. None is empirically calibrated, and
 none should be reported as optimal or recommended.
 
-### 9. Cross-profile examples
+### 9. Session alignment manifests
+
+Location:
+
+```text
+config/06_alignment_manifests/
+```
+
+A manifest is **not a reusable semantic profile** and is deliberately not a
+`config_profiles.profile_kind`. It describes one concrete session: which clocks
+participate, which of them is the reference, and where each event and anchor
+table plus its mapping profile lives. It points at data and never embeds event
+rows.
+
+Alignment intake registers the manifest as a checksummed `source_files` row and
+links it to the alignment set, so the exact request stays reconstructable. The
+reusable half — how to read an event or anchor table — remains a versioned
+mapping profile under `config/01_mapping_profiles/`.
+
+The tracked
+[`synthetic_session_alignment_manifest.json`](06_alignment_manifests/synthetic_session_alignment_manifest.json)
+is illustrative. Its clocks, rates, and file names are synthetic, and it is an
+example of the manifest grammar rather than a template of validated settings.
+
+### 10. Cross-profile examples
 
 Examples that demonstrate how multiple profile kinds are associated can live in:
 
