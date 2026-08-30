@@ -16,6 +16,10 @@ verifyEqual(testCase, result.candidate_count, 3);
 verifyEqual(testCase, result.unmatched_counts, struct(run_a=1, run_b=1));
 verifyEqual(testCase, result.unmatched_detection_ids.run_a_detection_ids, 2);
 verifyEqual(testCase, result.unmatched_detection_ids.run_b_detection_ids, 5);
+verifyEqual(testCase, result.group_count, 4);
+verifyEqual(testCase, result.consensus_count, 2);
+verifyEqual(testCase, string(result.groups.match_type), ...
+    ["one_to_one"; "unmatched"; "one_to_many"; "unmatched"]);
 verifyEqual(testCase, matchingCounts(fixture.conn), before);
 
 rows = result.candidates;
@@ -56,7 +60,8 @@ verifyEqual(testCase, countOf(fixture.conn, "detections"), beforeDetections);
 verifyEqual(testCase, countOf(fixture.conn, "event_measurements"), beforeMeasurements);
 verifyEqual(testCase, beforeDetections, 7);
 verifyEqual(testCase, beforeMeasurements, 90);
-verifyEqual(testCase, countOf(fixture.conn, "match_groups"), 0);
+verifyEqual(testCase, countOf(fixture.conn, "match_groups"), 4);
+verifyEqual(testCase, countOf(fixture.conn, "consensus_events"), 2);
 verifyEqual(testCase, height(fetch(fixture.conn, "PRAGMA foreign_key_check")), 0);
 
 clear cleanup
@@ -80,7 +85,7 @@ end
 clear cleanup
 end
 
-function testApplyPersistsProvenanceCandidatesAndNothingDownstream(testCase)
+function testApplyPersistsProvenanceCandidatesGroupsAndConsensus(testCase)
 [fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
 result = applyNominal(fixture, "matching-v1");
 
@@ -91,6 +96,10 @@ verifyEqual(testCase, result.applied_counts.config_profile_versions, 1);
 verifyEqual(testCase, result.applied_counts.analysis_runs, 1);
 verifyEqual(testCase, result.applied_counts.analysis_run_extraction_inputs, 2);
 verifyEqual(testCase, result.applied_counts.candidate_pairs, 3);
+verifyEqual(testCase, result.applied_counts.match_groups, 4);
+verifyEqual(testCase, result.applied_counts.match_group_members, 7);
+verifyEqual(testCase, result.applied_counts.consensus_events, 2);
+verifyEqual(testCase, result.applied_counts.consensus_event_members, 5);
 
 analysis = fetch(fixture.conn, "SELECT run_type, run_key, status FROM analysis_runs");
 verifyEqual(testCase, string(analysis.run_type), "cross_extractor_matching");
@@ -111,10 +120,12 @@ verifyEqual(testCase, string(profile.content_uri), ...
     "config/05_matching_profiles/prototype_matching_consilience_spec.json");
 verifyEqual(testCase, strlength(string(profile.checksum_sha256)), 64);
 
-for tableName = ["match_groups", "match_group_members", "consensus_events", ...
-        "consensus_event_members", "consilience_assessments", ...
-        "agreement_statistics"]
-    verifyEqual(testCase, countOf(fixture.conn, tableName), 0, tableName);
+expectedCounts = struct(match_groups=4, match_group_members=7, ...
+    consensus_events=2, consensus_event_members=5, ...
+    consilience_assessments=0, agreement_statistics=0);
+for tableName = string(fieldnames(expectedCounts))'
+    verifyEqual(testCase, countOf(fixture.conn, tableName), ...
+        expectedCounts.(tableName), tableName);
 end
 verifyEqual(testCase, countOf(fixture.conn, "detections"), 7);
 verifyEqual(testCase, height(fetch(fixture.conn, "PRAGMA foreign_key_check")), 0);
@@ -133,6 +144,8 @@ verifyTrue(testCase, again.committed);
 verifyEqual(testCase, again.applied_counts.analysis_runs, 0);
 verifyEqual(testCase, again.applied_counts.candidate_pairs, 0);
 verifyEqual(testCase, again.applied_counts.reused_analysis_runs, 1);
+verifyEqual(testCase, again.applied_counts.reused_match_groups, 4);
+verifyEqual(testCase, again.applied_counts.reused_consensus_events, 2);
 verifyEqual(testCase, matchingCounts(fixture.conn), before);
 
 changedPath = writeSpecVariant(fixture, "changed_same_identity.json", ...
@@ -254,6 +267,25 @@ verifyEqual(testCase, countOf(fixture.conn, "config_profile_versions"), 2);
 clear cleanup
 end
 
+function testAssignmentAndConsensusPolicyMustMatchVersionedContract(testCase)
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+optimizerPath = writeSpecVariant(fixture, "optimizer.json", ...
+    {'"model": "connected_components_over_candidate_edges"'}, ...
+    {'"model": "score_winner"'});
+verifyError(testCase, @() vawlume.matching.compare(fixture.conn, ...
+    recordingRef(), nominalPair(), struct(run_key="invalid-assignment", ...
+    profile_path=optimizerPath), RepoRoot=fixture.repo_root), ...
+    "vawlume:matching:SpecificationInvalid");
+consensusPath = writeSpecVariant(fixture, "bad-consensus.json", ...
+    {'"derivation_method": "mean_boundary_of_members"'}, ...
+    {'"derivation_method": "union_boundary_of_members"'});
+verifyError(testCase, @() vawlume.matching.compare(fixture.conn, ...
+    recordingRef(), nominalPair(), struct(run_key="invalid-consensus", ...
+    profile_path=consensusPath), RepoRoot=fixture.repo_root), ...
+    "vawlume:matching:SpecificationInvalid");
+clear cleanup
+end
+
 function testGeneratedCandidatesStayInsideDeclaredInputsAndTriggerStillGuards(testCase)
 [fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
 result = applyNominal(fixture, "matching-v1");
@@ -318,13 +350,256 @@ verifyEqual(testCase, owners, "matchingApplyPlan.m");
 verifyFalse(testCase, contains(source, "vawlume.ingest."));
 verifyFalse(testCase, contains(source, [".xlsx", ".csv", ...
     "Begin Time (s)", "Syllable start time (sec)"]));
-verifyFalse(testCase, contains(source, "INSERT INTO match_groups"));
-verifyFalse(testCase, contains(source, "INSERT INTO consensus_events"));
+verifyFalse(testCase, contains(source, "hungarian", IgnoreCase=true));
+verifyFalse(testCase, contains(source, "matchpairs(", IgnoreCase=true));
+verifyFalse(testCase, contains(source, "max(candidate_score", IgnoreCase=true));
+verifyFalse(testCase, contains(source, "DELETE FROM candidate_pairs", ...
+    IgnoreCase=true));
+verifyFalse(testCase, contains(source, "UPDATE detections", IgnoreCase=true));
+verifyFalse(testCase, contains(source, "consilience_assessments"));
+verifyFalse(testCase, contains(source, "agreement_statistics"));
 
 clear cleanup
 end
 
+function testConnectedComponentsPreserveEveryTopologyAndExactConsensus(testCase)
+[fixture, cleanup] = setUpTopologyFixture(); %#ok<ASGLU>
+beforeDetections = fetch(fixture.conn, "SELECT detection_id,start_time_s,end_time_s " + ...
+    "FROM detections ORDER BY detection_id");
+result = applyTopology(fixture, "topology-v1", false);
+
+verifyEqual(testCase, result.candidate_count, 9);
+verifyEqual(testCase, result.group_count, 6);
+verifyEqual(testCase, result.consensus_count, 3);
+verifyEqual(testCase, string(result.groups.match_type), ["one_to_one"; ...
+    "one_to_many"; "many_to_one"; "many_to_many"; "unmatched"; "unmatched"]);
+verifyEqual(testCase, result.groups.run_a_member_count, [1; 1; 2; 2; 1; 0]);
+verifyEqual(testCase, result.groups.run_b_member_count, [1; 2; 1; 2; 0; 1]);
+verifyEqual(testCase, string(result.groups.ambiguity_status), ["unambiguous"; ...
+    "ambiguous"; "ambiguous"; "ambiguous"; "unmatched"; "unmatched"]);
+verifyTrue(testCase, all(isnan(result.groups.match_score)));
+
+partition = fetch(fixture.conn, "SELECT d.detection_id, COUNT(mgm.match_group_id) AS n " + ...
+    "FROM detections d JOIN match_group_members mgm ON mgm.detection_id=d.detection_id " + ...
+    "JOIN match_groups mg ON mg.match_group_id=mgm.match_group_id " + ...
+    "WHERE mg.analysis_run_id=" + string(result.analysis.analysis_run_id) + ...
+    " AND d.extraction_run_id IN (3,5) GROUP BY d.detection_id ORDER BY d.detection_id");
+verifyEqual(testCase, height(partition), 14);
+verifyEqual(testCase, double(partition.n), ones(14, 1));
+edgeLineage = fetch(fixture.conn, "SELECT COUNT(*) AS n FROM candidate_pairs cp " + ...
+    "JOIN match_group_members left_member ON left_member.detection_id=cp.detection_a_id " + ...
+    "JOIN match_group_members right_member ON right_member.detection_id=cp.detection_b_id " + ...
+    "JOIN match_groups mg ON mg.match_group_id=left_member.match_group_id " + ...
+    "WHERE cp.analysis_run_id=" + string(result.analysis.analysis_run_id) + ...
+    " AND right_member.match_group_id=left_member.match_group_id " + ...
+    "AND mg.analysis_run_id=cp.analysis_run_id");
+verifyEqual(testCase, double(edgeLineage.n), 9);
+verifyEqual(testCase, countWhere(fixture.conn, "match_groups", ...
+    "analysis_run_id=" + string(result.analysis.analysis_run_id) + ...
+    " AND match_type='unmatched'"), 2);
+
+events = fetch(fixture.conn, "SELECT mg.match_type,ce.start_time_s,ce.end_time_s," + ...
+    "ce.derivation_method,ce.consensus_status FROM consensus_events ce " + ...
+    "JOIN match_groups mg ON mg.match_group_id=ce.match_group_id " + ...
+    "WHERE ce.analysis_run_id=" + string(result.analysis.analysis_run_id) + ...
+    " ORDER BY ce.start_time_s");
+verifyEqual(testCase, string(events.match_type), ...
+    ["one_to_one"; "one_to_many"; "many_to_one"]);
+verifyEqual(testCase, double(events.start_time_s), [100.1; 200; 300], AbsTol=1e-12);
+verifyEqual(testCase, double(events.end_time_s), [101.9; 204; 304], AbsTol=1e-12);
+verifyEqual(testCase, string(events.derivation_method), ...
+    ["mean_boundary_of_members"; "union_boundary_of_members"; ...
+    "union_boundary_of_members"]);
+verifyEqual(testCase, countWhere(fixture.conn, "match_groups", ...
+    "match_score IS NOT NULL"), 0);
+verifyEqual(testCase, countWhere(fixture.conn, "consensus_events", ...
+    "confidence_score IS NOT NULL"), 0);
+verifyEqual(testCase, fetch(fixture.conn, "SELECT detection_id,start_time_s,end_time_s " + ...
+    "FROM detections ORDER BY detection_id"), beforeDetections);
+verifyEqual(testCase, height(fetch(fixture.conn, "PRAGMA foreign_key_check")), 0);
+
+clear cleanup
+end
+
+function testRunOrderReversalChangesRelativeTopologyOnly(testCase)
+[fixture, cleanup] = setUpTopologyFixture(); %#ok<ASGLU>
+forward = applyTopology(fixture, "topology-forward", false);
+reverse = applyTopology(fixture, "topology-reverse", true);
+
+verifyEqual(testCase, forward.candidate_count, reverse.candidate_count);
+verifyEqual(testCase, string(reverse.groups.match_type), ["one_to_one"; ...
+    "many_to_one"; "one_to_many"; "many_to_many"; "unmatched"; "unmatched"]);
+forwardSets = componentMemberSets(forward);
+reverseSets = componentMemberSets(reverse);
+verifyEqual(testCase, forwardSets, reverseSets);
+verifyEqual(testCase, sortrows([forward.consensus_events.start_time_s, ...
+    forward.consensus_events.end_time_s]), sortrows([reverse.consensus_events.start_time_s, ...
+    reverse.consensus_events.end_time_s]), AbsTol=1e-12);
+
+clear cleanup
+end
+
+function testCandidateOnlyAnalysisIsCompletedWithoutRewritingEdges(testCase)
+[fixture, cleanup] = setUpTopologyFixture(); %#ok<ASGLU>
+first = applyTopology(fixture, "legacy-pass2", false);
+analysisId = first.analysis.analysis_run_id;
+stored = fetch(fixture.conn, "SELECT * FROM candidate_pairs WHERE analysis_run_id=" + ...
+    string(analysisId) + " ORDER BY candidate_pair_id DESC");
+execute(fixture.conn, "DELETE FROM consensus_events WHERE analysis_run_id=" + ...
+    string(analysisId));
+execute(fixture.conn, "DELETE FROM match_groups WHERE analysis_run_id=" + string(analysisId));
+execute(fixture.conn, "DELETE FROM candidate_pairs WHERE analysis_run_id=" + string(analysisId));
+for index = 1:height(stored)
+    sqlwrite(fixture.conn, "candidate_pairs", stored(index, setdiff( ...
+        string(stored.Properties.VariableNames), "candidate_pair_id", "stable")));
+end
+before = fetch(fixture.conn, "SELECT detection_a_id,detection_b_id,details_json " + ...
+    "FROM candidate_pairs WHERE analysis_run_id=" + string(analysisId) + ...
+    " ORDER BY detection_a_id,detection_b_id");
+
+completed = applyTopology(fixture, "legacy-pass2", false);
+verifyEqual(testCase, completed.status, "committed");
+verifyEqual(testCase, completed.applied_counts.candidate_pairs, 0);
+verifyEqual(testCase, completed.applied_counts.reused_candidate_pairs, 9);
+verifyEqual(testCase, completed.applied_counts.match_groups, 6);
+verifyEqual(testCase, completed.applied_counts.consensus_events, 3);
+after = fetch(fixture.conn, "SELECT detection_a_id,detection_b_id,details_json " + ...
+    "FROM candidate_pairs WHERE analysis_run_id=" + string(analysisId) + ...
+    " ORDER BY detection_a_id,detection_b_id");
+verifyEqual(testCase, after, before);
+verifyEqual(testCase, string(fetch(fixture.conn, "SELECT status FROM analysis_runs " + ...
+    "WHERE analysis_run_id=" + string(analysisId)).status), "completed");
+
+again = applyTopology(fixture, "legacy-pass2", false);
+verifyEqual(testCase, again.status, "reused");
+verifyEqual(testCase, again.applied_counts.reused_match_groups, 6);
+clear cleanup
+end
+
+function testStoredDerivedMismatchConflictsBeforeAnyWrite(testCase)
+[fixture, cleanup] = setUpTopologyFixture(); %#ok<ASGLU>
+result = applyTopology(fixture, "conflicting-graph", false);
+execute(fixture.conn, "UPDATE match_groups SET ambiguity_status='changed' " + ...
+    "WHERE analysis_run_id=" + string(result.analysis.analysis_run_id) + ...
+    " AND match_type='one_to_one'");
+before = matchingCounts(fixture.conn);
+conflict = applyTopology(fixture, "conflicting-graph", false);
+verifyEqual(testCase, conflict.status, "conflict");
+verifyTrue(testCase, conflict.has_conflicts);
+verifyFalse(testCase, conflict.committed);
+verifyEqual(testCase, matchingCounts(fixture.conn), before);
+clear cleanup
+end
+
+function testCandidateOnlyCompletionFailureRollsBackToCompletedCandidateState(testCase)
+[fixture, cleanup] = setUpTopologyFixture(); %#ok<ASGLU>
+first = applyTopology(fixture, "legacy-failure", false);
+analysisId = first.analysis.analysis_run_id;
+execute(fixture.conn, "DELETE FROM consensus_events WHERE analysis_run_id=" + ...
+    string(analysisId));
+execute(fixture.conn, "DELETE FROM match_groups WHERE analysis_run_id=" + ...
+    string(analysisId));
+execute(fixture.conn, "CREATE TRIGGER trg_matching_consensus_failure " + ...
+    "BEFORE INSERT ON consensus_events FOR EACH ROW " + ...
+    "BEGIN SELECT RAISE(ABORT,'induced consensus failure'); END");
+dropper = onCleanup(@() dropNamedTrigger(fixture.conn, ...
+    "trg_matching_consensus_failure"));
+
+verifyError(testCase, @() applyTopologyWithInducedFailure(fixture), ...
+    "vawlume:matching:InducedDerivedFailure");
+verifyEqual(testCase, countWhere(fixture.conn, "candidate_pairs", ...
+    "analysis_run_id=" + string(analysisId)), 9);
+verifyEqual(testCase, countWhere(fixture.conn, "match_groups", ...
+    "analysis_run_id=" + string(analysisId)), 0);
+verifyEqual(testCase, countWhere(fixture.conn, "consensus_events", ...
+    "analysis_run_id=" + string(analysisId)), 0);
+status = fetch(fixture.conn, "SELECT status FROM analysis_runs WHERE analysis_run_id=" + ...
+    string(analysisId));
+verifyEqual(testCase, string(status.status), "completed");
+verifyEqual(testCase, string(fixture.conn.AutoCommit), "on");
+clear dropper
+
+recovered = applyTopology(fixture, "legacy-failure", false);
+verifyEqual(testCase, recovered.status, "committed");
+clear cleanup
+end
+
+function testAssignmentAndConsensusIntegrityTriggersRejectCrossScopeRows(testCase)
+[fixture, cleanup] = setUpTopologyFixture(); %#ok<ASGLU>
+result = applyTopology(fixture, "integrity-v1", false);
+analysisId = result.analysis.analysis_run_id;
+firstGroup = result.groups.match_group_id(1);
+secondGroup = result.groups.match_group_id(2);
+memberId = result.group_members.detection_id(1);
+verifySqlFails(testCase, fixture.conn, "INSERT INTO match_group_members(" + ...
+    "match_group_id,detection_id,member_role) VALUES(" + string(secondGroup) + ...
+    "," + string(memberId) + ",'run_a')");
+verifySqlFails(testCase, fixture.conn, "INSERT INTO match_group_members(" + ...
+    "match_group_id,detection_id,member_role) VALUES(" + string(firstGroup) + ...
+    ",1,'run_a')");
+verifySqlFails(testCase, fixture.conn, "INSERT INTO consensus_events(" + ...
+    "analysis_run_id,match_group_id,recording_id,start_time_s,end_time_s," + ...
+    "derivation_method) VALUES(" + string(analysisId) + "," + ...
+    string(firstGroup) + ",2,1,2,'illegal')");
+consensusId = result.consensus_events.consensus_event_id(1);
+nonmember = result.group_members.detection_id( ...
+    result.group_members.component_ordinal == 2);
+verifySqlFails(testCase, fixture.conn, "INSERT INTO consensus_event_members(" + ...
+    "consensus_event_id,detection_id,member_role) VALUES(" + ...
+    string(consensusId) + "," + string(nonmember(1)) + ",'run_a')");
+verifyEqual(testCase, height(fetch(fixture.conn, "PRAGMA foreign_key_check")), 0);
+clear cleanup
+end
+
 % ---------------------------------------------------------------- helpers ---
+
+function [fixture, cleanup] = setUpTopologyFixture()
+[fixture, cleanup] = setUpFixture();
+intervalsA = [100 102; 200 204; 300 302; 302.01 304; ...
+    400 403; 402 405; 500 501];
+intervalsB = [100.2 101.8; 200 202; 202.01 204; 300 304; ...
+    400 404; 401 405; 600 601];
+for index = 1:height(intervalsA)
+    insertDetection(fixture.conn, 3, 1, "topology-a-" + index, ...
+        intervalsA(index, 1), intervalsA(index, 2));
+end
+for index = 1:height(intervalsB)
+    insertDetection(fixture.conn, 5, 1, "topology-b-" + index, ...
+        intervalsB(index, 1), intervalsB(index, 2));
+end
+end
+
+function result = applyTopology(fixture, runKey, reverse)
+if reverse
+    pair = struct(run_a="other-1", run_b="ds-2");
+else
+    pair = struct(run_a="ds-2", run_b="other-1");
+end
+result = vawlume.matching.compare(fixture.conn, recordingRef(), pair, ...
+    struct(run_key=runKey), RepoRoot=fixture.repo_root, Apply=true);
+end
+
+function applyTopologyWithInducedFailure(fixture)
+try
+    applyTopology(fixture, "legacy-failure", false);
+catch exception
+    error("vawlume:matching:InducedDerivedFailure", ...
+        "Induced derived-graph failure surfaced as: %s", exception.message);
+end
+error("vawlume:matching:InducedDerivedFailure", ...
+    "The induced derived-graph failure did not abort.");
+end
+
+function values = componentMemberSets(result)
+values = strings(height(result.groups), 1);
+for index = 1:height(result.groups)
+    ids = sort(result.group_members.detection_id( ...
+        result.group_members.component_ordinal == ...
+        result.groups.component_ordinal(index)));
+    values(index) = strjoin(string(ids'), ",");
+end
+values = sort(values);
+end
 
 function [fixture, cleanup] = setUpFixture()
 repoRoot = repoRootPath();
@@ -527,6 +802,13 @@ catch
 end
 end
 
+function dropNamedTrigger(conn, name)
+try
+    execute(conn, "DROP TRIGGER IF EXISTS " + name);
+catch
+end
+end
+
 function verifySqlFails(testCase, conn, sql)
 failed = false;
 try
@@ -539,7 +821,9 @@ end
 
 function counts = matchingCounts(conn)
 names = ["config_profiles", "config_profile_versions", "analysis_runs", ...
-    "analysis_run_profiles", "analysis_run_extraction_inputs", "candidate_pairs"];
+    "analysis_run_profiles", "analysis_run_extraction_inputs", "candidate_pairs", ...
+    "match_groups", "match_group_members", "consensus_events", ...
+    "consensus_event_members"];
 counts = struct();
 for name = names
     counts.(name) = countOf(conn, name);
@@ -580,6 +864,12 @@ end
 
 function value = countOf(conn, tableName)
 rows = fetch(conn, "SELECT COUNT(*) AS n FROM " + tableName);
+value = double(rows.n(1));
+end
+
+function value = countWhere(conn, tableName, predicate)
+rows = fetch(conn, "SELECT COUNT(*) AS n FROM " + tableName + ...
+    " WHERE " + predicate);
 value = double(rows.n(1));
 end
 

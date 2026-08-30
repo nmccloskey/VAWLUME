@@ -7,8 +7,9 @@ It consumes imported relational detections from two explicit extraction runs,
 returns every temporally plausible cross-run edge, and can persist that candidate
 graph with immutable analysis/configuration provenance.
 
-This stage does not assign candidates. It writes no match group, consensus
-event, agreement statistic, consilience assessment, or upstream extractor row.
+Candidate generation itself does not discard or assign an edge. The public
+`compare` workflow now continues into connected-component assignment and
+consensus, documented in `08_matching_assignment_and_consensus.md`.
 
 ## Public call
 
@@ -82,14 +83,16 @@ Planning is database-read-only. The result exposes resolved recording and run
 identity, specification key/version/checksum, algorithm key/version, detection
 counts, candidate evidence, and unmatched counts.
 
-Apply owns one transaction containing:
+The current apply owns one transaction containing:
 
 1. project-scoped `config_profiles` / `config_profile_versions` registration;
 2. one `analysis_runs` parent with `run_type = cross_extractor_matching`;
 3. the `matching_spec` analysis-profile link;
 4. ordered `run_a` / `run_b` extraction-input links;
 5. all eligible `candidate_pairs` rows;
-6. transition of the analysis parent from `started` to `completed`.
+6. the ambiguity-preserving group/member partition;
+7. topology-permitted consensus events and lineage members;
+8. transition of the analysis parent from `started` to `completed`.
 
 Any failure rolls the whole graph back and restores connection autocommit.
 An identical rerun under one `run_key` reuses the completed analysis and writes

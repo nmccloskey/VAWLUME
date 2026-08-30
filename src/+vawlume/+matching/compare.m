@@ -1,5 +1,5 @@
 function result = compare(conn, recordingRef, runPair, matchSpec, options)
-%COMPARE Plan or atomically persist cross-extractor temporal candidates.
+%COMPARE Plan or atomically persist matching groups and consensus lineage.
 %
 % RESULT = vawlume.matching.compare(CONN, RECORDINGREF, RUNPAIR, MATCHSPEC)
 % resolves two explicitly selected extraction runs on one established recording,
@@ -26,8 +26,9 @@ function result = compare(conn, recordingRef, runPair, matchSpec, options)
 % RepoRoot. Optional fields are run_label, vawlume_version, source_commit, and
 % notes. RESULT = vawlume.matching.compare(..., Apply=true) creates or reuses
 % the checksum-bearing specification, analysis parent, ordered input links, and
-% candidate rows in one transaction. It never creates match groups, consensus
-% events, consilience assessments, or agreement statistics.
+% candidate rows, ambiguity-preserving match groups, and specification-governed
+% consensus events in one transaction. It never creates feature agreement,
+% consilience assessments, or agreement statistics.
 
 arguments
     conn
@@ -44,7 +45,8 @@ if options.Apply && ~plan.has_conflicts
     result = matchingPlanResult(plan);
     result.committed = true;
     result.applied_counts = counts;
-    if plan.analysis.action == "reuse"
+    if plan.analysis.action == "reuse" && ...
+            plan.analysis.graph_action == "reuse"
         result.status = "reused";
     else
         result.status = "committed";

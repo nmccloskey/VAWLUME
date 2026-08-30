@@ -1056,6 +1056,48 @@ BEGIN
     SELECT RAISE(ABORT, 'Match-group member recording does not match match-group recording');
 END;
 
+-- A match group partitions only detections from its analysis inputs, and a
+-- detection may occur in only one group of a given analysis.
+CREATE TRIGGER trg_match_member_analysis_partition
+BEFORE INSERT ON match_group_members
+FOR EACH ROW
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM match_groups mg
+    JOIN detections d ON d.detection_id = NEW.detection_id
+    JOIN analysis_run_extraction_inputs arei
+      ON arei.analysis_run_id = mg.analysis_run_id
+     AND arei.extraction_run_id = d.extraction_run_id
+    WHERE mg.match_group_id = NEW.match_group_id
+)
+OR EXISTS (
+    SELECT 1
+    FROM match_groups target
+    JOIN match_groups existing
+      ON existing.analysis_run_id = target.analysis_run_id
+    JOIN match_group_members member
+      ON member.match_group_id = existing.match_group_id
+    WHERE target.match_group_id = NEW.match_group_id
+      AND existing.match_group_id <> NEW.match_group_id
+      AND member.detection_id = NEW.detection_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Match-group member is outside the analysis inputs or already assigned in this analysis');
+END;
+
+CREATE TRIGGER trg_consensus_group_scope
+BEFORE INSERT ON consensus_events
+FOR EACH ROW
+WHEN NEW.match_group_id IS NOT NULL AND NOT EXISTS (
+    SELECT 1 FROM match_groups mg
+    WHERE mg.match_group_id = NEW.match_group_id
+      AND mg.analysis_run_id = NEW.analysis_run_id
+      AND mg.recording_id = NEW.recording_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Consensus event group does not match its analysis and recording');
+END;
+
 CREATE TRIGGER trg_consensus_member_recording
 BEFORE INSERT ON consensus_event_members
 FOR EACH ROW
@@ -1067,6 +1109,25 @@ WHEN (
 )
 BEGIN
     SELECT RAISE(ABORT, 'Consensus-event member recording does not match consensus-event recording');
+END;
+
+CREATE TRIGGER trg_consensus_member_group_membership
+BEFORE INSERT ON consensus_event_members
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1 FROM consensus_events ce
+    WHERE ce.consensus_event_id = NEW.consensus_event_id
+      AND ce.match_group_id IS NOT NULL
+)
+AND NOT EXISTS (
+    SELECT 1
+    FROM consensus_events ce
+    JOIN match_group_members mgm ON mgm.match_group_id = ce.match_group_id
+    WHERE ce.consensus_event_id = NEW.consensus_event_id
+      AND mgm.detection_id = NEW.detection_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Consensus-event member is not a member of its match group');
 END;
 
 -- Classification assignments must involve a detection from the classification run's

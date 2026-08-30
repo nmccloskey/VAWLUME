@@ -265,16 +265,19 @@ project intake      complete
 DeepSqueak import   complete
 MUPET import        complete
 matching candidates complete
-assignment/consensus next, unimplemented
+assignment/consensus complete
+agreement/consilience next, unimplemented
 ```
 
 The first cross-extractor correspondence stage is implemented as
 `vawlume.matching.compare`. It generates and can atomically persist all
 temporally plausible candidates from two caller-selected runs using a versioned,
-checksum-bearing specification. It does not assign candidates or create match
-groups, consensus events, feature agreement, or consilience; those remain the
-next implementation stages. See
-[`07_matching_candidate_generation.md`](07_matching_candidate_generation.md).
+checksum-bearing specification. It preserves all edges, partitions detections
+into deterministic connected-component groups (including explicit unmatched
+groups), and emits only the consensus lineage permitted by topology. Feature
+agreement and consilience remain later stages. See
+[`07_matching_candidate_generation.md`](07_matching_candidate_generation.md)
+and [`08_matching_assignment_and_consensus.md`](08_matching_assignment_and_consensus.md).
 
 ## 12. Generated artifacts
 

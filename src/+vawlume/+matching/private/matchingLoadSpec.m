@@ -26,12 +26,17 @@ requiredStruct(document, "run_pair");
 requiredStruct(document, "candidate_generation");
 requiredStruct(document.candidate_generation, "plausibility_rule");
 requiredStruct(document, "candidate_scoring");
+requiredStruct(document, "assignment");
+requiredStruct(document, "consensus");
+requiredStruct(document.consensus, "by_topology");
 profile = document.profile;
 algorithm = document.algorithm;
 pair = document.run_pair;
 generation = document.candidate_generation;
 rule = generation.plausibility_rule;
 scoring = document.candidate_scoring;
+assignment = document.assignment;
+consensus = document.consensus.by_topology;
 
 profileKey = requiredText(profile, "id");
 profileName = requiredText(profile, "name");
@@ -66,6 +71,27 @@ if ~isfield(rule, "min_temporal_iou") || ...
     error("vawlume:matching:SpecificationInvalid", ...
         "plausibility_rule.min_temporal_iou must be a finite scalar in [0, 1].");
 end
+if requiredText(assignment, "model") ~= ...
+        "connected_components_over_candidate_edges"
+    error("vawlume:matching:SpecificationInvalid", ...
+        "assignment.model must be 'connected_components_over_candidate_edges'.");
+end
+requiredFalse(assignment, "force_one_to_one");
+expectedTopology = ["one_to_one"; "one_to_many"; "many_to_one"; ...
+    "many_to_many"; "unmatched"];
+if ~isfield(assignment, "topology_vocabulary") || ...
+        ~isequal(string(assignment.topology_vocabulary(:)), expectedTopology)
+    error("vawlume:matching:SpecificationInvalid", ...
+        "assignment.topology_vocabulary does not match the Phase 6 contract.");
+end
+validateConsensus(consensus, "one_to_one", true, ...
+    "mean_boundary_of_members");
+validateConsensus(consensus, "one_to_many", true, ...
+    "union_boundary_of_members");
+validateConsensus(consensus, "many_to_one", true, ...
+    "union_boundary_of_members");
+validateConsensus(consensus, "many_to_many", false, "");
+validateConsensus(consensus, "unmatched", false, "");
 
 specification = struct( ...
     document=document, ...
@@ -80,6 +106,29 @@ specification = struct( ...
     algorithm_key=algorithmKey, ...
     algorithm_version=algorithmVersion, ...
     min_temporal_iou=double(rule.min_temporal_iou));
+end
+
+function requiredFalse(container, field)
+if ~isfield(container, field) || ~islogical(container.(field)) || ...
+        ~isscalar(container.(field)) || container.(field)
+    error("vawlume:matching:SpecificationInvalid", ...
+        "Matching specification field '%s' must be false.", field);
+end
+end
+
+function validateConsensus(container, topology, expectedEmit, expectedMethod)
+requiredStruct(container, topology);
+policy = container.(topology);
+if ~isfield(policy, "emit") || ~islogical(policy.emit) || ...
+        ~isscalar(policy.emit) || policy.emit ~= expectedEmit
+    error("vawlume:matching:SpecificationInvalid", ...
+        "consensus.by_topology.%s.emit differs from the Phase 6 contract.", ...
+        topology);
+end
+if expectedEmit && requiredText(policy, "derivation_method") ~= expectedMethod
+    error("vawlume:matching:SpecificationInvalid", ...
+        "consensus.by_topology.%s.derivation_method is unsupported.", topology);
+end
 end
 
 function requiredStruct(container, field)
