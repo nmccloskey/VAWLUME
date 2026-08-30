@@ -1,6 +1,6 @@
 -- VAWLUME prototype relational schema
--- Version: 0.1-draft
--- Date: 2026-08-21
+-- Version: 0.3-draft
+-- Date: 2026-08-30
 -- Target: SQLite (MATLAB-centered workflow)
 --
 -- Design priorities:
@@ -15,6 +15,10 @@
 --   * cross-extractor candidate matching, match groups, consensus, and review
 --   * sequence/hierarchy-aware derived analyses
 --   * lightweight support for external behavioral/neural streams and time alignment
+--   * timebase-level temporal alignment: one native audio clock per recording,
+--     logical streams with explicit source provenance and observed coverage,
+--     logical anchors observed on many clocks, one reference-bearing alignment
+--     set per operation, pairwise transforms, and per-anchor residual evidence
 --
 -- Conventions:
 --   * INTEGER PRIMARY KEY values are VAWLUME-generated surrogate IDs.
@@ -40,9 +44,9 @@ CREATE TABLE schema_info (
 );
 
 INSERT OR IGNORE INTO schema_info(schema_version, description)
-VALUES ('0.2-draft', 'Phase 1 relational vocabulary and registration identity freeze');
+VALUES ('0.3-draft', 'Phase 7 temporal-alignment ontology: recording-native timebases, logical streams with source provenance and coverage, logical anchors with per-timebase observations, alignment sets, and per-anchor residual evidence');
 
-PRAGMA user_version = 2;
+PRAGMA user_version = 3;
 
 -- ============================================================================
 -- 1. Project and configuration-profile infrastructure
@@ -832,78 +836,268 @@ CREATE TABLE agreement_statistics (
 
 -- A timebase defines the native clock of a recording, video, operant controller,
 -- photometry file, etc. It allows TTL and non-TTL workflows to share one model.
+--
+-- timebase_kind stays free text on purpose. VAWLUME does not own a vocabulary of
+-- acquisition devices, and constraining it would push users toward miscategorizing
+-- an unfamiliar clock rather than describing it. The one thing alignment genuinely
+-- needs is a resolvable audio clock per recording, and that is carried by the
+-- explicit is_recording_native marker instead.
+--
+-- Reference status is deliberately NOT a column here. Being the reference is a
+-- property of one alignment set, not an intrinsic property of a clock; the same
+-- neural clock may be the reference in one alignment and a source in another.
+-- It lives on alignment_sets.reference_timebase_id.
 CREATE TABLE timebases (
     timebase_id         INTEGER PRIMARY KEY,
     project_id          INTEGER NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
     recording_id        INTEGER REFERENCES recordings(recording_id) ON DELETE CASCADE,
     timebase_name       TEXT NOT NULL,
     timebase_kind       TEXT NOT NULL,
+    -- 1 marks the single clock a VAWLUME recording's detections are expressed in.
+    -- Detections inherit it through recording_id and carry no timebase FK of their own.
+    is_recording_native INTEGER NOT NULL DEFAULT 0 CHECK (is_recording_native IN (0,1)),
     native_unit         TEXT NOT NULL DEFAULT 's',
     nominal_rate_hz     REAL CHECK (nominal_rate_hz IS NULL OR nominal_rate_hz > 0),
     origin_description  TEXT,
     clock_identifier    TEXT,
     notes               TEXT,
-    UNIQUE(project_id, recording_id, timebase_name)
+    CHECK (is_recording_native = 0 OR recording_id IS NOT NULL)
 );
 
 -- Continuous neural traces remain external artifacts; SQLite stores stream identity,
 -- provenance, timing, and event/annotation records rather than millions of samples.
+--
+-- A stream is a LOGICAL object: "the behaviour scoring for this session", not "this
+-- CSV". The files it was read from live in external_stream_sources, so a stream
+-- split across two exports, or re-exported later, does not become two streams.
+-- The former direct source_file_id / artifact_id / mapping_profile_version_id
+-- columns were removed for exactly that reason: keeping both would create two
+-- competing provenance authorities. external_stream_sources is the only one.
 CREATE TABLE external_streams (
     external_stream_id  INTEGER PRIMARY KEY,
     project_id          INTEGER NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
     recording_id        INTEGER REFERENCES recordings(recording_id) ON DELETE CASCADE,
-    source_file_id      INTEGER REFERENCES source_files(source_file_id) ON DELETE SET NULL,
-    artifact_id         INTEGER REFERENCES artifacts(artifact_id) ON DELETE SET NULL,
     timebase_id         INTEGER NOT NULL REFERENCES timebases(timebase_id) ON DELETE RESTRICT,
-    mapping_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,
     stream_name         TEXT NOT NULL,
     stream_kind         TEXT NOT NULL CHECK (stream_kind IN ('event','continuous','annotation','video','ttl','other')),
     modality            TEXT,
     units               TEXT,
-    notes               TEXT,
-    UNIQUE(project_id, stream_name, source_file_id)
+    notes               TEXT
 );
 
+-- Where one logical stream's records actually came from. Exactly one of
+-- source_file_id / artifact_id identifies each row, and several rows per stream
+-- are legal because one stream may span several exports.
+CREATE TABLE external_stream_sources (
+    external_stream_source_id INTEGER PRIMARY KEY,
+    external_stream_id  INTEGER NOT NULL REFERENCES external_streams(external_stream_id) ON DELETE CASCADE,
+    source_file_id      INTEGER REFERENCES source_files(source_file_id) ON DELETE RESTRICT,
+    artifact_id         INTEGER REFERENCES artifacts(artifact_id) ON DELETE RESTRICT,
+    source_role         TEXT NOT NULL DEFAULT 'events' CHECK (source_role IN (
+                            'events',
+                            'anchors',
+                            'coverage',
+                            'attributes',
+                            'other'
+                        )),
+    mapping_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,
+    source_locator      TEXT,
+    notes               TEXT,
+    CHECK ((source_file_id IS NOT NULL) + (artifact_id IS NOT NULL) = 1)
+);
+
+-- native_event_label preserves the source's own vocabulary; event_type is the
+-- normalized operational key VAWLUME queries. When no mapping profile supplies a
+-- normalization, event_type may simply repeat the native label. Neither is a
+-- universal behavioural or neural taxonomy, and normalization never overwrites
+-- the native term.
 CREATE TABLE external_events (
     external_event_id   INTEGER PRIMARY KEY,
     external_stream_id  INTEGER NOT NULL REFERENCES external_streams(external_stream_id) ON DELETE CASCADE,
     entity_id           INTEGER REFERENCES experimental_entities(entity_id) ON DELETE SET NULL,
     native_event_id     TEXT,
+    native_event_label  TEXT,
     event_type          TEXT NOT NULL,
     start_time_native   REAL NOT NULL,
     end_time_native     REAL,
     value_text          TEXT,
     value_real          REAL,
     unit                TEXT,
+    mapping_rule_key    TEXT,
     source_locator      TEXT,
     notes               TEXT,
     CHECK (end_time_native IS NULL OR end_time_native >= start_time_native),
     UNIQUE(external_stream_id, native_event_id)
 );
 
+-- Arbitrary mapped event fields (actor, cell_id, confidence, prominence, ...) in
+-- long form, following the entity_attributes typed-value convention. Missingness
+-- is explicit via value_type='missing' rather than being coerced to 0 or ''.
+CREATE TABLE external_event_attributes (
+    external_event_attribute_id INTEGER PRIMARY KEY,
+    external_event_id   INTEGER NOT NULL REFERENCES external_events(external_event_id) ON DELETE CASCADE,
+    attribute_name      TEXT NOT NULL,
+    native_field_name   TEXT,
+    value_type          TEXT NOT NULL CHECK (value_type IN ('text','real','integer','boolean','json','missing')),
+    value_text          TEXT,
+    value_real          REAL,
+    value_integer       INTEGER,
+    value_boolean       INTEGER CHECK (value_boolean IS NULL OR value_boolean IN (0,1)),
+    value_json          TEXT,
+    native_raw_token    TEXT,
+    unit                TEXT,
+    source_locator      TEXT,
+    mapping_rule_key    TEXT,
+    UNIQUE(external_event_id, attribute_name),
+    CHECK (
+      (value_type = 'missing' AND value_text IS NULL AND value_real IS NULL AND value_integer IS NULL AND value_boolean IS NULL AND value_json IS NULL)
+      OR
+      (value_type <> 'missing' AND
+       (value_text IS NOT NULL) + (value_real IS NOT NULL) + (value_integer IS NOT NULL) + (value_boolean IS NOT NULL) + (value_json IS NOT NULL) = 1)
+    )
+);
+
+-- When a stream was actually being observed, in its own native clock.
+--
+-- This is what lets a regularized timeline distinguish "no event occurred here"
+-- from "nobody was watching here". Several segments per stream are the point: a
+-- dropout, a paused camera, or a scorer who annotated two windows must not be
+-- flattened into one continuous interval.
+--
+-- The prototype stores only observed intervals. Any span outside every segment of
+-- a stream is unknown/unavailable, not empty. If further statuses are ever needed
+-- the vocabulary stays small and each value gets defined here.
+CREATE TABLE external_stream_coverage (
+    external_stream_coverage_id INTEGER PRIMARY KEY,
+    external_stream_id  INTEGER NOT NULL REFERENCES external_streams(external_stream_id) ON DELETE CASCADE,
+    segment_index       INTEGER NOT NULL CHECK (segment_index >= 1),
+    start_time_native   REAL NOT NULL,
+    end_time_native     REAL NOT NULL,
+    observation_status  TEXT NOT NULL DEFAULT 'observed' CHECK (observation_status IN ('observed')),
+    source_locator      TEXT,
+    notes               TEXT,
+    CHECK (end_time_native >= start_time_native),
+    UNIQUE(external_stream_id, segment_index)
+);
+
+-- One user-facing multimodal alignment operation: "express this session's clocks
+-- relative to the neural clock". It owns the analysis-run identity, the chosen
+-- reference timebase, and the exact manifest evidence. The pairwise transforms
+-- below are its children, not separate user-facing analyses.
+--
+-- reference_timebase_id is a coordinate choice, not a claim that the reference
+-- device is more accurate than the clocks aligned to it.
+--
+-- Manifest provenance reuses the existing source_files / artifacts registries
+-- rather than adding a parallel one; at most one of the two identifies the
+-- manifest, and neither is required while a set is still being assembled.
+CREATE TABLE alignment_sets (
+    alignment_set_id    INTEGER PRIMARY KEY,
+    analysis_run_id     INTEGER NOT NULL UNIQUE REFERENCES analysis_runs(analysis_run_id) ON DELETE CASCADE,
+    recording_id        INTEGER REFERENCES recordings(recording_id) ON DELETE CASCADE,
+    reference_timebase_id INTEGER NOT NULL REFERENCES timebases(timebase_id) ON DELETE RESTRICT,
+    manifest_source_file_id INTEGER REFERENCES source_files(source_file_id) ON DELETE RESTRICT,
+    manifest_artifact_id INTEGER REFERENCES artifacts(artifact_id) ON DELETE RESTRICT,
+    alignment_set_key   TEXT,
+    status              TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','fitted','validated','rejected','failed')),
+    notes               TEXT,
+    CHECK ((manifest_source_file_id IS NOT NULL) + (manifest_artifact_id IS NOT NULL) <= 1)
+);
+
+-- One source timebase expressed in the parent set's reference timebase.
+--
+-- target_timebase_id is retained so existing joins and aligned-event rows stay
+-- readable, but it is redundant with the parent's reference and is trigger-enforced
+-- to equal it. It is a convenience column, never an independent authority.
+--
+-- piecewise_affine is representable here and in alignment_segments; fitting it is
+-- deliberately not implemented in Phase 7, and the fitting API fails clearly
+-- rather than silently degrading to a single affine segment.
 CREATE TABLE time_alignment_runs (
     alignment_run_id    INTEGER PRIMARY KEY,
-    analysis_run_id     INTEGER NOT NULL UNIQUE REFERENCES analysis_runs(analysis_run_id) ON DELETE CASCADE,
+    alignment_set_id    INTEGER NOT NULL REFERENCES alignment_sets(alignment_set_id) ON DELETE CASCADE,
     source_timebase_id  INTEGER NOT NULL REFERENCES timebases(timebase_id) ON DELETE RESTRICT,
     target_timebase_id  INTEGER NOT NULL REFERENCES timebases(timebase_id) ON DELETE RESTRICT,
-    method              TEXT NOT NULL,
+    method              TEXT NOT NULL CHECK (method IN ('offset','affine','piecewise_affine')),
+    n_anchors_used      INTEGER CHECK (n_anchors_used IS NULL OR n_anchors_used >= 0),
     fit_rmse_s          REAL CHECK (fit_rmse_s IS NULL OR fit_rmse_s >= 0),
     max_error_s         REAL CHECK (max_error_s IS NULL OR max_error_s >= 0),
     status              TEXT NOT NULL DEFAULT 'estimated' CHECK (status IN ('estimated','validated','rejected','failed')),
     notes               TEXT,
-    CHECK (source_timebase_id <> target_timebase_id)
+    CHECK (source_timebase_id <> target_timebase_id),
+    UNIQUE(alignment_set_id, source_timebase_id)
 );
 
+-- A logical synchronization anchor: the identity of a coordinating event, not a
+-- pair of timestamps. It carries no source or target time, because the whole
+-- point is that one anchor is observed separately on each participating clock.
+--
+-- A synchronization anchor is not an experimental event. A TTL pulse fired near a
+-- female-introduction transition is an anchor; the scored female_entry event is an
+-- experimental event in external_events and must not be forced to equal the pulse.
 CREATE TABLE alignment_anchors (
     alignment_anchor_id INTEGER PRIMARY KEY,
-    alignment_run_id    INTEGER NOT NULL REFERENCES time_alignment_runs(alignment_run_id) ON DELETE CASCADE,
-    source_time         REAL NOT NULL,
-    target_time         REAL NOT NULL,
+    alignment_set_id    INTEGER NOT NULL REFERENCES alignment_sets(alignment_set_id) ON DELETE CASCADE,
+    anchor_key          TEXT NOT NULL,
     anchor_type         TEXT NOT NULL,
-    source_reference    TEXT,
-    target_reference    TEXT,
+    expected_order      INTEGER CHECK (expected_order IS NULL OR expected_order >= 1),
+    notes               TEXT,
+    UNIQUE(alignment_set_id, anchor_key)
+);
+
+-- One logical anchor as seen on one timebase. Several rows per anchor and clock
+-- are legal, because redundant TTL channels and duplicate marker readings are real
+-- and their spread is evidence about synchronization quality.
+--
+-- Redundancy must not silently become extra statistical anchors, so a partial
+-- unique index permits at most one included_in_fit = 1 observation per
+-- (anchor, timebase). Replicates are kept with included_in_fit = 0 as QC evidence.
+--
+-- external_event_id is optional: a manually identified marker edge with only a
+-- timestamp is legal. When it is supplied, a trigger requires that event to belong
+-- to a stream on this same timebase.
+CREATE TABLE alignment_anchor_observations (
+    anchor_observation_id INTEGER PRIMARY KEY,
+    alignment_anchor_id INTEGER NOT NULL REFERENCES alignment_anchors(alignment_anchor_id) ON DELETE CASCADE,
+    timebase_id         INTEGER NOT NULL REFERENCES timebases(timebase_id) ON DELETE RESTRICT,
+    external_event_id   INTEGER REFERENCES external_events(external_event_id) ON DELETE SET NULL,
+    observed_time_native REAL NOT NULL,
+    observation_role    TEXT NOT NULL DEFAULT 'primary' CHECK (observation_role IN (
+                            'primary',
+                            'replicate',
+                            'excluded'
+                        )),
+    included_in_fit     INTEGER NOT NULL DEFAULT 1 CHECK (included_in_fit IN (0,1)),
     uncertainty_s       REAL CHECK (uncertainty_s IS NULL OR uncertainty_s >= 0),
-    notes               TEXT
+    source_file_id      INTEGER REFERENCES source_files(source_file_id) ON DELETE SET NULL,
+    mapping_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,
+    source_locator      TEXT,
+    notes               TEXT,
+    CHECK (observation_role <> 'excluded' OR included_in_fit = 0)
+);
+
+-- Per-anchor fit evidence. A residual belongs to one pairwise transform, not to
+-- the logical anchor, because the same anchor yields a different residual under
+-- every fit it participates in.
+--
+-- Both observations are named explicitly rather than inferred, so a reader can see
+-- exactly which two readings produced the number.
+CREATE TABLE alignment_anchor_residuals (
+    alignment_anchor_residual_id INTEGER PRIMARY KEY,
+    alignment_run_id    INTEGER NOT NULL REFERENCES time_alignment_runs(alignment_run_id) ON DELETE CASCADE,
+    alignment_anchor_id INTEGER NOT NULL REFERENCES alignment_anchors(alignment_anchor_id) ON DELETE CASCADE,
+    source_observation_id INTEGER NOT NULL REFERENCES alignment_anchor_observations(anchor_observation_id) ON DELETE CASCADE,
+    reference_observation_id INTEGER NOT NULL REFERENCES alignment_anchor_observations(anchor_observation_id) ON DELETE CASCADE,
+    observed_source_time REAL NOT NULL,
+    observed_reference_time REAL NOT NULL,
+    predicted_reference_time REAL NOT NULL,
+    residual_s          REAL NOT NULL,
+    included_in_fit     INTEGER NOT NULL DEFAULT 1 CHECK (included_in_fit IN (0,1)),
+    exclusion_reason    TEXT,
+    notes               TEXT,
+    CHECK (source_observation_id <> reference_observation_id),
+    CHECK (included_in_fit = 1 OR exclusion_reason IS NOT NULL),
+    UNIQUE(alignment_run_id, alignment_anchor_id)
 );
 
 -- Affine or piecewise-affine mappings: target_time = scale * source_time + offset_s
@@ -921,7 +1115,17 @@ CREATE TABLE alignment_segments (
     UNIQUE(alignment_run_id, segment_index)
 );
 
--- Materialized aligned event timing, useful for downstream joins and auditing.
+-- Materialized aligned event timing: a CACHE, not the authority.
+--
+-- The authoritative statement of where an event falls on the reference clock is
+-- always the native timestamp plus the transform in alignment_segments. These rows
+-- exist so downstream joins and audits can read an aligned time without evaluating
+-- a transform, and they may be regenerated or discarded at any time.
+--
+-- Nothing in VAWLUME may require a row here in order to align an event, and there
+-- is deliberately no aligned_detections counterpart: detections already live on
+-- their recording's native timebase, and materializing a second copy of their
+-- timing would create exactly the competing authority this note exists to prevent.
 CREATE TABLE aligned_external_events (
     aligned_external_event_id INTEGER PRIMARY KEY,
     external_event_id   INTEGER NOT NULL REFERENCES external_events(external_event_id) ON DELETE CASCADE,
@@ -1178,6 +1382,97 @@ WHEN (
 )
 BEGIN
     SELECT RAISE(ABORT, 'Classification assignment is outside its extraction/classification run scope');
+END;
+
+-- --------------------------------------------------------------------------
+-- Temporal-alignment invariants
+-- --------------------------------------------------------------------------
+
+-- target_timebase_id on a pairwise transform is a convenience copy of the parent
+-- set's reference. Allowing it to disagree would create two answers to "what is
+-- this fit expressed in".
+CREATE TRIGGER trg_alignment_run_target_is_set_reference
+BEFORE INSERT ON time_alignment_runs
+FOR EACH ROW
+WHEN NEW.target_timebase_id <> (
+    SELECT reference_timebase_id FROM alignment_sets
+    WHERE alignment_set_id = NEW.alignment_set_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Alignment run target timebase must equal its alignment set reference timebase');
+END;
+
+CREATE TRIGGER trg_alignment_run_target_is_set_reference_update
+BEFORE UPDATE ON time_alignment_runs
+FOR EACH ROW
+WHEN NEW.target_timebase_id <> (
+    SELECT reference_timebase_id FROM alignment_sets
+    WHERE alignment_set_id = NEW.alignment_set_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Alignment run target timebase must equal its alignment set reference timebase');
+END;
+
+-- An anchor observation that names an external event must name one recorded on the
+-- same clock the observation claims to be on.
+CREATE TRIGGER trg_anchor_observation_event_timebase
+BEFORE INSERT ON alignment_anchor_observations
+FOR EACH ROW
+WHEN NEW.external_event_id IS NOT NULL AND NEW.timebase_id <> (
+    SELECT es.timebase_id
+    FROM external_events ee
+    JOIN external_streams es ON es.external_stream_id = ee.external_stream_id
+    WHERE ee.external_event_id = NEW.external_event_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Anchor observation event belongs to a stream on a different timebase');
+END;
+
+-- A residual pairs two observations of the same logical anchor, taken on the two
+-- clocks its transform actually relates, inside the same alignment set.
+CREATE TRIGGER trg_anchor_residual_scope
+BEFORE INSERT ON alignment_anchor_residuals
+FOR EACH ROW
+WHEN (
+    (SELECT alignment_anchor_id FROM alignment_anchor_observations
+     WHERE anchor_observation_id = NEW.source_observation_id) <> NEW.alignment_anchor_id
+    OR
+    (SELECT alignment_anchor_id FROM alignment_anchor_observations
+     WHERE anchor_observation_id = NEW.reference_observation_id) <> NEW.alignment_anchor_id
+    OR
+    (SELECT alignment_set_id FROM alignment_anchors
+     WHERE alignment_anchor_id = NEW.alignment_anchor_id) <>
+    (SELECT alignment_set_id FROM time_alignment_runs
+     WHERE alignment_run_id = NEW.alignment_run_id)
+    OR
+    (SELECT timebase_id FROM alignment_anchor_observations
+     WHERE anchor_observation_id = NEW.source_observation_id) <>
+    (SELECT source_timebase_id FROM time_alignment_runs
+     WHERE alignment_run_id = NEW.alignment_run_id)
+    OR
+    (SELECT timebase_id FROM alignment_anchor_observations
+     WHERE anchor_observation_id = NEW.reference_observation_id) <>
+    (SELECT target_timebase_id FROM time_alignment_runs
+     WHERE alignment_run_id = NEW.alignment_run_id)
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Anchor residual pairs observations outside its run, anchor, or timebases');
+END;
+
+-- A stream's coverage and its events are stated in that stream's own clock, so an
+-- alignment set's reference must be a clock something in the set actually uses.
+-- The set's recording, when named, must own the reference or be the recording the
+-- reference belongs to.
+CREATE TRIGGER trg_alignment_set_reference_scope
+BEFORE INSERT ON alignment_sets
+FOR EACH ROW
+WHEN NEW.recording_id IS NOT NULL AND (
+    SELECT project_id FROM timebases WHERE timebase_id = NEW.reference_timebase_id
+) <> (
+    SELECT project_id FROM recordings WHERE recording_id = NEW.recording_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Alignment set reference timebase belongs to a different project than its recording');
 END;
 
 -- ============================================================================
@@ -1457,8 +1752,39 @@ CREATE INDEX idx_consensus_events_recording_time ON consensus_events(recording_i
 CREATE INDEX idx_manual_reference_events_recording_time ON manual_reference_events(recording_id, reference_set_key, start_time_s, end_time_s);
 CREATE INDEX idx_external_streams_recording ON external_streams(recording_id);
 CREATE INDEX idx_external_events_stream_time ON external_events(external_stream_id, start_time_native);
-CREATE INDEX idx_alignment_anchors_run ON alignment_anchors(alignment_run_id, source_time);
+CREATE INDEX idx_external_event_attributes_event ON external_event_attributes(external_event_id, attribute_name);
+CREATE INDEX idx_external_stream_sources_stream ON external_stream_sources(external_stream_id);
+CREATE INDEX idx_external_stream_coverage_time ON external_stream_coverage(external_stream_id, start_time_native, end_time_native);
+CREATE INDEX idx_alignment_runs_set ON time_alignment_runs(alignment_set_id, source_timebase_id);
+CREATE INDEX idx_alignment_anchor_observations_anchor ON alignment_anchor_observations(alignment_anchor_id, timebase_id);
+CREATE INDEX idx_alignment_anchor_observations_event ON alignment_anchor_observations(external_event_id);
+CREATE INDEX idx_alignment_anchor_residuals_run ON alignment_anchor_residuals(alignment_run_id);
 CREATE INDEX idx_aligned_events_time ON aligned_external_events(target_timebase_id, start_time_aligned_s);
+
+-- Exactly one native audio clock per recording. A partial unique index states this
+-- without adding a timebase FK to every detection.
+CREATE UNIQUE INDEX idx_timebases_recording_native
+    ON timebases(recording_id) WHERE is_recording_native = 1;
+
+-- Timebase and stream names are unique within their scope. These are partial
+-- indexes rather than table-level UNIQUE constraints because SQLite treats NULLs
+-- as distinct in a UNIQUE index, so a nullable recording_id inside the constraint
+-- would silently permit unlimited duplicates at project scope.
+CREATE UNIQUE INDEX idx_timebases_recording_name
+    ON timebases(recording_id, timebase_name) WHERE recording_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_timebases_project_name
+    ON timebases(project_id, timebase_name) WHERE recording_id IS NULL;
+CREATE UNIQUE INDEX idx_external_streams_recording_name
+    ON external_streams(recording_id, stream_name) WHERE recording_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_external_streams_project_name
+    ON external_streams(project_id, stream_name) WHERE recording_id IS NULL;
+
+-- Redundant anchor observations are legal; redundant *included* ones are not,
+-- because two included readings on one clock would silently become two statistical
+-- anchors. Replicates are kept with included_in_fit = 0.
+CREATE UNIQUE INDEX idx_alignment_anchor_observation_included
+    ON alignment_anchor_observations(alignment_anchor_id, timebase_id)
+    WHERE included_in_fit = 1;
 CREATE INDEX idx_sequences_recording ON sequences(recording_id, analysis_run_id);
 CREATE INDEX idx_sequence_members_sequence ON sequence_members(sequence_id, ordinal_position);
 CREATE INDEX idx_derived_measurements_metric ON derived_measurements(metric_definition_id, analysis_run_id);

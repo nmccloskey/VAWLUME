@@ -116,9 +116,15 @@ verifyEqual(testCase, counts.manual_reviews, 3);
 verifyEqual(testCase, counts.consilience_assessments, 3);
 verifyEqual(testCase, counts.timebases, 2);
 verifyEqual(testCase, counts.external_streams, 1);
+verifyEqual(testCase, counts.external_stream_sources, 1);
+verifyEqual(testCase, counts.external_stream_coverage, 1);
 verifyEqual(testCase, counts.external_events, 2);
+verifyEqual(testCase, counts.alignment_sets, 1);
 verifyEqual(testCase, counts.time_alignment_runs, 1);
 verifyEqual(testCase, counts.alignment_anchors, 2);
+% Each logical anchor is observed on both clocks, so two anchors give four rows.
+verifyEqual(testCase, counts.alignment_anchor_observations, 4);
+verifyEqual(testCase, counts.alignment_anchor_residuals, 2);
 verifyEqual(testCase, counts.alignment_segments, 1);
 verifyEqual(testCase, counts.aligned_external_events, 2);
 end

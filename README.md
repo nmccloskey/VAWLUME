@@ -268,8 +268,17 @@ and their coverage, logical anchors with observations on several clocks,
 offset-only and affine source-to-reference transforms with residual evidence,
 common-time projection, and one small regularized timeline. Sequence analytics
 proper — transitions, motifs, bouts, string methods — is deferred to a later
-phase. **Nothing in that list is implemented yet;** the design contract is
+phase. The design contract is
 [`docs/design/02_temporal_alignment_contract.md`](docs/design/02_temporal_alignment_contract.md).
+
+The relational grammar for that work now exists: timebases with one resolvable
+native audio clock per recording, logical external streams with separate source
+provenance and observed coverage, native and normalized event vocabularies with
+extensible attributes, alignment sets owning a reference timebase, pairwise
+transforms as their children, and logical anchors observed on many clocks with
+per-anchor residual evidence. **No behaviour is implemented on it yet** — no
+parser, manifest orchestration, transform fitting, or timeline construction. See
+[`docs/development/11_temporal_alignment_schema.md`](docs/development/11_temporal_alignment_schema.md).
 
 **Every matching, tolerance, and manual-reference threshold shipped with the
 prototype is provisional.** They are deterministic demonstration values chosen
@@ -303,6 +312,7 @@ metric identity is never asserted.
 - [`docs/development/08_matching_assignment_and_consensus.md`](docs/development/08_matching_assignment_and_consensus.md) — connected-component topology, explicit unmatched groups, consensus lineage, and rerun semantics
 - [`docs/development/09_detection_and_feature_agreement.md`](docs/development/09_detection_and_feature_agreement.md) — agreement denominators, registry-driven feature-pair discovery, comparison scope, and what is and is not persisted
 - [`docs/development/10_consilience_manual_qc_and_sensitivity.md`](docs/development/10_consilience_manual_qc_and_sensitivity.md) — consilience status rules and precedence, the independent manual reference, and threshold sensitivity
+- [`docs/development/11_temporal_alignment_schema.md`](docs/development/11_temporal_alignment_schema.md) — temporal-alignment data dictionary: timebase/stream/event/coverage/anchor/observation/set/transform/residual, and which invariants the database enforces
 
 Extractor-specific design references should live under:
 

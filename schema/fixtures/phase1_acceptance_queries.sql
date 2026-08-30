@@ -499,8 +499,9 @@ JOIN external_events ee ON ee.external_event_id = vea.external_event_id
 JOIN recordings r ON r.recording_id = vea.recording_id
 JOIN projects p ON p.project_id = r.project_id
 JOIN time_alignment_runs tar ON tar.alignment_run_id = vea.alignment_run_id
+JOIN alignment_sets aset ON aset.alignment_set_id = tar.alignment_set_id
 JOIN timebases source_tb ON source_tb.timebase_id = tar.source_timebase_id
-JOIN timebases target_tb ON target_tb.timebase_id = vea.target_timebase_id
+JOIN timebases target_tb ON target_tb.timebase_id = aset.reference_timebase_id
 WHERE p.project_key = 'phase1_synthetic_fixture'
   AND r.native_recording_id = 'REC_SOCIAL_DYAD_01'
 ORDER BY
