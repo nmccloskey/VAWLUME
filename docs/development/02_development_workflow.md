@@ -275,7 +275,8 @@ alignment schema and timebase ontology complete
 external stream and anchor source mapping complete
 alignment intake and registration complete
 transform fitting and alignment QC complete
-common-time views and regularized timeline next
+common-time views and regularized timeline complete
+Phase 7 integration/exit review next
 ```
 
 Phase 7 splits Step 10 so that temporal alignment is built before sequence
@@ -290,8 +291,12 @@ with fitting and QC in
 A synthetic multimodal session can now be registered end to end and its
 source-to-reference transforms fitted from explicit anchors, recovering known
 synthetic parameters to within floating-point noise. Fits are recorded as
-`estimated`, never `validated`. Projecting events onto the reference clock and
-regularized timelines are the remaining Phase 7 work.
+`estimated`, never `validated`. Common-time projection and coverage-aware
+regularization are documented in
+[`14_common_time_views_and_regularized_timeline.md`](14_common_time_views_and_regularized_timeline.md)
+and exercised by
+[`examples/temporal_alignment_demo.m`](../../examples/temporal_alignment_demo.m).
+The Phase 7 integration and exit gate remains.
 
 The first cross-extractor correspondence stage is implemented as
 `vawlume.matching.compare`. It generates and can atomically persist all

@@ -203,9 +203,10 @@ project_intake_demo
 deepsqueak_import_demo
 mupet_import_demo
 matching_consensus_demo
+temporal_alignment_demo
 ```
 
-All four create every input they need under the system temporary directory and
+All five create every input they need under the system temporary directory and
 remove it before returning.
 
 ## Configuration policy
@@ -309,12 +310,20 @@ plain vectors so it can be audited with no database at all.
 
 **A solved fit is recorded as `estimated`, never `validated`.** Solving is not
 validating, no calibrated acceptance threshold exists, and anchor uncertainty is
-preserved but deliberately not used as a fit weight. Projecting events onto the
-reference clock and regularized timelines remain later Phase 7 passes. See
+preserved but deliberately not used as a fit weight.
+`vawlume.alignment.commonTime` now derives caller-selected detections or consensus
+events plus external events on the reference clock while retaining native time,
+transform identity, and projected coverage. Reference-clock events are explicit
+identity projections. `vawlume.sequence.regularizeTimeline` builds half-open bins
+where zero means covered-empty and `NaN` plus a coverage flag means unavailable.
+The dense table remains a MATLAB working artifact and does not populate sequence
+tables. See
 [`docs/development/11_temporal_alignment_schema.md`](docs/development/11_temporal_alignment_schema.md),
 [`docs/development/12_alignment_intake_and_registration.md`](docs/development/12_alignment_intake_and_registration.md),
 and
-[`docs/development/13_transform_fitting_and_alignment_qc.md`](docs/development/13_transform_fitting_and_alignment_qc.md).
+[`docs/development/13_transform_fitting_and_alignment_qc.md`](docs/development/13_transform_fitting_and_alignment_qc.md),
+and
+[`docs/development/14_common_time_views_and_regularized_timeline.md`](docs/development/14_common_time_views_and_regularized_timeline.md).
 
 **Every matching, tolerance, and manual-reference threshold shipped with the
 prototype is provisional.** They are deterministic demonstration values chosen
@@ -351,6 +360,7 @@ metric identity is never asserted.
 - [`docs/development/11_temporal_alignment_schema.md`](docs/development/11_temporal_alignment_schema.md) — temporal-alignment data dictionary: timebase/stream/event/coverage/anchor/observation/set/transform/residual, and which invariants the database enforces
 - [`docs/development/12_alignment_intake_and_registration.md`](docs/development/12_alignment_intake_and_registration.md) — session manifest contract, the recording-native clock rule, what one apply registers, and the conflict and transaction semantics
 - [`docs/development/13_transform_fitting_and_alignment_qc.md`](docs/development/13_transform_fitting_and_alignment_qc.md) — offset and affine models, logical-anchor pairing, residual evidence, why a fit is `estimated` rather than `validated`, and stored-transform application
+- [`docs/development/14_common_time_views_and_regularized_timeline.md`](docs/development/14_common_time_views_and_regularized_timeline.md) — common-time event union, identity transforms, projected coverage, half-open bins, and absent-versus-unavailable semantics
 
 Extractor-specific design references should live under:
 

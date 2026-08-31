@@ -4,9 +4,9 @@
 
 **Implementation checkpoint.** The normalized relational grammar, the
 database-free external-event/anchor source-mapping layer, session-manifest intake
-and registration, and source-to-reference transform fitting with residual QC are
-implemented. **Common-time projection of events and regularized timelines remain
-design targets.**
+and registration, source-to-reference transform fitting with residual QC,
+common-time event projection, coverage projection, and the small regularized
+timeline are implemented. **The Phase 7 integration and exit gate remains.**
 
 This document is the governing contract for VAWLUME's first external-stream
 temporal-alignment implementation. It defines vocabulary, invariants, schema
@@ -22,9 +22,10 @@ transactionally; and offset and affine transforms are fitted from explicit
 logical anchors, recovering known synthetic parameters to within floating-point
 noise. Fits are recorded as `estimated`, never `validated`.
 
-No VAWLUME code yet materializes an aligned event timestamp or builds a
-regularized timeline. `vawlume.alignment.applyTransform` derives aligned times on
-demand from the stored transform, which remains the authority.
+`vawlume.alignment.commonTime` derives aligned event timestamps on demand through
+`applyTransform`, which reads the stored transform that remains the authority.
+`vawlume.sequence.regularizeTimeline` builds a MATLAB-only dense working table;
+neither API creates a second canonical timestamp or persists empty bins.
 
 Read this document before changing anything under the alignment tables. Read
 `07_matching_and_consensus.md` in `docs/development/` for what the correspondence
