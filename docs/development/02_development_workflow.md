@@ -1,5 +1,12 @@
 # VAWLUME Development Workflow
 
+> **Audience and status.** This is an internal conventions document, published
+> so the project's development practices are inspectable. It is not a guide to
+> *using* VAWLUME — for that, see the
+> [prototype usage guide](../usage/01_prototype_usage_guide.md). Section 2
+> ("First repository initialization") is a historical record of setup already
+> completed, retained for provenance rather than as work to do.
+
 ## 1. Scope
 
 This document defines a lightweight development workflow for the early VAWLUME prototype.

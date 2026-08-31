@@ -5,6 +5,18 @@
 **Primary software scope reviewed:** DeepSqueak v3.x, with particular attention to the current repository/changelog through v3.2.1 and to version-sensitive behavior documented across earlier releases.  
 **Status:** Working design reference. This is not a replacement for DeepSqueak documentation and should be updated when VAWLUME adds or changes DeepSqueak support.
 
+> **Note on format (added at prototype release).** This document was written
+> before the mapping-profile layer was implemented, and its later sections sketch
+> a proposed built-in template in YAML. **VAWLUME mapping profiles are canonical
+> JSON.** The implemented DeepSqueak profile is
+> [`config/01_mapping_profiles/extractors/deepsqueak/deepsqueak_output_mapping_profile.json`](../../../config/01_mapping_profiles/extractors/deepsqueak/deepsqueak_output_mapping_profile.json),
+> and the shipped profile — not this document — is the authoritative field
+> mapping. The YAML sketches below are retained as design rationale; read them
+> for *why* the contract has the shape it does, not for the syntax to author.
+> See [`config/README.md`](../../../config/README.md) for the current profile
+> language and [`docs/development/05_deepsqueak_import.md`](../../development/05_deepsqueak_import.md)
+> for the implemented import contract.
+
 ---
 
 ## 1. Executive design summary

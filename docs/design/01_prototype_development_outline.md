@@ -1,10 +1,16 @@
 # VAWLUME Prototype Development Outline
 
 **Status:** Revised working development plan  
-**Updated:** 2026-08-30
-**Project stage:** Implemented through the Phase 6 matching-and-consensus demonstration; the phase exit review remains
+**Updated:** 2026-08-31
+**Project stage:** Implemented through Step 10, temporal alignment and the sequence-ready common-time timeline. The Phase 7 integration and exit review has passed. Step 11 (sequence, bout, and hierarchy-aware analysis) and Step 12 (poster-ready integration) are not started.
 **Primary implementation environment:** MATLAB + SQLite  
 **Prototype objective:** Poster-ready, vertically integrated demonstration
+
+> **This is a plan, not a description of what exists.** Sections below specify
+> intended work, including steps that are not implemented. For what the software
+> currently does, see the
+> [prototype usage guide](../usage/01_prototype_usage_guide.md) and the
+> [README](../../README.md).
 
 ---
 
@@ -790,7 +796,7 @@ versioned specification, temporal candidates, connected-component assignment,
 topology-gated consensus lineage, and registry-driven detection- and
 feature-level agreement, consilience classification, independent manual-QC
 evaluation, threshold sensitivity, and an end-to-end demonstration are now
-implemented. The Phase 6 exit review remains and owns the final phase status.
+implemented. The Phase 6 integration and exit review has since passed.
 
 ### DeepSqueak minimum
 

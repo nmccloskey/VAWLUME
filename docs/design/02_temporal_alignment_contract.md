@@ -6,7 +6,9 @@
 database-free external-event/anchor source-mapping layer, session-manifest intake
 and registration, source-to-reference transform fitting with residual QC,
 common-time event projection, coverage projection, and the small regularized
-timeline are implemented. **The Phase 7 integration and exit gate remains.**
+timeline are implemented. **The Phase 7 integration and exit gate has passed** —
+see [Phase 7 exit state](#phase-7-exit-state) below for the result and the
+fifteen known limitations recorded at exit.
 
 This document is the governing contract for VAWLUME's first external-stream
 temporal-alignment implementation. It defines vocabulary, invariants, schema

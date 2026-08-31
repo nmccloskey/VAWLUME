@@ -5,6 +5,21 @@
 **Primary software scope reviewed:** MUPET v2.1 repository/source and associated documentation/publication.  
 **Status:** Working design reference. This is not a replacement for MUPET documentation and should be updated if VAWLUME supports additional versions/forks.
 
+> **Note on format (added at prototype release).** This document was written
+> before the mapping-profile layer was implemented, and its later sections sketch
+> a proposed built-in template and consilience settings in YAML. **VAWLUME
+> mapping profiles and the matching/consilience specification are canonical
+> JSON.** The implemented MUPET profile is
+> [`config/01_mapping_profiles/extractors/mupet/mupet_output_mapping_profile.json`](../../../config/01_mapping_profiles/extractors/mupet/mupet_output_mapping_profile.json)
+> and the matching thresholds live in
+> [`config/05_matching_profiles/prototype_matching_consilience_spec.json`](../../../config/05_matching_profiles/prototype_matching_consilience_spec.json);
+> those shipped files — not this document — are authoritative. The YAML sketches
+> below are retained as design rationale; read them for *why* the contract has
+> the shape it does, not for the syntax to author. See
+> [`config/README.md`](../../../config/README.md) for the current profile
+> language and [`docs/development/06_mupet_import.md`](../../development/06_mupet_import.md)
+> for the implemented import contract.
+
 ---
 
 ## 1. Executive design summary

@@ -92,6 +92,12 @@ See [`../development/01_environment.md`](../development/01_environment.md).
 Nothing is compiled or installed. Repository setup is: obtain the repository,
 put `src/` on the MATLAB path, and create a database file.
 
+**Platform.** Development and testing have been carried out on Windows 11 only.
+The implementation uses no platform-specific calls and handles path-case
+sensitivity explicitly, so other platforms are expected to work — but none has
+been exercised, so cross-platform support is not claimed. If you run VAWLUME on
+macOS or Linux, treat the test suite (§9) as your first check.
+
 ---
 
 ## 3. Conceptual workflow
@@ -806,6 +812,13 @@ extractor-native classes; publication artefacts.
 - [`../development/01_environment.md`](../development/01_environment.md) — MATLAB release and toolbox
 - [`../development/01_repo_structure.md`](../development/01_repo_structure.md) — repository layout policy
 - [`../development/02_development_workflow.md`](../development/02_development_workflow.md) — namespace, testing, and provenance conventions
+
+### License and citation
+
+- [`../../LICENSE`](../../LICENSE) — MIT.
+- The README's **Citation** section explains how to cite the prototype. There is
+  no DOI and no accompanying publication yet, so cite the repository and the
+  exact commit you used.
 
 There is currently no `CONTRIBUTING.md`; contribution guidance is deferred until
 outside contributions are plausible.

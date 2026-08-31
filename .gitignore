@@ -61,6 +61,12 @@ test-result/
 Thumbs.db
 Desktop.ini
 
+# Editor/IDE workspace settings. These are per-developer and frequently
+# contain local absolute paths, so they should not be published.
+.vscode/
+.idea/
+*.code-workspace
+
 # ----------------------------------------------------------------------
 # IMPORTANT: MATLAB Project metadata is intentionally NOT ignored.
 # Commit resources/project/ and other project-definition files generated

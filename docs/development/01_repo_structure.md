@@ -1,5 +1,12 @@
 # Repository Structure Policy
 
+> **Audience and status.** This is an internal conventions document, published
+> so the repository's layout decisions are inspectable. It is not a guide to
+> *using* VAWLUME — for that, see the
+> [prototype usage guide](../usage/01_prototype_usage_guide.md). Section 9
+> ("Migration from the current tree") is a historical record of moves that have
+> already been carried out; it is retained for provenance, not as work to do.
+
 ## 1. Purpose
 
 This document defines the recommended early repository structure for VAWLUME.
@@ -403,11 +410,17 @@ Configuration snippets that merely demonstrate profile syntax should remain unde
 
 ## 12. Files to defer
 
-The following are useful later but not necessary to initialize the prototype:
+`LICENSE` is no longer deferred. It was added for the prototype public release
+(MIT), and the README's license statement must continue to agree with it.
+
+The following remain useful later but are not necessary to initialize the
+prototype:
 
 - `CONTRIBUTING.md` — add when collaborators/public contributions make it useful;
 - `CHANGELOG.md` — add when release history begins;
-- `CITATION.cff` — add when the repository becomes citable/public;
+- `CITATION.cff` — add when the repository is archived and has a DOI. Until then
+  the README's Citation section carries repository-and-commit instructions, and
+  no DOI or publication should be invented to fill the gap;
 - MATLAB Package Manager metadata — add if package distribution becomes a target;
 - toolbox packaging files — add if `.mltbx` distribution becomes a target;
 - CI workflows — add once there is a useful automated test suite;

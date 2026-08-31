@@ -2,14 +2,74 @@
 
 **Vocalization Analysis Workflow Liaison Using MATLAB Extensions**
 
-> **Status:** Early prototype development. The schema, configuration contracts, and package API are working design hypotheses and may change substantially before a first public release.
+> **Status: research prototype.** This is a working prototype published for
+> transparency and reuse, not a released or validated tool. The schema,
+> configuration contracts, and `vawlume.*` API are design hypotheses and may
+> change substantially. Every numeric threshold shipped here is an illustrative
+> demonstration value chosen to exercise algorithm behaviour on synthetic
+> fixtures — none is empirically calibrated. Validation to date is entirely
+> synthetic: no real paired extractor session and no real manually reviewed
+> reference subset has been available.
 
-VAWLUME is a MATLAB-centered, relational framework that maps heterogeneous project and extractor semantics into a provenance-aware common model so vocalization detections can be compared, validated, sequenced, aligned with external events, and analyzed at appropriate biological levels without erasing how those data were originally produced.
+VAWLUME is a MATLAB-centered, relational framework that maps heterogeneous project and extractor semantics into a provenance-aware common model, so vocalization detections can be compared and validated across extractors without erasing how those data were originally produced.
+
+**Implemented today:** extractor-independent source mapping and dry-run
+validation, transactional project intake, DeepSqueak and MUPET import,
+cross-extractor matching and consensus, detection- and feature-level agreement
+with categorical consilience statuses and independent manual review, and
+anchor-based temporal alignment onto a common clock with a coverage-aware
+regularized timeline.
+
+**Not yet implemented:** sequence, bout, motif, and hierarchy-aware analysis;
+continuous-signal ingestion; full acquisition synchronization. These are the
+project's stated aims, not current capabilities — see
+[Prototype boundaries](#prototype-boundaries).
 
 **New here?** Start with the
 [prototype usage guide](docs/usage/01_prototype_usage_guide.md), which covers
 requirements, configuration, a minimal end-to-end example, moving to your own
 data, and the current limitations.
+
+## Requirements
+
+| Requirement | Detail |
+|---|---|
+| MATLAB | R2026a — the release the test suite is run against |
+| Toolbox | **Database Toolbox**, which supplies the `sqlite` connection object used throughout |
+| SQLite | No separate installation; the database is a file created through MATLAB's `sqlite` interface |
+| Python / PyYAML | **Not required.** Configuration is canonical JSON read with `fileread` and `jsondecode` |
+| External extractors | Not required to run VAWLUME. DeepSqueak and MUPET are *integrations*: VAWLUME reads artifacts they already produced and neither bundles nor invokes them |
+
+Nothing is compiled or installed. Setup is: clone the repository, open
+`VAWLUME.prj` (or `addpath("src")`), and create a database file.
+
+Development and testing have been carried out on **Windows 11 only**. The
+implementation uses no platform-specific calls and handles path-case sensitivity
+explicitly, so other platforms are expected to work, but none has been exercised
+and cross-platform support is therefore not claimed.
+
+## Quick start
+
+From the repository root, in MATLAB:
+
+```matlab
+openProject("VAWLUME.prj")   % or: addpath("src")
+addpath("examples")
+
+matching_consensus_demo      % the full cross-extractor path, end to end
+```
+
+The five demonstrations under [`examples/`](examples/) create every input they
+need under the system temporary directory and remove it before returning, so
+they need no data of your own. To run them all, and to build your own database
+from your own recordings, follow the
+[prototype usage guide](docs/usage/01_prototype_usage_guide.md).
+
+To check the environment is correctly configured:
+
+```matlab
+results = runtests("tests", IncludeSubfolders=true);   % 329 tests, ~11 minutes
+```
 
 ## Prototype goals
 
@@ -41,6 +101,12 @@ external project structure / extractor artifacts / event streams
 Normalization is additive rather than destructive. Native fields, values, units, hierarchy, artifacts, and extractor/run provenance remain available even when VAWLUME also exposes canonical concepts.
 
 ## Current development state
+
+> The rest of this README is a detailed implementation-status record, written for
+> readers who want to know exactly what is and is not built and why. If you only
+> want to *use* VAWLUME, the
+> [prototype usage guide](docs/usage/01_prototype_usage_guide.md) covers the same
+> ground more briefly and in task order.
 
 The current design includes:
 
@@ -232,9 +298,8 @@ See [`config/README.md`](config/README.md).
 
 ## Runtime dependency
 
-Mapping-profile loading uses MATLAB-native JSON decoding through
-`fileread` and `jsondecode`. It does not require Python or PyYAML for
-configuration loading. See
+Mapping-profile loading uses MATLAB-native JSON decoding through `fileread` and
+`jsondecode`. It does not require Python or PyYAML for configuration loading. See
 [`docs/development/03_source_mapping_intermediate_representation.md`](docs/development/03_source_mapping_intermediate_representation.md).
 
 ## Development order
@@ -401,3 +466,49 @@ The first prototype is not intended to provide:
 - automatic biological interpretation of extractor-native classes.
 
 The goal is a vertically integrated, reproducible demonstration of the architecture.
+
+## Relationship to DeepSqueak and MUPET
+
+VAWLUME does not detect or extract vocalizations, and it contains no DeepSqueak
+or MUPET code. It reads artifacts those tools have already produced —
+a DeepSqueak Excel call-statistics export, a MUPET per-syllable CSV — through
+versioned mapping profiles that live in this repository.
+
+Both are therefore **integrations, not components**, and both remain the work
+and property of their own authors:
+
+- DeepSqueak — <https://github.com/DrCoffey/DeepSqueak>
+- MUPET — <https://github.com/mvansegbroeck/mupet>
+
+Support for these two extractors reflects where the prototype started, not a
+judgement that they are the only ones worth supporting. The mapping-profile
+layer, relational model, matching, consilience, and alignment machinery are
+extractor-independent by design; adding another extractor means authoring a new
+output-mapping profile rather than changing the architecture.
+
+## License
+
+Released under the [MIT License](LICENSE). Copyright (c) 2026 Nicholas McCloskey.
+
+The license covers VAWLUME itself. It does not extend to DeepSqueak, MUPET, or
+MATLAB, each of which carries its own license and must be obtained separately.
+
+## Citation
+
+VAWLUME is an unpublished research prototype. There is no DOI and no
+accompanying publication yet.
+
+If you use it, please cite the repository and the exact commit you used, for
+example:
+
+```text
+McCloskey, N. (2026). VAWLUME: Vocalization Analysis Workflow Liaison Using
+MATLAB Extensions (prototype, commit <short-hash>) [Computer software].
+<repository-url>
+```
+
+A DOI and a formal citation will be added here when the project is first
+archived or published. Please do not cite it as a released or validated tool —
+see [Prototype boundaries](#prototype-boundaries) and the
+[usage guide](docs/usage/01_prototype_usage_guide.md) for what the prototype
+does and does not currently establish.
