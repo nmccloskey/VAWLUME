@@ -77,11 +77,14 @@ VAWLUME/
 │   │   ├── extractors/
 │   │   │   ├── deepsqueak/
 │   │   │   └── mupet/
-│   │   └── project_inputs/
+│   │   ├── project_inputs/
+│   │   ├── external_streams/
+│   │   └── alignment_anchors/
 │   ├── 02_device_profiles/
 │   ├── 03_setup_profiles/
 │   ├── 04_examples/
-│   └── 05_matching_profiles/
+│   ├── 05_matching_profiles/
+│   └── 06_alignment_manifests/
 │
 ├── src/
 │   └── +vawlume/

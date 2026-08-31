@@ -510,3 +510,64 @@ PRAGMA foreign_key_check clean
 ```
 
 No Phase 6 limitation blocks this phase.
+
+## Phase 7 exit state
+
+The integration and exit gate passed. The regression floor leaving this phase:
+
+```text
+329 tests passing, 0 failed, 0 incomplete
+checkcode clean across the repository
+PRAGMA foreign_key_check clean
+```
+
+### Known limitations at exit
+
+These are properties of the implementation, not oversights to be quietly fixed
+later. Each is a place where the prototype deliberately stops short.
+
+1. **Validation is synthetic.** Every transform exercised so far was fitted from
+   anchors generated from a known transform. Recovering those parameters shows
+   the arithmetic is correct; it says nothing about real device clocks.
+2. **Only timestamped event streams are ingested.** Continuous neural,
+   photometry, and video samples remain external files. VAWLUME registers events
+   and coverage, not signals.
+3. **Anchor identities are user-supplied.** There is no automatic anchor
+   discovery from waveforms or pixels, and no nearest-pulse correspondence.
+4. **Offset and affine only.** Piecewise-affine is representable in the schema
+   and refused by the fitter and by `applyTransform`; nonlinear warps are not
+   implemented at all.
+5. **Replicate anchor observations are preserved but not pooled.** One included
+   observation per clock enters a fit; redundant readings stay as QC evidence and
+   are never averaged.
+6. **Anchor uncertainty is preserved but unweighted.** The fit is unweighted
+   ordinary least squares. No confidence interval, standard error, or formal
+   uncertainty propagation is produced.
+7. **No calibrated QC threshold exists.** Residuals are reported, never judged. A
+   solved fit is recorded `estimated`, never `validated`, and nothing decides
+   whether a fit is good enough for a scientific purpose.
+8. **Event-label normalization is project configuration**, not a universal
+   behavioural or neural ontology. Native labels always survive beside the
+   normalized key.
+9. **A regularized zero depends on coverage.** Zero means the stream was observed
+   across the whole bin and nothing happened. Without valid coverage the bin is
+   unavailable, and the distinction is only as good as the declared coverage.
+10. **Sequence, bout, and hierarchy-aware analyses are deferred** to Step 11.
+
+Discovered during the exit audit and specific to this implementation:
+
+11. **Coverage comes only from profile-declared constant segments** or explicit
+    manifest deferral; mapping a separate coverage-segment table is not
+    implemented.
+12. **Recording coverage is duration-derived.** A recording contributes
+    `0 -> duration_s` when a duration exists, and contributes nothing when it does
+    not. There is no multi-segment audio-dropout model analogous to external
+    stream coverage.
+13. **One source file per manifest stream declaration.** The schema and
+    `external_stream_sources` can represent several files composing one logical
+    stream, but no manifest drives that yet.
+14. **An event spanning two adjacent coverage segments is rejected** unless one
+    segment contains it completely. Merging demonstrably contiguous coverage may
+    be worth adding; guessing across a gap is not.
+15. **`aligned_external_events` has no public refresh API.** It remains an
+    optional regenerable cache that no code path requires or populates.

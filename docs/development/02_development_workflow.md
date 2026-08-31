@@ -276,7 +276,8 @@ external stream and anchor source mapping complete
 alignment intake and registration complete
 transform fitting and alignment QC complete
 common-time views and regularized timeline complete
-Phase 7 integration/exit review next
+Phase 7 integration/exit review complete
+sequence / bout / hierarchy-aware analyses next
 ```
 
 Phase 7 splits Step 10 so that temporal alignment is built before sequence
@@ -296,7 +297,17 @@ regularization are documented in
 [`14_common_time_views_and_regularized_timeline.md`](14_common_time_views_and_regularized_timeline.md)
 and exercised by
 [`examples/temporal_alignment_demo.m`](../../examples/temporal_alignment_demo.m).
-The Phase 7 integration and exit gate remains.
+
+The Phase 7 integration and exit gate has passed, so Step 11 — sequence, bout,
+and hierarchy-aware analyses — is the next implementation target. Two invariants
+carry into it: Phase 6's ambiguous match groups must not be flattened to make an
+ordering well defined, and a regularized zero means observed-and-empty while an
+unobserved bin is not a zero.
+
+The dense regularized timeline is a **derived MATLAB working table**, not
+canonical database storage. Empty bins are never persisted, and
+`aligned_external_events` remains an optional regenerable cache that no API
+requires.
 
 The first cross-extractor correspondence stage is implemented as
 `vawlume.matching.compare`. It generates and can atomically persist all

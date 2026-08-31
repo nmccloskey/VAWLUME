@@ -1525,11 +1525,12 @@ That has now occurred conceptually and as a first executable draft.
 Phase 1 completed Steps 1-4, Phase 2 completed Step 5, Phase 3 completed Step 6,
 Phase 4 completed Step 7, Phase 5 completed Step 8, and Phase 6 completed Step 9
 as tested relational checkpoints. The recommended sequence below remains the
-implementation spine, with Step 10 — a compact sequence/alignment analysis — as
-the active target, which Phase 7 splits so that temporal alignment is built
-before sequence analytics. Step 9's candidate generation, assignment, consensus-lineage,
-agreement, consilience, manual-QC, sensitivity, and end-to-end demonstration
-stages are complete, and the Phase 6 integration and exit review has passed.
+implementation spine. Step 9's candidate generation, assignment,
+consensus-lineage, agreement, consilience, manual-QC, sensitivity, and
+end-to-end demonstration stages are complete, and the Phase 6 integration and
+exit review has passed. Phase 7 then completed Step 10 — temporal alignment and
+sequence-ready common-time timelines — and its exit review has passed too, making
+Step 11's sequence, bout, and hierarchy-aware analyses the active target.
 
 ## Step 1 — Stabilize schema vocabulary
 
@@ -1678,26 +1679,47 @@ the demonstrated precision, recall, and agreement figures are computation checks
 rather than extractor-performance estimates, and every shipped threshold is
 illustrative rather than calibrated.
 
-## Step 10 — Implement a small sequence/alignment analysis
+## Step 10 — Temporal alignment and sequence-ready common-time timelines
 
-Prefer one scientifically illustrative example over broad analytical scope.
+**Complete at the Phase 7 exit gate.**
 
-**Phase 7 splits this step, alignment first.** Sequence analysis over
+The original wording of this step — "a small sequence/alignment analysis" —
+bundled two pieces of work whose dependency runs one way. Sequence analysis over
 vocalization events is only meaningful once those events and the behavioural or
-neural events they are related to share a defensible common clock, so temporal
-alignment is the prerequisite half and is large enough to own a phase on its
-own. Phase 7 therefore delivers timebases, external streams and coverage,
-logical anchors with per-timebase observations, offset-only and affine
-source-to-reference transforms with residual evidence, common-time projection,
-and one small regularized timeline.
+neural events they are related to share a defensible common clock. Phase 7
+therefore built the alignment half first, and it was large enough to own a phase.
 
-Transition matrices, bout statistics, n-grams, motifs, edit distance, string
-alignment, sequence clustering, and hierarchy-aware inference are deliberately
-deferred to a later phase.
+Delivered: timebases with one resolvable native audio clock per recording;
+logical external streams with source provenance, typed event attributes, and
+explicit observed coverage; versioned JSON mapping profiles for external event
+and long/wide anchor tables through the database-free IR; transactional
+session-manifest registration; logical anchors observed on several clocks with
+redundancy preserved; offset and affine source-to-reference transforms fitted
+from explicit anchors with per-anchor residual evidence; common-time projection
+that leaves native timestamps untouched; and one small regularized timeline that
+distinguishes a covered-empty bin from an unobserved one.
 
 The governing contract, including the audit of the inherited draft alignment
 schema, is
 [`02_temporal_alignment_contract.md`](02_temporal_alignment_contract.md).
+
+## Step 11 — Sequence, bout, and hierarchy-aware analyses
+
+**Next.**
+
+This is where the deferred analytical work belongs: transition matrices and
+transition entropy, n-grams and motifs, edit distance and string alignment,
+sequence clustering, bout statistics, peri-event summaries, trajectories, and
+hierarchy-aware aggregation and inference.
+
+It becomes tractable now rather than earlier because Step 10 supplies what such
+analyses need: events from several modalities on one defensible clock, with
+coverage that says when absence is real, and with ambiguity from Phase 6
+preserved rather than flattened.
+
+## Step 12 — Poster-ready integration
+
+**Later.** Reproducible figures and tables over the completed pipeline.
 
 ---
 
@@ -1793,35 +1815,32 @@ The prototype is successful when it can reproducibly demonstrate:
 
 # 17. Immediate next planning target
 
-With Goal 3's correspondence workflow implemented and its exit review passed,
-Phase 7 is underway on the first half of Step 10.
+With Step 10's temporal alignment implemented and its exit review passed, the
+immediate target is Step 11.
 
 The active target is:
 
-## **Phase 7 — temporal alignment and a sequence-ready timeline**
+## **Step 11 — sequence, bout, and hierarchy-aware analyses**
 
-Make heterogeneous event streams expressible on a user-selected reference
-timebase while preserving native timestamps, source provenance, anchor evidence,
-and fit diagnostics, and build only the minimum regularized-timeline foundation
-needed to show aligned vocalization, behavioural, and neural events coordinated
-in common bins.
+Phase 7 established what such analyses need: vocalization, behavioural, and
+neural events expressible on one user-selected reference clock, with native
+timestamps preserved, anchor and residual evidence auditable, and coverage that
+distinguishes a real absence from an unobserved span.
 
-The reference timebase is a coordinate choice, not a claim of ground truth.
-Anchor correspondence comes from explicit user-supplied identities, never from
-nearest-timestamp or pulse-order guessing. Native timestamps are never
-overwritten; aligned times are derived from an authoritative transform. A
-regularized timeline must distinguish an event being absent from a stream not
-having been observed.
+The deferred analytical work now becomes tractable — transition matrices and
+entropy, n-grams, motifs, edit distance and string alignment, sequence
+clustering, bout statistics, peri-event summaries, and hierarchy-aware
+aggregation and inference.
 
-Sequence analytics proper — transitions, motifs, bouts, string methods — is
-deferred to a later phase, for the reason recorded at Step 10.
+Two constraints carry forward and should shape the design rather than be
+rediscovered. Phase 6's ambiguity must survive: an N:M match group is one
+correspondence component, not several independent events, and no sequence should
+flatten it to make an ordering well defined. And Phase 7's coverage semantics
+must survive: a zero in a regularized bin means the stream was observed and
+nothing happened, while an unobserved bin is not a zero.
 
-The contract, its exit criteria, and an audit of the inherited draft alignment
-schema are in
-[`02_temporal_alignment_contract.md`](02_temporal_alignment_contract.md).
-
-The completed Phase 1-6 test and demonstration suite is the regression floor for
-that work: **265 tests passing, 0 failed, 0 incomplete.**
+The Phase 1-7 test and demonstration suite is the regression floor for that work:
+**329 tests passing, 0 failed, 0 incomplete.**
 
 ---
 

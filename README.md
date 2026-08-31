@@ -245,7 +245,9 @@ The current recommended order is:
 7. implement DeepSqueak import;
 8. implement MUPET import;
 9. implement matching/consensus;
-10. implement one compact sequence/alignment analysis.
+10. implement temporal alignment and sequence-ready common-time timelines;
+11. implement sequence, bout, and hierarchy-aware analyses;
+12. assemble poster-ready integration.
 
 Phase 1 completed items 1-4 as a tested relational checkpoint. Phase 2
 completed item 5 through the validated IR and dry-run boundary. Phase 2.5
@@ -268,18 +270,27 @@ independent reviewer-authored reference set, threshold-sensitivity comparison,
 and an end-to-end demonstration. The Phase 6 integration and exit review has
 passed.
 
-Phase 7 is now underway on item 10, which it splits so that temporal alignment
-comes first: sequence analysis over vocalization events is only meaningful once
-those events share a defensible common clock with the behavioural or neural
-events they are being related to. Phase 7 targets timebases, external streams
-and their coverage, logical anchors with observations on several clocks,
-offset-only and affine source-to-reference transforms with residual evidence,
-common-time projection, and one small regularized timeline. Sequence analytics
-proper — transitions, motifs, bouts, string methods — is deferred to a later
-phase. The design contract is
+Phase 7 completed item 10 and its integration and exit review has passed. It
+split that item so temporal alignment came first: sequence analysis over
+vocalization events is only meaningful once those events share a defensible
+common clock with the behavioural or neural events they are being related to.
+
+**VAWLUME now supports lightweight timestamped external-event registration and
+anchor-based source-to-reference clock alignment**, with mapping-profile and
+manifest provenance, auditable per-anchor residual QC, common-time projection
+that leaves native timestamps untouched, and coverage-aware regularized
+timelines.
+
+The boundary is equally explicit. This is **not** continuous-signal ingestion:
+neural, photometry, and video samples stay external and only timestamped events
+are registered. It is **not** complete acquisition synchronization: anchor
+identities are supplied by the user, never discovered from waveforms or pixels,
+and no fit threshold is calibrated. And it is **not yet** the sequence-analysis
+phase — transitions, motifs, bouts, string methods, and hierarchy-aware
+inference are Step 11. The design contract is
 [`docs/design/02_temporal_alignment_contract.md`](docs/design/02_temporal_alignment_contract.md).
 
-The relational grammar and database-free source-mapping layer for that work now
+The relational grammar and database-free source-mapping layer for that work
 exist: timebases with one resolvable
 native audio clock per recording, logical external streams with separate source
 provenance and observed coverage, native and normalized event vocabularies with
