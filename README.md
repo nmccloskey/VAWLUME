@@ -6,6 +6,11 @@
 
 VAWLUME is a MATLAB-centered, relational framework that maps heterogeneous project and extractor semantics into a provenance-aware common model so vocalization detections can be compared, validated, sequenced, aligned with external events, and analyzed at appropriate biological levels without erasing how those data were originally produced.
 
+**New here?** Start with the
+[prototype usage guide](docs/usage/01_prototype_usage_guide.md), which covers
+requirements, configuration, a minimal end-to-end example, moving to your own
+data, and the current limitations.
+
 ## Prototype goals
 
 The prototype is organized around four linked capabilities:
@@ -355,6 +360,7 @@ metric identity is never asserted.
 
 ## Documentation
 
+- [`docs/usage/01_prototype_usage_guide.md`](docs/usage/01_prototype_usage_guide.md) — **start here**: requirements, configuration, a minimal end-to-end example, using your own data, outputs, troubleshooting, and current limitations
 - [`docs/design/01_prototype_development_outline.md`](docs/design/01_prototype_development_outline.md) — current prototype development plan
 - [`docs/design/02_temporal_alignment_contract.md`](docs/design/02_temporal_alignment_contract.md) — Phase 7 temporal-alignment design contract, exit criteria, inherited-schema audit, and current implementation boundary
 - [`docs/development/01_repo_structure.md`](docs/development/01_repo_structure.md) — repository policy and MATLAB-specific layout

@@ -7,8 +7,9 @@ function result = project(conn, ir, projectSpec, options)
 % reuse, or conflict.
 % Planning is the default. APPLY=true commits a conflict-free plan in one
 % transaction and records an immutable ingestion attempt. PROJECTSPEC must
-% declare PROJECT_KEY and NAME; DESCRIPTION is optional. PROFILELINKAGEPATH
-% may declare tracked device/setup assignments, resolved relative to REPOROOT.
+% declare PROJECT_KEY and PROJECT_NAME; DESCRIPTION is optional.
+% PROFILELINKAGEPATH may declare tracked device/setup assignments, resolved
+% relative to REPOROOT.
 % Source interpretation remains the responsibility of VAWLUME.SOURCE_MAPPING.
 
 arguments

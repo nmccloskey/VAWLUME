@@ -106,6 +106,7 @@ VAWLUME/
 ├── docs/
 │   ├── design/
 │   ├── development/
+│   ├── usage/
 │   └── reference/
 │       └── extractors/
 │
@@ -313,6 +314,15 @@ These documents explain the rationale behind tracked extractor mapping profiles 
 ### `docs/development/`
 
 Repository conventions, development workflow, testing conventions, and future implementation notes that are meant to remain current.
+
+### `docs/usage/`
+
+User-facing guidance for someone operating VAWLUME rather than developing it.
+
+This is distinct from `docs/development/`: the development documents state each
+stage's contract for an implementer, whereas `docs/usage/` explains how to
+configure and run what is actually implemented. It documents the software that
+exists, not the software VAWLUME may eventually become.
 
 ### `.dev/`
 
