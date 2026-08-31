@@ -294,13 +294,27 @@ mapping profiles become versioned configuration, the declared clocks are
 registered with the recording's native audio clock ensured rather than assumed,
 and the streams, coverage, events, attributes, logical anchors, per-clock
 observations, alignment set, and one `registered` transform run per participating
-clock all commit in a single transaction. **No transform is fitted:** no segment,
-residual, or aligned timestamp is created, and a registered run says `registered`
-rather than claiming to be estimated. Transform fitting and timeline construction
-remain later Phase 7 passes. See
-[`docs/development/11_temporal_alignment_schema.md`](docs/development/11_temporal_alignment_schema.md)
+clock all commit in a single transaction.
+
+`vawlume.alignment.fit` then estimates those transforms from the registered
+anchors. Anchors are paired by logical identity — never by nearest timestamp or
+pulse order — and the models are transparent: offset-only, or affine by plain
+least squares, with piecewise-affine representable but explicitly unimplemented
+rather than quietly approximated. Every evaluated anchor gets a residual row
+naming both observations it came from, so a fit can be recomputed by hand.
+`vawlume.alignment.applyTransform` places native times on the reference clock
+from the stored coefficients without refitting and without touching a native
+timestamp, and `vawlume.alignment.solveTransform` exposes the mathematics on two
+plain vectors so it can be audited with no database at all.
+
+**A solved fit is recorded as `estimated`, never `validated`.** Solving is not
+validating, no calibrated acceptance threshold exists, and anchor uncertainty is
+preserved but deliberately not used as a fit weight. Projecting events onto the
+reference clock and regularized timelines remain later Phase 7 passes. See
+[`docs/development/11_temporal_alignment_schema.md`](docs/development/11_temporal_alignment_schema.md),
+[`docs/development/12_alignment_intake_and_registration.md`](docs/development/12_alignment_intake_and_registration.md),
 and
-[`docs/development/12_alignment_intake_and_registration.md`](docs/development/12_alignment_intake_and_registration.md).
+[`docs/development/13_transform_fitting_and_alignment_qc.md`](docs/development/13_transform_fitting_and_alignment_qc.md).
 
 **Every matching, tolerance, and manual-reference threshold shipped with the
 prototype is provisional.** They are deterministic demonstration values chosen
@@ -336,6 +350,7 @@ metric identity is never asserted.
 - [`docs/development/10_consilience_manual_qc_and_sensitivity.md`](docs/development/10_consilience_manual_qc_and_sensitivity.md) — consilience status rules and precedence, the independent manual reference, and threshold sensitivity
 - [`docs/development/11_temporal_alignment_schema.md`](docs/development/11_temporal_alignment_schema.md) — temporal-alignment data dictionary: timebase/stream/event/coverage/anchor/observation/set/transform/residual, and which invariants the database enforces
 - [`docs/development/12_alignment_intake_and_registration.md`](docs/development/12_alignment_intake_and_registration.md) — session manifest contract, the recording-native clock rule, what one apply registers, and the conflict and transaction semantics
+- [`docs/development/13_transform_fitting_and_alignment_qc.md`](docs/development/13_transform_fitting_and_alignment_qc.md) — offset and affine models, logical-anchor pairing, residual evidence, why a fit is `estimated` rather than `validated`, and stored-transform application
 
 Extractor-specific design references should live under:
 

@@ -2,10 +2,11 @@
 
 ## Status
 
-**Implementation checkpoint.** The normalized relational grammar and the
-database-free external-event/anchor source-mapping layer are implemented.
-Alignment intake/registration, manifest orchestration, transform fitting,
-common-time projection, and regularized timelines remain design targets.
+**Implementation checkpoint.** The normalized relational grammar, the
+database-free external-event/anchor source-mapping layer, session-manifest intake
+and registration, and source-to-reference transform fitting with residual QC are
+implemented. **Common-time projection of events and regularized timelines remain
+design targets.**
 
 This document is the governing contract for VAWLUME's first external-stream
 temporal-alignment implementation. It defines vocabulary, invariants, schema
@@ -15,9 +16,15 @@ of what the inherited draft schema already supports.
 The original pairwise alignment draft has been replaced by timebases, logical
 streams and sources, events and attributes, coverage, alignment sets, logical
 anchors and observations, pairwise transforms, and per-anchor residual evidence.
-Versioned JSON mapping profiles can now normalize synthetic external event and
-long/wide anchor tables into one validated IR. No VAWLUME code yet registers that
-IR, fits a transform, or projects an event onto another clock.
+Versioned JSON mapping profiles normalize synthetic external event and long/wide
+anchor tables into one validated IR; a compact session manifest registers that IR
+transactionally; and offset and affine transforms are fitted from explicit
+logical anchors, recovering known synthetic parameters to within floating-point
+noise. Fits are recorded as `estimated`, never `validated`.
+
+No VAWLUME code yet materializes an aligned event timestamp or builds a
+regularized timeline. `vawlume.alignment.applyTransform` derives aligned times on
+demand from the stored transform, which remains the authority.
 
 Read this document before changing anything under the alignment tables. Read
 `07_matching_and_consensus.md` in `docs/development/` for what the correspondence
