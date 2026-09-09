@@ -4,6 +4,7 @@ tests = functiontests({ ...
     @testProfileChecksumsAreStable, ...
     @testKindSpecificStructureIsRequired, ...
     @testExplicitProfileContentVersionsArePreserved, ...
+    @testUsvsegProfileMatchesItsVerifiedOutputContract, ...
     @testRequiresExplicitProfileContentVersion, ...
     @testRejectsMalformedJson, ...
     @testRejectsDuplicateJsonMembers, ...
@@ -65,6 +66,7 @@ cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
 extractorProfiles = [
     "config/01_mapping_profiles/extractors/deepsqueak/deepsqueak_output_mapping_profile.json"
     "config/01_mapping_profiles/extractors/mupet/mupet_output_mapping_profile.json"
+    "config/01_mapping_profiles/extractors/usvseg/usvseg_output_mapping_profile.json"
 ];
 
 for index = 1:numel(extractorProfiles)
@@ -122,6 +124,148 @@ verifyFalse(testCase, any(issueCodes(report) == "PROFILE_VERSION_MISSING"));
 verifyEmpty(testCase, loaded.warnings);
 
 clear cleanupPath
+end
+
+function testUsvsegProfileMatchesItsVerifiedOutputContract(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+
+profilePath = fullfile(repoRoot, "config", "01_mapping_profiles", ...
+    "extractors", "usvseg", "usvseg_output_mapping_profile.json");
+[loaded, report] = vawlume.source_mapping.loadProfile( ...
+    profilePath, ExpectedKind="extractor_output", RepoRoot=repoRoot);
+
+verifyTrue(testCase, report.is_valid);
+verifyEmpty(testCase, loaded.warnings);
+verifyEqual(testCase, loaded.profile_ids, "vawlume.usvseg.output.v0_9r2");
+verifyEqual(testCase, loaded.profile_version_labels, "0.1.0");
+verifyEqual(testCase, string(loaded.document.extractor.name), "USVSEG");
+verifyEqual(testCase, string(loaded.document.extractor.version_scope.preferred), "0.9r2");
+
+% USVSEG writes no version into any output, so the caller must declare one.
+verifyTrue(testCase, loaded.document.extractor.version_required_at_ingest);
+
+% The mapped fields are exactly the eight columns the summary CSV exports, in
+% export order: nothing dropped and nothing invented.
+verifyEqual(testCase, mappedSourceFields(loaded), ...
+    ["#"; "start"; "end"; "duration"; "maxfreq"; "maxamp"; "meanfreq"; "cvfreq"]);
+verifyEqual(testCase, ...
+    string(loaded.document.field_mapping_source.artifact_key), "usvseg_dat_csv");
+
+% Detection geometry reaches the shared importer only through equivalence
+% classes, and USVSEG exports onset and offset directly, so neither boundary is
+% derived from duration.
+verifyEqual(testCase, mappedValues(loaded, "equivalence_class"), ...
+    [""; "vocalization_start_time"; "vocalization_end_time"; ...
+     "vocalization_duration"; "vocalization_peak_frequency"; ...
+     "vocalization_amplitude_like_quantity"; "vocalization_frequency_center"; ...
+     "vocalization_frequency_cv"]);
+for boundary = ["start", "end"]
+    mapping = mappingFor(loaded, boundary);
+    verifyEqual(testCase, string(mapping.native_unit), "s");
+    verifyEqual(testCase, string(mapping.canonical_unit), "s");
+    verifyEqual(testCase, string(mapping.transform), "identity");
+end
+verifyEqual(testCase, string(mappingFor(loaded, "start").canonical_field), ...
+    "call_start_time");
+verifyEqual(testCase, string(mappingFor(loaded, "end").canonical_field), ...
+    "call_end_time");
+
+% Duration is exported in milliseconds and needs the registered conversion.
+duration = mappingFor(loaded, "duration");
+verifyEqual(testCase, string(duration.native_unit), "ms");
+verifyEqual(testCase, string(duration.canonical_unit), "s");
+verifyEqual(testCase, string(duration.transform), "ms_to_s");
+
+% Every transform is already executable; the profile introduces no new key.
+transforms = mappedValues(loaded, "transform");
+verifyTrue(testCase, all(ismember(transforms(strlength(transforms) > 0), ...
+    ["identity"; "kHz_to_Hz"; "ms_to_s"])));
+
+% The identifier column is literally '#', in both the mapping and the event
+% identity declaration.
+verifyEqual(testCase, string(mappingFor(loaded, "#").semantic_role), "identifier");
+verifyEqual(testCase, ...
+    string(loaded.document.event_identity.native_id.source_field), "#");
+verifyFalse(testCase, loaded.document.event_identity.stable_cross_artifact_identifier);
+
+% Native values are preserved rather than collapsed into canonical ones.
+for index = 1:numel(loaded.field_mappings)
+    verifyTrue(testCase, loaded.field_mappings{index}.preserve_raw);
+end
+verifyTrue(testCase, loaded.document.provenance.never_overwrite_native_values);
+
+% No fabricated frequency bounds, detector score, or annotation evidence:
+% USVSEG exports none of them, so none is mapped.
+canonicalFields = mappedValues(loaded, "canonical_field");
+verifyFalse(testCase, any(ismember(canonicalFields, ...
+    ["frequency_min"; "frequency_max"; "frequency_bandwidth"; "frequency_slope"; ...
+     "native_detection_score"; "native_review_status"; "native_call_label"])));
+policy = loaded.document.mapping_policy;
+verifyTrue(testCase, policy.exports_no_frequency_bounds);
+verifyTrue(testCase, policy.exports_no_curation_state);
+verifyTrue(testCase, policy.exports_no_native_class_or_manual_label);
+verifyTrue(testCase, policy.do_not_synthesize_absent_features);
+
+% Intentionally noncomparable semantics stay noncomparable. The amplitude value
+% is uncalibrated decibels and the frequency CV is a mean-normalized ratio.
+verifyEqual(testCase, string(mappingFor(loaded, "maxamp").consilience_role), ...
+    "none_by_default");
+verifyEqual(testCase, string(mappingFor(loaded, "cvfreq").consilience_role), ...
+    "none_by_default");
+
+% A normalized ratio must not join DeepSqueak's absolute frequency spread.
+verifyNotEqual(testCase, ...
+    string(mappingFor(loaded, "cvfreq").equivalence_class), "vocalization_frequency_sd");
+
+% Mean frequency shares the central-frequency class so the pair is discoverable,
+% while declaring a distinct operational variant so neither the shared class nor
+% the shared canonical name can be read as method equivalence.
+meanFrequency = mappingFor(loaded, "meanfreq");
+verifyEqual(testCase, string(meanFrequency.canonical_field), "frequency_center");
+verifyEqual(testCase, string(meanFrequency.operational_variant), ...
+    "mean_of_primary_peak_frequency_trace");
+verifySubstring(testCase, ...
+    string(meanFrequency.cross_extractor_relationship), "not_equivalent");
+
+% Settings are optional because USVSEG writes none beside its event export, and
+% what it does write is application-scoped rather than run-scoped.
+settings = loaded.document.settings_capture;
+verifyFalse(testCase, settings.required_for_apply);
+verifyEqual(testCase, string(settings.evidence_strength), "weak_not_run_scoped");
+
+% The declared checks a later import adapter must enforce.
+checkIds = strings(numel(loaded.document.validation.checks), 1);
+for index = 1:numel(loaded.document.validation.checks)
+    checkIds(index) = string(loaded.document.validation.checks{index}.id);
+end
+verifyTrue(testCase, all(ismember( ...
+    ["identifier_column_preserved"; "no_synthesized_frequency_bounds"; ...
+     "no_unsupported_annotation_evidence"; ...
+     "extractor_version_declared_by_caller"], checkIds)));
+
+clear cleanupPath
+end
+
+function names = mappedSourceFields(loaded)
+names = mappedValues(loaded, "source_field");
+end
+
+function values = mappedValues(loaded, fieldName)
+values = strings(numel(loaded.field_mappings), 1);
+for index = 1:numel(loaded.field_mappings)
+    mapping = loaded.field_mappings{index};
+    if isfield(mapping, char(fieldName))
+        values(index) = string(mapping.(char(fieldName)));
+    end
+end
+end
+
+function mapping = mappingFor(loaded, sourceField)
+index = find(mappedSourceFields(loaded) == sourceField, 1);
+assert(~isempty(index), "No USVSEG mapping for source field %s.", sourceField);
+mapping = loaded.field_mappings{index};
 end
 
 function testRequiresExplicitProfileContentVersion(testCase)

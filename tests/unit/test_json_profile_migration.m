@@ -132,19 +132,24 @@ profiles = canonicalProfiles(repoRoot);
 projectText = string(fileread(profiles(1).json_path));
 deepSqueakText = string(fileread(profiles(2).json_path));
 mupetText = string(fileread(profiles(3).json_path));
+usvsegText = string(fileread(profiles(4).json_path));
 
 verifyEqual(testCase, count(projectText, "(?P<"), 0);
 verifyEqual(testCase, count(deepSqueakText, "(?P<"), 0);
 verifyEqual(testCase, count(mupetText, "(?P<"), 0);
+verifyEqual(testCase, count(usvsegText, "(?P<"), 0);
 verifyEqual(testCase, count(projectText, "(?<"), 15);
 verifyEqual(testCase, count(deepSqueakText, "(?<"), 0);
 verifyEqual(testCase, count(mupetText, "(?<"), 4);
+verifyEqual(testCase, count(usvsegText, "(?<"), 7);
 
 project = jsondecode(fileread(profiles(1).json_path));
 mupet = jsondecode(fileread(profiles(3).json_path));
+usvseg = jsondecode(fileread(profiles(4).json_path));
 patterns = allRegexPatterns(project);
 patterns = [patterns; allRegexPatterns(mupet)];
-verifyEqual(testCase, numel(patterns), 14);
+patterns = [patterns; allRegexPatterns(usvseg)];
+verifyEqual(testCase, numel(patterns), 17);
 for index = 1:numel(patterns)
     verifyWarningFree(testCase, @() regexp("", char(patterns(index)), "once"));
 end
@@ -281,6 +286,9 @@ profiles = [
         true, "extractor_output")
     profile(repoRoot, ...
         "config/01_mapping_profiles/extractors/mupet/mupet_output_mapping_profile", ...
+        true, "extractor_output")
+    profile(repoRoot, ...
+        "config/01_mapping_profiles/extractors/usvseg/usvseg_output_mapping_profile", ...
         true, "extractor_output")
     profile(repoRoot, ...
         "config/01_mapping_profiles/external_streams/behavior_video_event_mapping_profile", ...

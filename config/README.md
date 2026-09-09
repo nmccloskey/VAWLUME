@@ -71,6 +71,7 @@ Built-in prototype targets:
 ```text
 DeepSqueak
 MUPET
+USVSEG
 ```
 
 Recommended locations:
@@ -78,7 +79,13 @@ Recommended locations:
 ```text
 config/01_mapping_profiles/extractors/deepsqueak/
 config/01_mapping_profiles/extractors/mupet/
+config/01_mapping_profiles/extractors/usvseg/
 ```
+
+The DeepSqueak and MUPET profiles are registered by default. The USVSEG profile
+is shipped and loadable by path, but is not yet in the default registration set
+and has no import adapter; see
+[`docs/reference/extractors/USVSEG_Extractor_Design_Reference.md`](../docs/reference/extractors/USVSEG_Extractor_Design_Reference.md).
 
 ### 3. External-stream source mapping profile
 

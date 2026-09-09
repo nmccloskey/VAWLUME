@@ -1,0 +1,658 @@
+{
+  "profile": {
+    "id": "vawlume.usvseg.output.v0_9r2",
+    "name": "USVSEG v0.9r2 extractor-output mapping",
+    "kind": "extractor_output",
+    "profile_schema_version": "0.2-draft",
+    "status": "built_in_template_draft",
+    "profile_version": "0.1.0"
+  },
+  "extractor": {
+    "name": "USVSEG",
+    "full_name": "Ultrasonic Vocalization SEGmentation",
+    "version_scope": {
+      "preferred": "0.9r2",
+      "verified_against": "usvseg09r2.m",
+      "note": "USVSEG writes no version string into any output file. The caller must declare the version; it cannot be recovered from an artifact."
+    },
+    "implementation_language": "MATLAB",
+    "version_required_at_ingest": true
+  },
+  "mapping_policy": {
+    "preserve_native_names": true,
+    "preserve_raw_values": true,
+    "preserve_unmapped_fields": true,
+    "preserve_artifact_hierarchy": true,
+    "normalize_units_without_overwriting_native_values": true,
+    "unknown_fields": "preserve_and_warn",
+    "missing_expected_fields": "warn_or_fail_by_requiredness",
+    "level_equivalence_does_not_imply_metric_equivalence": true,
+    "exports_no_curation_state": true,
+    "exports_no_native_class_or_manual_label": true,
+    "exports_no_frequency_bounds": true,
+    "do_not_synthesize_absent_features": true
+  },
+  "level_mappings": [
+    {
+      "native_level": "audio_file",
+      "native_singular": "wav file",
+      "canonical_level": "recording",
+      "equivalence_class": "source_recording",
+      "mapping_strength": "structural_semantic",
+      "notes": [
+        "USVSEG processes one WAV file per segmentation pass and names every output after that file's basename."
+      ]
+    },
+    {
+      "native_level": "processing_context",
+      "native_singular": "segmentation run",
+      "canonical_level": "extraction_run",
+      "equivalence_class": "extractor_processing_run",
+      "mapping_strength": "structural_semantic",
+      "instantiate_from": [
+        "source recording identity",
+        "USVSEG version declared by the caller",
+        "usvseg_prm.mat when available and explicitly attributed"
+      ],
+      "notes": [
+        "USVSEG has no persistent workspace, dataset, or project concept. A run is the caller's declaration, not a recovered artifact."
+      ]
+    },
+    {
+      "native_level": "syllable",
+      "native_singular": "syllable",
+      "canonical_level": "event",
+      "canonical_subtype": "vocalization_detection",
+      "equivalence_class": "vocalization_event",
+      "mapping_strength": "structural_semantic",
+      "metric_identity_assumed": false,
+      "cross_extractor_level_equivalence": {
+        "DeepSqueak": "call",
+        "MUPET": "syllable"
+      }
+    }
+  ],
+  "artifact_discovery": {
+    "root_mode": "user_supplied_output_root",
+    "path_separator_normalization": "/",
+    "artifacts": [
+      {
+        "artifact_key": "usvseg_dat_csv",
+        "canonical_artifact_type": "event_export",
+        "native_artifact_type": "USVSEG per-syllable summary CSV",
+        "format": "csv",
+        "include": {
+          "path_regex": [
+            "(?:^|/)(?<recording_stem>[^/]+)_dat\\.csv$"
+          ]
+        },
+        "priority": "prototype_primary",
+        "ingest_phase": "prototype_required",
+        "table": {
+          "header_row": 1,
+          "delimiter": ",",
+          "header_literal": "#,start,end,duration,maxfreq,maxamp,meanfreq,cvfreq",
+          "preserve_native_column_names": true
+        },
+        "row_level": "event",
+        "hierarchy_emitted": [
+          "recording",
+          "event",
+          "event_measurement"
+        ],
+        "path_semantics": {
+          "recording_stem": {
+            "canonical_level": "recording",
+            "role": "recording_locator"
+          }
+        },
+        "empty_table_is_valid_result": true,
+        "notes": [
+          "Written by default beside the source WAV as <stem>_dat.csv; the GUI save dialog allows the user to relocate it.",
+          "A run that detects no syllables still writes the header row and no data rows. That is a valid zero-detection result, not a failed export."
+        ]
+      },
+      {
+        "artifact_key": "usvseg_peak_trace_csv",
+        "canonical_artifact_type": "event_supplementary_trace",
+        "native_artifact_type": "USVSEG per-syllable spectral peak trace",
+        "format": "csv",
+        "include": {
+          "path_regex": [
+            "(?:^|/)(?<output_folder>[^/]+)/(?<trace_stem>[^/]+)_(?<syllable_index>[0-9]{4})\\.csv$"
+          ]
+        },
+        "priority": "future_or_optional",
+        "ingest_phase": "discovery_and_lineage_first",
+        "row_level": "sub_event_time_series",
+        "table": {
+          "header_row": 0,
+          "delimiter": ",",
+          "columns_positional": [
+            "time_s",
+            "amplitude_peak_1",
+            "frequency_peak_1",
+            "amplitude_peak_2",
+            "frequency_peak_2",
+            "amplitude_peak_3",
+            "frequency_peak_3"
+          ]
+        },
+        "path_semantics": {
+          "output_folder": {
+            "canonical_level": "recording",
+            "role": "recording_locator"
+          },
+          "trace_stem": {
+            "canonical_level": "recording",
+            "role": "recording_locator"
+          },
+          "syllable_index": {
+            "canonical_level": "event",
+            "role": "native_event_id_reference"
+          }
+        },
+        "notes": [
+          "Emitted only when the trace-output option is enabled. Headerless.",
+          "The four-digit index equals the syllable number in the same run's summary CSV, so trace files are event-scoped lineage rather than an independent event set.",
+          "Not ingested as detections in the prototype. Registering it as an artifact preserves its existence and provenance without inventing a second event population."
+        ]
+      },
+      {
+        "artifact_key": "usvseg_segment_wav",
+        "canonical_artifact_type": "derived_audio_segment",
+        "native_artifact_type": "USVSEG segmented syllable WAV",
+        "format": "wav",
+        "include": {
+          "path_regex": [
+            "(?:^|/)(?<output_folder>[^/]+)/(?<segment_stem>[^/]+)_(?<segment_index>[0-9]{4})\\.wav$"
+          ]
+        },
+        "priority": "future_or_optional",
+        "ingest_phase": "discovery_and_lineage_first",
+        "path_semantics": {
+          "output_folder": {
+            "canonical_level": "recording",
+            "role": "recording_locator"
+          },
+          "segment_stem": {
+            "canonical_level": "recording",
+            "role": "recording_locator"
+          },
+          "segment_index": {
+            "canonical_level": "event",
+            "role": "native_event_id_reference"
+          }
+        },
+        "notes": [
+          "Emitted only when WAV output is enabled. A derived excerpt of the source recording, never a separate recording."
+        ]
+      },
+      {
+        "artifact_key": "usvseg_spectrogram_image",
+        "canonical_artifact_type": "figure",
+        "native_artifact_type": "USVSEG spectrogram image",
+        "format": "image",
+        "include": {
+          "glob": [
+            "**/*.jpg",
+            "**/*.tif"
+          ]
+        },
+        "priority": "future_or_optional",
+        "ingest_phase": "discovery_and_lineage_first",
+        "notes": [
+          "Emitted only when image output is enabled; the image type is a user setting.",
+          "Carries no measurement VAWLUME reads. Registered for provenance completeness only."
+        ]
+      },
+      {
+        "artifact_key": "usvseg_parameters_mat",
+        "canonical_artifact_type": "settings",
+        "native_artifact_type": "USVSEG saved parameter structure",
+        "format": "mat",
+        "include": {
+          "glob": [
+            "**/usvseg_prm.mat"
+          ]
+        },
+        "priority": "optional_weak_evidence",
+        "ingest_phase": "prototype_optional",
+        "expected_contents": [
+          "prm"
+        ],
+        "notes": [
+          "Written when the USVSEG application closes, holding whatever parameters were active at that moment.",
+          "It is application-scoped, not run-scoped, and is not written beside the CSV it may or may not correspond to. Treat it as weak, explicitly-attributed evidence and never as the authoritative configuration of a given extraction run."
+        ]
+      }
+    ]
+  },
+  "recording_linkage": {
+    "preferred_order": [
+      {
+        "method": "source_audio_checksum",
+        "strength": "strongest"
+      },
+      {
+        "method": "persistent_vawlume_recording_id",
+        "strength": "strong"
+      },
+      {
+        "method": "relative_path_and_recording_stem",
+        "strength": "moderate"
+      },
+      {
+        "method": "filename",
+        "strength": "weak_fallback"
+      }
+    ],
+    "path_pairing_example": {
+      "source_audio": "<any>/<recording_stem>.wav",
+      "event_export": "<any>/<recording_stem>_dat.csv",
+      "auxiliary_output_folder": "<any>/<recording_stem>/"
+    },
+    "notes": [
+      "USVSEG records no reference to its input file inside any output. The stem correspondence is a naming convention, so checksum linkage remains preferred whenever the source audio is registered."
+    ]
+  },
+  "event_identity": {
+    "canonical_level": "event",
+    "native_id": {
+      "source_field": "#",
+      "canonical_field": "native_event_id",
+      "scope": [
+        "recording",
+        "event_export_artifact"
+      ]
+    },
+    "stable_cross_artifact_identifier": false,
+    "vawlume_id_required": true,
+    "notes": [
+      "The identifier is a 1-based ordinal assigned within one segmentation pass and continued across the internal read blocks of that pass.",
+      "Re-running USVSEG renumbers from 1, so the value identifies an event only within its own extraction run and artifact."
+    ]
+  },
+  "field_mapping_source": {
+    "artifact_key": "usvseg_dat_csv"
+  },
+  "field_mappings": [
+    {
+      "source_field": "#",
+      "target_level": "event",
+      "canonical_field": "native_event_id",
+      "data_type": "integer",
+      "semantic_role": "identifier",
+      "preserve_raw": true,
+      "notes": [
+        "The native column name is the single character '#'. Readers must preserve original column names rather than let the table reader rewrite it."
+      ]
+    },
+    {
+      "source_field": "start",
+      "target_level": "event_measurement",
+      "canonical_field": "call_start_time",
+      "data_type": "float",
+      "native_unit": "s",
+      "canonical_unit": "s",
+      "transform": "identity",
+      "derivation_stage": "spectral_segmentation",
+      "operational_definition": "syllable onset in seconds from the start of the source recording",
+      "equivalence_class": "vocalization_start_time",
+      "cross_extractor_relationship": "comparable_same_intended_construct",
+      "consilience_role": "primary",
+      "preserve_raw": true
+    },
+    {
+      "source_field": "end",
+      "target_level": "event_measurement",
+      "canonical_field": "call_end_time",
+      "data_type": "float",
+      "native_unit": "s",
+      "canonical_unit": "s",
+      "transform": "identity",
+      "derivation_stage": "spectral_segmentation",
+      "operational_definition": "syllable offset in seconds from the start of the source recording",
+      "equivalence_class": "vocalization_end_time",
+      "cross_extractor_relationship": "comparable_same_intended_construct",
+      "consilience_role": "primary",
+      "preserve_raw": true
+    },
+    {
+      "source_field": "duration",
+      "target_level": "event_measurement",
+      "canonical_field": "call_duration",
+      "data_type": "float",
+      "native_unit": "ms",
+      "canonical_unit": "s",
+      "transform": "ms_to_s",
+      "derivation_stage": "onset_offset_difference",
+      "operational_variant": "onset_offset_difference",
+      "operational_definition": "offset minus onset, exported in milliseconds",
+      "equivalence_class": "vocalization_duration",
+      "cross_extractor_relationship": "comparable_not_metric_equivalent",
+      "consilience_role": "primary_or_supporting",
+      "preserve_raw": true,
+      "notes": [
+        "USVSEG exports duration as exactly the onset/offset difference, so it is redundant with start and end up to export rounding. It is preserved as a native measurement rather than dropped, and it is not the timing authority."
+      ]
+    },
+    {
+      "source_field": "maxfreq",
+      "target_level": "event_measurement",
+      "canonical_field": "peak_frequency",
+      "data_type": "float",
+      "native_unit": "kHz",
+      "canonical_unit": "Hz",
+      "transform": "kHz_to_Hz",
+      "derivation_stage": "spectral_peak_tracking",
+      "operational_variant": "peak_frequency_at_maximum_amplitude_frame",
+      "operational_definition": "peak frequency of the time frame with the highest amplitude in the syllable",
+      "equivalence_class": "vocalization_peak_frequency",
+      "cross_extractor_relationship": "comparable_method_specific_no_MUPET_export_equivalent",
+      "consilience_role": "supporting",
+      "preserve_raw": true
+    },
+    {
+      "source_field": "maxamp",
+      "target_level": "event_measurement",
+      "canonical_field": "peak_amplitude",
+      "data_type": "float",
+      "native_unit": "dB",
+      "canonical_unit": "dB",
+      "transform": "identity",
+      "derivation_stage": "multitaper_spectrogram",
+      "operational_variant": "uncalibrated_multitaper_spectrogram_amplitude_at_peak_frequency",
+      "operational_definition": "multitaper spectrogram amplitude at the peak-frequency bin of the maximum-amplitude frame",
+      "equivalence_class": "vocalization_amplitude_like_quantity",
+      "cross_extractor_relationship": "related_not_equivalent_to_MUPET_peak_syllable_amplitude_no_shared_reference_level",
+      "consilience_role": "none_by_default",
+      "preserve_raw": true,
+      "notes": [
+        "Decibels relative to an arbitrary internal scale, read from the unflattened multitaper spectrogram. It has no calibrated reference and no shared zero with any other extractor's amplitude measure."
+      ]
+    },
+    {
+      "source_field": "meanfreq",
+      "target_level": "event_measurement",
+      "canonical_field": "frequency_center",
+      "data_type": "float",
+      "native_unit": "kHz",
+      "canonical_unit": "Hz",
+      "transform": "kHz_to_Hz",
+      "derivation_stage": "spectral_peak_tracking",
+      "operational_variant": "mean_of_primary_peak_frequency_trace",
+      "operational_definition": "mean of the primary tracked peak frequency across the frames of the syllable",
+      "equivalence_class": "vocalization_frequency_center",
+      "cross_extractor_relationship": "comparable_not_equivalent_to_MUPET_filterbank_mean_or_DeepSqueak_contour_median",
+      "consilience_role": "supporting",
+      "preserve_raw": true,
+      "notes": [
+        "Shares the central-frequency equivalence class with MUPET mean frequency and DeepSqueak principal frequency, and is method-equivalent to neither. It averages a discrete peak track; MUPET averages a filterbank representation and DeepSqueak takes a contour median.",
+        "Placement in a shared equivalence class makes the pair discoverable for deliberate review. It does not by itself make the pair comparable; that still requires an explicitly registered eligible feature relationship."
+      ]
+    },
+    {
+      "source_field": "cvfreq",
+      "target_level": "event_measurement",
+      "canonical_field": "frequency_cv",
+      "data_type": "float",
+      "native_unit": "ratio",
+      "canonical_unit": "ratio",
+      "transform": "identity",
+      "derivation_stage": "spectral_peak_tracking",
+      "operational_variant": "coefficient_of_variation_of_primary_peak_frequency_trace",
+      "operational_definition": "standard deviation of the primary peak-frequency trace divided by its mean",
+      "equivalence_class": "vocalization_frequency_cv",
+      "cross_extractor_relationship": "no_DeepSqueak_or_MUPET_export_equivalent",
+      "consilience_role": "none_by_default",
+      "preserve_raw": true,
+      "notes": [
+        "Dimensionless and normalized by the mean. It is not the DeepSqueak frequency standard deviation, which is an absolute spread in frequency units, so the two must not share an equivalence class.",
+        "canonical_field frequency_cv and equivalence_class vocalization_frequency_cv are new to the shipped vocabulary and require a deliberate canonical-feature registration decision."
+      ]
+    }
+  ],
+  "settings_capture": {
+    "canonical_level": "extraction_run",
+    "required_for_apply": false,
+    "evidence_strength": "weak_not_run_scoped",
+    "sources": [
+      {
+        "artifact": "usvseg_parameters_mat",
+        "native_name": "usvseg_prm.mat",
+        "native_path": "prm"
+      }
+    ],
+    "externalize_to": "settings_json",
+    "policy": [
+      "Missing settings evidence must not make an otherwise valid event export unimportable. USVSEG does not write per-run settings beside its CSV, so requiring them would refuse ordinary correct output.",
+      "When usvseg_prm.mat is supplied, record it with its artifact identity and an explicit statement that it is application-scoped, and never present it as the verified configuration of the run.",
+      "Never populate a setting from a published default. Documented defaults are contextual reference values, not observations about any particular run."
+    ],
+    "native_settings": [
+      {
+        "native_name": "fftsize",
+        "canonical_setting": "fft_size",
+        "notes": "Not user-editable in the reviewed version."
+      },
+      {
+        "native_name": "timestep",
+        "canonical_setting": "analysis_time_step",
+        "native_unit": "s"
+      },
+      {
+        "native_name": "freqmin",
+        "canonical_setting": "minimum_usv_frequency",
+        "native_unit": "kHz"
+      },
+      {
+        "native_name": "freqmax",
+        "canonical_setting": "maximum_usv_frequency",
+        "native_unit": "kHz"
+      },
+      {
+        "native_name": "threshval",
+        "canonical_setting": "detection_threshold",
+        "native_unit": "sd",
+        "notes": "A multiple of the estimated background-noise standard deviation, not an absolute level."
+      },
+      {
+        "native_name": "durmin",
+        "canonical_setting": "minimum_syllable_duration",
+        "native_unit": "ms"
+      },
+      {
+        "native_name": "durmax",
+        "canonical_setting": "maximum_syllable_duration",
+        "native_unit": "ms"
+      },
+      {
+        "native_name": "gapmin",
+        "canonical_setting": "minimum_syllable_gap",
+        "native_unit": "ms"
+      },
+      {
+        "native_name": "margin",
+        "canonical_setting": "segment_margin",
+        "native_unit": "ms"
+      },
+      {
+        "native_name": "readsize",
+        "canonical_setting": "processing_block_size",
+        "native_unit": "s"
+      },
+      {
+        "native_name": "wavfileoutput",
+        "canonical_setting": "emit_segment_wav_files"
+      },
+      {
+        "native_name": "imageoutput",
+        "canonical_setting": "emit_spectrogram_images"
+      },
+      {
+        "native_name": "imagetype",
+        "canonical_setting": "spectrogram_image_type"
+      },
+      {
+        "native_name": "traceoutput",
+        "canonical_setting": "emit_peak_trace_files"
+      },
+      {
+        "native_name": "mapL",
+        "canonical_setting": "display_map_low"
+      },
+      {
+        "native_name": "mapH",
+        "canonical_setting": "display_map_high"
+      }
+    ]
+  },
+  "native_processing_notes": {
+    "event_table_header": {
+      "identifier_column_name": "#",
+      "reader_requirement": "preserve_original_column_names",
+      "reason": "A default MATLAB table reader rewrites '#' into a generated variable name. The reader must preserve original names so the profile's source_field continues to resolve."
+    },
+    "timing": {
+      "reference": "start of the source recording",
+      "block_processing": "Audio is processed in blocks and per-block onsets are shifted by the elapsed block time, so exported times are absolute rather than block-relative.",
+      "export_precision": {
+        "start_end_seconds_decimals": 4,
+        "duration_milliseconds_decimals": 1
+      },
+      "duration_redundancy": "duration is the printed onset/offset difference. Consistency checks must allow for the two different print precisions rather than expect exact equality."
+    },
+    "absent_features": {
+      "frequency_min": "not exported",
+      "frequency_max": "not exported",
+      "frequency_bandwidth": "not exported",
+      "frequency_slope": "not exported",
+      "detection_score": "not exported",
+      "curation_state": "not exported",
+      "native_class_or_manual_label": "not exported",
+      "inter_event_interval": "not exported",
+      "requirement": "None of these may be synthesized from the exported columns or from a peak trace file. USVSEG simply does not report them."
+    },
+    "spectral_peak_tracking": {
+      "tracked_peaks_per_frame": 3,
+      "summary_columns_use": "primary peak track only",
+      "note": "The secondary and tertiary peak tracks reach only the optional trace files and contribute to no summary column."
+    },
+    "zero_detection_runs": "A header-only CSV is a valid result and must import as an extraction run with zero detections rather than as an error."
+  },
+  "validation": {
+    "mode": "non_destructive",
+    "checks": [
+      {
+        "id": "event_time_order",
+        "expression": "call_end_time >= call_start_time",
+        "severity": "error"
+      },
+      {
+        "id": "duration_consistency",
+        "expression": "call_duration ~= call_end_time - call_start_time",
+        "tolerance_source": "export_rounding_aware_profile_or_project_config",
+        "severity": "warning",
+        "notes": [
+          "start and end print four decimal seconds while duration prints one decimal millisecond, so agreement is expected only within combined print rounding."
+        ]
+      },
+      {
+        "id": "native_event_id_uniqueness",
+        "uniqueness_scope": [
+          "recording",
+          "event_export_artifact",
+          "native_event_id"
+        ],
+        "severity": "error"
+      },
+      {
+        "id": "identifier_column_preserved",
+        "requirement": "resolve_source_field_hash_literally_not_a_reader_generated_name",
+        "severity": "error"
+      },
+      {
+        "id": "no_synthesized_frequency_bounds",
+        "requirement": "refuse_to_populate_frequency_min_max_or_bandwidth_from_usvseg_output",
+        "severity": "error"
+      },
+      {
+        "id": "no_unsupported_annotation_evidence",
+        "requirement": "reject_unexpected_curation_or_class_columns_rather_than_discarding_them",
+        "severity": "error",
+        "notes": [
+          "USVSEG exports no review or classification evidence. An unexpected column of that kind means the artifact is not what this profile describes, and silently dropping it would lose extractor evidence."
+        ]
+      },
+      {
+        "id": "numeric_column_completeness",
+        "requirement": "all_eight_columns_parse_as_finite_numbers",
+        "severity": "warning",
+        "notes": [
+          "The exporter prints every column unconditionally with a numeric format and declares no missing-value sentinel, so no missing_value_policy is declared here.",
+          "Whether a degenerate syllable can print a non-finite token for meanfreq or cvfreq is unresolved without a representative artifact. This check surfaces it instead of assuming either answer."
+        ]
+      },
+      {
+        "id": "settings_evidence_optional",
+        "requirement": "record_when_available_as_application_scoped_weak_evidence",
+        "severity": "warning"
+      },
+      {
+        "id": "source_recording_linkage",
+        "requirement": "resolve_or_explicitly_mark_unresolved",
+        "severity": "error"
+      },
+      {
+        "id": "extractor_version_declared_by_caller",
+        "requirement": "require_caller_supplied_version_because_no_output_carries_one",
+        "severity": "error"
+      }
+    ]
+  },
+  "provenance": {
+    "record": [
+      "mapping_profile_id",
+      "mapping_profile_schema_version",
+      "extractor_name",
+      "extractor_version",
+      "extractor_version_evidence_source",
+      "source_artifact_path",
+      "source_artifact_checksum",
+      "source_recording_linkage_method",
+      "settings_artifact_or_status",
+      "settings_evidence_strength",
+      "native_field_name",
+      "native_value",
+      "native_unit",
+      "canonical_field",
+      "canonical_value",
+      "canonical_unit",
+      "transform_applied",
+      "operational_variant_when_applicable"
+    ],
+    "never_overwrite_native_values": true
+  },
+  "consilience_defaults": {
+    "event_matching": {
+      "primary_equivalence_classes": [
+        "vocalization_start_time",
+        "vocalization_end_time"
+      ],
+      "supporting_equivalence_classes": [
+        "vocalization_duration",
+        "vocalization_peak_frequency",
+        "vocalization_frequency_center"
+      ]
+    },
+    "excluded_from_feature_agreement_by_default": [
+      "vocalization_amplitude_like_quantity",
+      "vocalization_frequency_cv"
+    ],
+    "eligibility_rule": "Listing an equivalence class here does not create comparability. Every cross-extractor feature comparison still requires an explicitly registered eligible feature relationship.",
+    "empirical_thresholds": {
+      "source": "project_config_only"
+    }
+  }
+}
