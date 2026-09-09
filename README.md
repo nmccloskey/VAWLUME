@@ -68,8 +68,26 @@ from your own recordings, follow the
 To check the environment is correctly configured:
 
 ```matlab
+addpath("src")
 results = runtests("tests", IncludeSubfolders=true);   % 329 tests, ~11 minutes
+table(results)
+assert(~isempty(results), "No tests discovered.");
+assertSuccess(results);
+assert(~any([results.Incomplete]), "Incomplete tests.");
 ```
+
+The canonical local regression gate, run from the repository root, is:
+
+```text
+matlab -batch "addpath('src'); results = runtests('tests', IncludeSubfolders=true); disp(table(results)); assert(~isempty(results), 'No tests discovered.'); assertSuccess(results); assert(~any([results.Incomplete]), 'Incomplete tests.');"
+```
+
+On Windows, add `-wait` when a calling shell must wait for MATLAB and collect
+its exit code. The gate returns a nonzero exit code for failed or incomplete
+tests, an empty suite, or an execution error. It runs both unit and integration
+tests, including schema integrity and synthetic-fixture checks. A passing gate
+establishes software regression health; it does not calibrate thresholds or
+provide empirical scientific validation.
 
 ## Prototype goals
 

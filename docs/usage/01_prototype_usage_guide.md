@@ -712,10 +712,16 @@ accepted.
 addpath("src")
 results = runtests("tests", IncludeSubfolders=true);
 table(results)
+assert(~isempty(results), "No tests discovered.");
+assertSuccess(results);
+assert(~any([results.Incomplete]), "Incomplete tests.");
 ```
 
 The suite is currently **329 tests** and takes roughly eleven minutes. Passing it
 is the strongest available check that an environment is correctly configured.
+Use the [canonical batch gate in the README](../../README.md#quick-start) for
+non-interactive verification with a nonzero exit code on failure or incomplete
+tests. Synthetic regression coverage does not establish scientific calibration.
 
 ---
 
