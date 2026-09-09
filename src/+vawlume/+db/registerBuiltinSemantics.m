@@ -22,6 +22,7 @@ if isempty(profilePaths)
     profilePaths = [
         fullfile(repoRoot, "config", "01_mapping_profiles", "extractors", "deepsqueak", "deepsqueak_output_mapping_profile.json")
         fullfile(repoRoot, "config", "01_mapping_profiles", "extractors", "mupet", "mupet_output_mapping_profile.json")
+        fullfile(repoRoot, "config", "01_mapping_profiles", "extractors", "usvseg", "usvseg_output_mapping_profile.json")
     ];
 end
 
@@ -198,21 +199,28 @@ end
 
 function summary = registerProfileRelationships(conn, registeredProfiles, summary)
 if numel(registeredProfiles) < 2
+    summary.warnings(end + 1, 1) = ...
+        "Pairwise feature relationships require at least two extractor profiles.";
     return
 end
 
-deepSqueak = findRegisteredProfile(registeredProfiles, "DeepSqueak");
-mupet = findRegisteredProfile(registeredProfiles, "MUPET");
-if isempty(deepSqueak) || isempty(mupet)
-    summary.warnings(end + 1, 1) = "Pairwise feature relationships require both DeepSqueak and MUPET profiles.";
-    return
+% Every unordered pair of distinct registered extractors, with no extractor name
+% in the control flow. Two profiles describing the same extractor are skipped:
+% a feature relationship is a cross-extractor comparability claim.
+for leftIndex = 1:numel(registeredProfiles) - 1
+    for rightIndex = leftIndex + 1:numel(registeredProfiles)
+        left = registeredProfiles{leftIndex};
+        right = registeredProfiles{rightIndex};
+        if left.extractor_name == right.extractor_name
+            continue
+        end
+        summary = registerSharedEquivalenceRelationships(conn, left, right, summary);
+        summary = registerAssessedRelationships(conn, left, right, summary);
+    end
+end
 end
 
-summary = registerSharedEquivalenceRelationships(conn, deepSqueak, mupet, summary);
-summary = registerRelatedPowerRelationships(conn, deepSqueak, mupet, summary);
-end
-
-function summary = registerSharedEquivalenceRelationships(conn, deepSqueak, mupet, summary)
+function summary = registerSharedEquivalenceRelationships(conn, left, right, summary)
 eligibleClasses = [
     "vocalization_start_time"
     "vocalization_end_time"
@@ -224,64 +232,98 @@ eligibleClasses = [
 ];
 
 for className = eligibleClasses'
-    deepSqueakFeature = findFeatureByEquivalenceClass(deepSqueak.features, className);
-    mupetFeature = findFeatureByEquivalenceClass(mupet.features, className);
-    if isempty(deepSqueakFeature) || isempty(mupetFeature)
+    leftFeature = findFeatureByEquivalenceClass(left.features, className);
+    rightFeature = findFeatureByEquivalenceClass(right.features, className);
+    if isempty(leftFeature) || isempty(rightFeature)
         continue
     end
 
     relationshipType = combineRelationshipType( ...
-        deepSqueakFeature.cross_extractor_relationship, ...
-        mupetFeature.cross_extractor_relationship);
-    defaultRole = defaultRelationshipRole(deepSqueakFeature.consilience_role, mupetFeature.consilience_role);
+        leftFeature.cross_extractor_relationship, ...
+        rightFeature.cross_extractor_relationship);
+    defaultRole = defaultRelationshipRole(leftFeature.consilience_role, rightFeature.consilience_role);
 
     relationship = relationshipRecord( ...
-        deepSqueakFeature.extractor_feature_id, ...
-        mupetFeature.extractor_feature_id, ...
+        leftFeature.extractor_feature_id, ...
+        rightFeature.extractor_feature_id, ...
         relationshipType, ...
         comparisonMethodForClass(className), ...
         "canonical_unit", ...
         1, ...
         defaultRole, ...
         "Registered from matching equivalence_class " + className + " in both built-in extractor-output profiles.", ...
-        deepSqueak.profile_key + " and " + mupet.profile_key);
+        pairSourceReference(left, right));
     [~, summary] = upsertFeatureRelationship(conn, relationship, summary);
 end
 end
 
-function summary = registerRelatedPowerRelationships(conn, deepSqueak, mupet, summary)
-deepSqueakPower = findFeatureByCanonicalName(deepSqueak.features, "mean_power_spectral_density");
-if isempty(deepSqueakPower)
-    return
+% Curated cross-extractor assessments that the shared-equivalence rule cannot
+% derive. These are deliberate judgements about two named extractors' features,
+% not a rule, so they are declared as data and are never projected onto an
+% extractor that has not been assessed. A new extractor earns an entry here only
+% when its own evidence justifies one.
+function assessments = assessedRelationships()
+relatedAcousticDomains = "Power, energy, and amplitude measures are related " + ...
+    "acoustic domains but are not equivalent or consilience-eligible by default.";
+assessments = {
+    struct( ...
+        extractor_a="DeepSqueak", canonical_a="mean_power_spectral_density", ...
+        extractor_b="MUPET", canonical_b="total_energy", ...
+        relationship_type="related", default_role="none_by_default", ...
+        justification=relatedAcousticDomains)
+    struct( ...
+        extractor_a="DeepSqueak", canonical_a="mean_power_spectral_density", ...
+        extractor_b="MUPET", canonical_b="peak_amplitude", ...
+        relationship_type="related", default_role="none_by_default", ...
+        justification=relatedAcousticDomains)
+    };
 end
 
-for canonicalName = ["total_energy", "peak_amplitude"]
-    mupetFeature = findFeatureByCanonicalName(mupet.features, canonicalName);
-    if isempty(mupetFeature)
+function summary = registerAssessedRelationships(conn, left, right, summary)
+assessments = assessedRelationships();
+for index = 1:numel(assessments)
+    assessment = assessments{index};
+    [featureA, featureB] = findAssessedPair(left, right, assessment);
+    if isempty(featureA) || isempty(featureB)
         continue
     end
     relationship = relationshipRecord( ...
-        deepSqueakPower.extractor_feature_id, ...
-        mupetFeature.extractor_feature_id, ...
-        "related", ...
+        featureA.extractor_feature_id, ...
+        featureB.extractor_feature_id, ...
+        assessment.relationship_type, ...
         "", ...
         "", ...
         0, ...
-        "none_by_default", ...
-        "Power, energy, and amplitude measures are related acoustic domains but are not equivalent or consilience-eligible by default.", ...
-        deepSqueak.profile_key + " and " + mupet.profile_key);
+        assessment.default_role, ...
+        assessment.justification, ...
+        pairSourceReference(left, right));
     [~, summary] = upsertFeatureRelationship(conn, relationship, summary);
 end
 end
 
-function profile = findRegisteredProfile(registeredProfiles, extractorName)
-profile = [];
-for index = 1:numel(registeredProfiles)
-    if registeredProfiles{index}.extractor_name == extractorName
-        profile = registeredProfiles{index};
-        return
-    end
+function [featureA, featureB] = findAssessedPair(left, right, assessment)
+[featureA, featureB] = assessedPairInOrder(left, right, assessment);
+if isempty(featureA) || isempty(featureB)
+    [featureA, featureB] = assessedPairInOrder(right, left, assessment);
 end
+end
+
+function [featureA, featureB] = assessedPairInOrder(first, second, assessment)
+featureA = [];
+featureB = [];
+if first.extractor_name ~= assessment.extractor_a || ...
+        second.extractor_name ~= assessment.extractor_b
+    return
+end
+featureA = findFeatureByCanonicalName(first.features, assessment.canonical_a);
+featureB = findFeatureByCanonicalName(second.features, assessment.canonical_b);
+end
+
+% Sorted so the recorded provenance of a relationship does not depend on the
+% order profiles happened to be registered in.
+function reference = pairSourceReference(left, right)
+keys = sort([string(left.profile_key), string(right.profile_key)]);
+reference = keys(1) + " and " + keys(2);
 end
 
 function feature = findFeatureByEquivalenceClass(features, equivalenceClass)
@@ -763,7 +805,7 @@ switch string(name)
     case "inter_call_interval"
         domain = "timing";
         definition = "Interval between adjacent vocalization events in an event sequence.";
-    case {"frequency_start", "frequency_end", "frequency_min", "frequency_max", "frequency_bandwidth", "frequency_center", "contour_median_frequency", "frequency_sd", "frequency_slope", "peak_frequency"}
+    case {"frequency_start", "frequency_end", "frequency_min", "frequency_max", "frequency_bandwidth", "frequency_center", "contour_median_frequency", "frequency_sd", "frequency_slope", "peak_frequency", "frequency_cv"}
         domain = "frequency";
         definition = frequencyDefinition(string(name));
     case {"mean_power_spectral_density", "total_energy"}
@@ -806,6 +848,8 @@ switch name
         definition = "Extractor-estimated frequency change over event time.";
     case "peak_frequency"
         definition = "Extractor-estimated frequency associated with peak event power or amplitude.";
+    case "frequency_cv"
+        definition = "Extractor-estimated coefficient of variation of vocalization frequency: a dimensionless, mean-normalized spread that is not interchangeable with an absolute frequency standard deviation.";
 end
 end
 
@@ -891,6 +935,8 @@ switch string(extractorName)
         description = "Deep learning-based ultrasonic vocalization detector and analysis workflow.";
     case "MUPET"
         description = "Mouse Ultrasonic Profile ExTraction signal-processing workflow.";
+    case "USVSEG"
+        description = "Multitaper spectrogram segmentation workflow for rodent ultrasonic vocalizations.";
     otherwise
         description = "Extractor registered from a built-in output mapping profile.";
 end
@@ -902,6 +948,8 @@ switch string(extractorName)
         repository = "https://github.com/DrCoffey/DeepSqueak";
     case "MUPET"
         repository = "https://github.com/mvansegbroeck/mupet";
+    case "USVSEG"
+        repository = "https://github.com/rtachi-lab/usvseg";
     otherwise
         repository = "";
 end

@@ -159,9 +159,18 @@ centreByClass = fetch(fixture.conn, ...
     "LEFT JOIN canonical_features cf ON cf.canonical_feature_id = fm.canonical_feature_id " + ...
     "WHERE xf.equivalence_class = 'vocalization_frequency_center' " + ...
     "ORDER BY e.extractor_name");
-verifyEqual(testCase, string(centreByClass.extractor_name), ["DeepSqueak"; "MUPET"]);
+verifyEqual(testCase, string(centreByClass.extractor_name), ...
+    ["DeepSqueak"; "MUPET"; "USVSEG"]);
 verifyEqual(testCase, string(centreByClass.canonical_name), ...
-    ["contour_median_frequency"; "frequency_center"]);
+    ["contour_median_frequency"; "frequency_center"; "frequency_center"]);
+
+% Three registered extractors make the point sharper than two did. The canonical
+% name is now ambiguous in both directions: it is shared by two methods that are
+% not interchangeable, and it is absent from a third method that belongs to the
+% same broad concept. Only the equivalence class plus a registered relationship
+% carries comparability.
+verifyEqual(testCase, numel(unique(string(centreByClass.canonical_name))), 2);
+verifyEqual(testCase, numel(unique(string(centreByClass.native_name))), 3);
 
 % The profile's broader-concept declaration is not lost; it is preserved as
 % registered feature provenance rather than as a joinable column.
@@ -210,12 +219,19 @@ centre = fetch(fixture.conn, ...
     "LEFT JOIN canonical_features cf ON cf.canonical_feature_id = fm.canonical_feature_id " + ...
     "WHERE xf.equivalence_class = 'vocalization_frequency_center' " + ...
     "ORDER BY e.extractor_name");
-verifyEqual(testCase, height(centre), 2);
+verifyEqual(testCase, height(centre), 3);
 verifyEqual(testCase, string(centre.canonical_name), ...
-    ["contour_median_frequency"; "frequency_center"]);
-verifyEqual(testCase, numel(unique(double(centre.extractor_feature_id))), 2);
-verifyNotEqual(testCase, presentText(centre.native_definition(1)), ...
-    presentText(centre.native_definition(2)));
+    ["contour_median_frequency"; "frequency_center"; "frequency_center"]);
+verifyEqual(testCase, numel(unique(double(centre.extractor_feature_id))), 3);
+
+% Three methods, three distinct operational definitions. Sharing a canonical
+% name, as MUPET and USVSEG do here, does not make two of them one statistic.
+definitions = strings(height(centre), 1);
+for index = 1:height(centre)
+    definitions(index) = presentText(centre.native_definition(index));
+end
+verifyEqual(testCase, numel(unique(definitions)), 3);
+verifyTrue(testCase, all(strlength(definitions) > 0));
 
 % Stress case 3 - power, energy, and amplitude. Three distinct quantities that
 % are never collapsed into one interchangeable canonical measure.

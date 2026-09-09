@@ -53,16 +53,41 @@ end
 function verifyFeatureRegistryQueries(testCase, featureRows, relationshipRows)
 verifyEqual(testCase, sum(textColumn(featureRows, "extractor_name") == "DeepSqueak"), 14);
 verifyEqual(testCase, sum(textColumn(featureRows, "extractor_name") == "MUPET"), 12);
+% USVSEG is registered but runs no extraction in this fixture. Its feature
+% semantics are still part of the registry.
+verifyEqual(testCase, sum(textColumn(featureRows, "extractor_name") == "USVSEG"), 7);
 verifyTrue(testCase, any(textColumn(featureRows, "native_name") == "Principle Frequency (kHz)" & ...
     textColumn(featureRows, "canonical_name") == "contour_median_frequency" & ...
     textColumn(featureRows, "transform_key") == "kHz_to_Hz"));
 verifyTrue(testCase, any(textColumn(featureRows, "native_name") == "syllable duration (msec)" & ...
     textColumn(featureRows, "canonical_name") == "call_duration" & ...
     textColumn(featureRows, "transform_key") == "ms_to_s"));
+verifyTrue(testCase, any(textColumn(featureRows, "native_name") == "maxfreq" & ...
+    textColumn(featureRows, "canonical_name") == "peak_frequency" & ...
+    textColumn(featureRows, "transform_key") == "kHz_to_Hz"));
 
 eligible = numberColumn(relationshipRows, "consilience_eligible");
-verifyEqual(testCase, sum(eligible == 1), 7);
+verifyEqual(testCase, sum(eligible == 1), 15);
 verifyEqual(testCase, sum(eligible == 0 & textColumn(relationshipRows, "relationship_type") == "related"), 2);
+
+% Long-form rows covering all three unordered extractor pairs, each joining two
+% different extractors.
+extractorA = textColumn(relationshipRows, "extractor_a");
+extractorB = textColumn(relationshipRows, "extractor_b");
+verifyTrue(testCase, all(extractorA ~= extractorB));
+pairLabels = strings(numel(extractorA), 1);
+for index = 1:numel(extractorA)
+    endpoints = sort([extractorA(index), extractorB(index)]);
+    pairLabels(index) = endpoints(1) + "-" + endpoints(2);
+end
+verifyEqual(testCase, sort(unique(pairLabels)), ...
+    sort(["DeepSqueak-MUPET"; "DeepSqueak-USVSEG"; "MUPET-USVSEG"]));
+verifyEqual(testCase, sum(pairLabels == "DeepSqueak-MUPET"), 9);
+verifyEqual(testCase, sum(pairLabels == "DeepSqueak-USVSEG"), 4);
+verifyEqual(testCase, sum(pairLabels == "MUPET-USVSEG"), 4);
+
+% The assessed power/energy/amplitude relationships remain DeepSqueak-MUPET only.
+verifyTrue(testCase, all(pairLabels(eligible == 0) == "DeepSqueak-MUPET"));
 end
 
 function verifyProfileAndParticipantQueries(testCase, profileRows, participantRows)
@@ -144,9 +169,9 @@ switch string(blockId)
     case "Q02"
         n = 1;
     case "Q03"
-        n = 26;
+        n = 33;
     case "Q04"
-        n = 9;
+        n = 17;
     case "Q05"
         n = 4;
     case "Q06"

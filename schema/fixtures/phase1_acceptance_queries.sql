@@ -78,9 +78,12 @@ ORDER BY native_recording_id;
 -- is the mapping strength/type?
 -- Difficulty: CLEAR
 -- Expected logical result:
---   26 rows for the shipped DeepSqueak/MUPET event-measurement feature
---   registry. Extractor-specific/non-comparable features remain visible by
---   their mapping_type and notes rather than being dropped.
+--   33 rows for the shipped event-measurement feature registry: DeepSqueak 14,
+--   MUPET 12, USVSEG 7. The query names no extractor, so a newly registered
+--   built-in profile appears here without editing it. Extractor-specific and
+--   non-comparable features remain visible by their mapping_type and notes
+--   rather than being dropped, and an extractor with no extraction run in this
+--   fixture still contributes its registered feature semantics.
 SELECT
     e.extractor_name,
     ev.version_label AS extractor_version,
@@ -105,7 +108,6 @@ LEFT JOIN feature_mappings fm ON fm.extractor_feature_id = xf.extractor_feature_
 LEFT JOIN canonical_features cf ON cf.canonical_feature_id = fm.canonical_feature_id
 LEFT JOIN config_profile_versions cpv ON cpv.profile_version_id = fm.mapping_profile_version_id
 LEFT JOIN config_profiles cp ON cp.profile_id = cpv.profile_id
-WHERE e.extractor_name IN ('DeepSqueak', 'MUPET')
 ORDER BY
     e.extractor_name,
     ev.version_label,
@@ -118,9 +120,17 @@ ORDER BY
 -- recorded for comparison/consilience, and at what relationship strength?
 -- Difficulty: CLEAR
 -- Expected logical result:
---   9 explicit DeepSqueak/MUPET feature relationships.
---   7 are consilience_eligible; 2 power/energy/amplitude relationships are
---   retained as related but not eligible by default.
+--   17 explicit cross-extractor feature relationships across all three
+--   unordered extractor pairs.
+--   15 are consilience_eligible: 7 for DeepSqueak-MUPET, and 4 each for
+--   DeepSqueak-USVSEG and MUPET-USVSEG, which share only the three timing
+--   classes and the central-frequency class because USVSEG exports no
+--   frequency extent.
+--   2 DeepSqueak/MUPET power/energy/amplitude relationships are retained as
+--   related but not eligible by default. They are assessed judgements about
+--   those two extractors and are deliberately not projected onto USVSEG.
+--   Rows are long-form rather than pivoted into per-extractor columns, so the
+--   result shape does not change when another extractor is registered.
 WITH pairs AS (
     SELECT
         fr.feature_relationship_id,
@@ -146,18 +156,17 @@ WITH pairs AS (
     JOIN extractor_features xf_b ON xf_b.extractor_feature_id = fr.feature_b_id
     JOIN extractor_versions ev_b ON ev_b.extractor_version_id = xf_b.extractor_version_id
     JOIN extractors e_b ON e_b.extractor_id = ev_b.extractor_id
-    WHERE e_a.extractor_name IN ('DeepSqueak', 'MUPET')
-      AND e_b.extractor_name IN ('DeepSqueak', 'MUPET')
-      AND e_a.extractor_name <> e_b.extractor_name
 )
 SELECT
     feature_relationship_id,
-    CASE WHEN extractor_a = 'DeepSqueak' THEN version_a ELSE version_b END AS deepsqueak_version,
-    CASE WHEN extractor_a = 'DeepSqueak' THEN feature_a_id ELSE feature_b_id END AS deepsqueak_feature_id,
-    CASE WHEN extractor_a = 'DeepSqueak' THEN native_feature_a ELSE native_feature_b END AS deepsqueak_native_feature,
-    CASE WHEN extractor_a = 'MUPET' THEN version_a ELSE version_b END AS mupet_version,
-    CASE WHEN extractor_a = 'MUPET' THEN feature_a_id ELSE feature_b_id END AS mupet_feature_id,
-    CASE WHEN extractor_a = 'MUPET' THEN native_feature_a ELSE native_feature_b END AS mupet_native_feature,
+    extractor_a,
+    version_a,
+    feature_a_id,
+    native_feature_a,
+    extractor_b,
+    version_b,
+    feature_b_id,
+    native_feature_b,
     relationship_type,
     IFNULL(comparison_method, '') AS comparison_method,
     IFNULL(unit_normalization, '') AS unit_normalization,
@@ -169,8 +178,10 @@ FROM pairs
 ORDER BY
     consilience_eligible DESC,
     relationship_type,
-    deepsqueak_native_feature,
-    mupet_native_feature;
+    extractor_a,
+    extractor_b,
+    native_feature_a,
+    native_feature_b;
 
 -- Q05 - Recording device/setup context
 -- Question: Which recording-device and experimental-setup profile versions are

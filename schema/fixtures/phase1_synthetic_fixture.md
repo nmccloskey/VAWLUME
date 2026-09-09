@@ -3,7 +3,9 @@
 This source document defines the deterministic fixture inserted by
 `vawlume.db.buildPhase1Fixture`. It is intentionally text/source controlled:
 tests build a temporary SQLite database from `schema/schema.sql`, register the
-built-in DeepSqueak and MUPET semantics, and then populate these rows.
+the built-in extractor semantics, and then populate these rows. Registration
+covers every shipped extractor profile, so the semantic vocabulary includes
+USVSEG even though this fixture runs only DeepSqueak and MUPET extractions.
 
 ## Stable Keys
 
