@@ -6,6 +6,7 @@ tests = functiontests({ ...
     @testFeaturePairsComeFromTheRegistryNotFromCanonicalNames, ...
     @testCanonicalNameJoinMissesCentralFrequencyAndTheRegistryFindsIt, ...
     @testPowerEnergyAndAmplitudeStayIneligible, ...
+    @testSharedCanonicalNameCannotBypassRelationshipEligibility, ...
     @testOneToOneFeatureDifferencesAreExact, ...
     @testAmbiguousAndUnmatchedGroupsAreExcludedNotAveraged, ...
     @testMissingMeasurementIsAbsentEvidenceNotDisagreement, ...
@@ -258,6 +259,46 @@ end
 
 % -------------------------------------------------------- feature agreement ---
 
+function testSharedCanonicalNameCannotBypassRelationshipEligibility(testCase)
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+before = summarizeNominal(fixture);
+className = "vocalization_frequency_min";
+pair = before.feature_pairs( ...
+    string(before.feature_pairs.equivalence_class) == className, :);
+assertEqual(testCase, height(pair), 1);
+verifyEqual(testCase, string(pair.feature_a_canonical_name), "frequency_min");
+verifyEqual(testCase, string(pair.feature_b_canonical_name), "frequency_min");
+verifyEqual(testCase, string(pair.unit_status), "compatible");
+verifyTrue(testCase, pair.comparison_eligible);
+assertEqual(testCase, nnz(string(before.feature_comparisons.equivalence_class) == ...
+    className), 1);
+
+% Isolate the registry gate: keep compatible units, shared canonical identity,
+% and both measurements intact while disabling only this relationship.
+relationshipId = string(pair.feature_relationship_id);
+execute(fixture.conn, "UPDATE feature_relationships SET consilience_eligible = 0 " + ...
+    "WHERE feature_relationship_id = " + relationshipId);
+disabled = summarizeNominal(fixture);
+disabledPair = disabled.feature_pairs( ...
+    disabled.feature_pairs.feature_relationship_id == pair.feature_relationship_id, :);
+assertEqual(testCase, height(disabledPair), 1);
+verifyEqual(testCase, string(disabledPair.unit_status), "compatible");
+verifyFalse(testCase, disabledPair.consilience_eligible);
+verifyFalse(testCase, disabledPair.comparison_eligible);
+expected = before.feature_comparisons( ...
+    string(before.feature_comparisons.equivalence_class) ~= className, :);
+verifyEqual(testCase, disabled.feature_comparisons, expected);
+verifyFalse(testCase, any(string(disabled.feature_summary.equivalence_class) == className));
+
+% Removing the relationship must not let a canonical-name join recreate it.
+execute(fixture.conn, "DELETE FROM feature_relationships " + ...
+    "WHERE feature_relationship_id = " + relationshipId);
+absent = summarizeNominal(fixture);
+verifyFalse(testCase, any(string(absent.feature_pairs.equivalence_class) == className));
+verifyEqual(testCase, absent.feature_comparisons, expected);
+verifyEqual(testCase, height(fetch(fixture.conn, "PRAGMA foreign_key_check")), 0);
+end
+
 function testOneToOneFeatureDifferencesAreExact(testCase)
 [fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
 report = summarizeNominal(fixture);
@@ -430,6 +471,27 @@ verifyEqual(testCase, string(child.status(1)), "completed");
 verifyEqual(testCase, double(child.parent_analysis_run_id(1)), ...
     report.analysis.analysis_run_id);
 verifySubstring(testCase, string(child.run_key(1)), "match-nominal:agreement:");
+
+% The child's single parent, versioned profile, and ordered extraction inputs
+% are independently queryable lineage, not just counts in the apply result.
+childId = string(report.agreement_analysis.analysis_run_id);
+parentId = string(report.analysis.analysis_run_id);
+childProfile = fetch(fixture.conn, ...
+    "SELECT profile_version_id, assignment_role FROM analysis_run_profiles " + ...
+    "WHERE analysis_run_id = " + childId);
+assertEqual(testCase, height(childProfile), 1);
+verifyEqual(testCase, string(childProfile.assignment_role), "agreement_spec");
+parentProfile = fetch(fixture.conn, ...
+    "SELECT profile_version_id FROM analysis_run_profiles " + ...
+    "WHERE assignment_role = 'matching_spec' AND analysis_run_id = " + parentId);
+assertEqual(testCase, height(parentProfile), 1);
+verifyEqual(testCase, childProfile.profile_version_id, parentProfile.profile_version_id);
+inputQuery = "SELECT extraction_run_id, input_role FROM analysis_run_extraction_inputs " + ...
+    "WHERE analysis_run_id = ";
+childInputs = fetch(fixture.conn, inputQuery + childId + " ORDER BY input_role");
+parentInputs = fetch(fixture.conn, inputQuery + parentId + " ORDER BY input_role");
+verifyEqual(testCase, string(childInputs.input_role), ["run_a"; "run_b"]);
+verifyEqual(testCase, childInputs, parentInputs);
 
 % The child records the agreement algorithm version separately from the matching
 % algorithm, and states that per-pair rows were deliberately not persisted.
