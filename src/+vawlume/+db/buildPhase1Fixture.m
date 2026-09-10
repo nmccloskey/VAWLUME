@@ -421,12 +421,17 @@ versions.mupet = lookupSingleId(conn, ...
     "SELECT ev.extractor_version_id AS id FROM extractor_versions ev " + ...
     "JOIN extractors e ON e.extractor_id = ev.extractor_id " + ...
     "WHERE e.extractor_name = 'MUPET' AND ev.version_label = '2.1'");
+versions.usvseg = lookupSingleId(conn, ...
+    "SELECT ev.extractor_version_id AS id FROM extractor_versions ev " + ...
+    "JOIN extractors e ON e.extractor_id = ev.extractor_id " + ...
+    "WHERE e.extractor_name = 'USVSEG' AND ev.version_label = '0.9r2'");
 end
 
 function profiles = lookupOutputMappingProfiles(conn)
 profiles = struct();
 profiles.deepsqueak = lookupConfigProfileVersion(conn, "vawlume.deepsqueak.output.v3_2", "0.1.0");
 profiles.mupet = lookupConfigProfileVersion(conn, "vawlume.mupet.output.v2_1", "0.1.0");
+profiles.usvseg = lookupConfigProfileVersion(conn, "vawlume.usvseg.output.v0_9r2", "0.1.0");
 end
 
 function profileVersionId = lookupConfigProfileVersion(conn, profileKey, versionLabel)
@@ -449,6 +454,10 @@ artifacts.mupet_social_csv = insertArtifact(conn, projectId, "extractor_event_ex
     "synthetic/extractor_outputs/mupet/REC_SOCIAL_DYAD_01_syllables.csv", "csv", false, fixture);
 artifacts.mupet_social_native = insertArtifact(conn, projectId, "native_detection_container", "native_mupet_output", ...
     "synthetic/extractor_outputs/mupet/REC_SOCIAL_DYAD_01_mupet.mat", "mat", true, fixture);
+% USVSEG writes no native container beside its summary CSV, so the export is the
+% only artifact this fixture can honestly register for that run.
+artifacts.usvseg_social_csv = insertArtifact(conn, projectId, "extractor_event_export", "usvseg_dat_csv", ...
+    "synthetic/extractor_outputs/usvseg/REC_SOCIAL_DYAD_01_dat.csv", "csv", false, fixture);
 end
 
 function artifactId = insertArtifact(conn, projectId, artifactType, nativeType, path, format, isNative, fixture)
@@ -475,6 +484,8 @@ runs.mupet_social = insertExtractionRun(conn, projectId, versions.mupet, "fixtur
     "MUPET social fixture import", outputProfiles.mupet, fixture);
 runs.ds_baseline = insertExtractionRun(conn, projectId, versions.deepsqueak, "fixture_deepsqueak_baseline_v1", ...
     "DeepSqueak baseline fixture import", outputProfiles.deepsqueak, fixture);
+runs.usvseg_social = insertExtractionRun(conn, projectId, versions.usvseg, "fixture_usvseg_social_v1", ...
+    "USVSEG social fixture import", outputProfiles.usvseg, fixture);
 end
 
 function runId = insertExtractionRun(conn, projectId, versionId, runKey, runLabel, outputProfileVersionId, fixture)
@@ -495,6 +506,7 @@ function insertExtractionRunInputs(conn, runs, recordings, channels)
 insertExtractionRunInput(conn, runs.ds_social, recordings.social, channels.social);
 insertExtractionRunInput(conn, runs.mupet_social, recordings.social, channels.social);
 insertExtractionRunInput(conn, runs.ds_baseline, recordings.baseline, channels.baseline);
+insertExtractionRunInput(conn, runs.usvseg_social, recordings.social, channels.social);
 end
 
 function insertExtractionRunInput(conn, runId, recordingId, channelId)
@@ -506,7 +518,7 @@ insertRow(conn, "extraction_run_inputs", struct( ...
 end
 
 function insertExtractionRunProfiles(conn, runs, profiles)
-runIds = [runs.ds_social, runs.mupet_social, runs.ds_baseline];
+runIds = [runs.ds_social, runs.mupet_social, runs.ds_baseline, runs.usvseg_social];
 for runId = runIds
     insertRow(conn, "extraction_run_profiles", struct( ...
         extraction_run_id=runId, ...
@@ -527,6 +539,7 @@ insertRunArtifact(conn, runs.ds_social, artifacts.ds_social_native, "native_dete
 insertRunArtifact(conn, runs.mupet_social, artifacts.mupet_social_csv, "event_measurement_export");
 insertRunArtifact(conn, runs.mupet_social, artifacts.mupet_social_native, "native_detection_container");
 insertRunArtifact(conn, runs.ds_baseline, artifacts.ds_baseline_stats, "event_measurement_export");
+insertRunArtifact(conn, runs.usvseg_social, artifacts.usvseg_social_csv, "event_measurement_export");
 end
 
 function insertRunArtifact(conn, runId, artifactId, role)
@@ -552,6 +565,14 @@ objects.ds_baseline_audio = insertExtractorObject(conn, runs.ds_baseline, NaN, a
     "audio_file", "recording", "", "source_recording", "REC_BASELINE_M01", "DeepSqueak baseline audio file");
 objects.ds_baseline_calls = insertExtractorObject(conn, runs.ds_baseline, objects.ds_baseline_audio, artifacts.ds_baseline_stats, ...
     "Calls", "event", "vocalization_detection", "vocalization_event", "REC_BASELINE_M01_Calls", "DeepSqueak baseline Calls table");
+% USVSEG has no persistent workspace or data set. Its declared segmentation pass
+% is the only object between the audio file and the syllable table.
+objects.usvseg_audio = insertExtractorObject(conn, runs.usvseg_social, NaN, artifacts.usvseg_social_csv, ...
+    "audio_file", "recording", "", "source_recording", "REC_SOCIAL_DYAD_01", "USVSEG social audio file");
+objects.usvseg_pass = insertExtractorObject(conn, runs.usvseg_social, objects.usvseg_audio, artifacts.usvseg_social_csv, ...
+    "processing_context", "extraction_run", "", "extractor_processing_run", "USVSEG_PASS_SOCIAL_A", "USVSEG fixture segmentation pass");
+objects.usvseg_syllables = insertExtractorObject(conn, runs.usvseg_social, objects.usvseg_pass, artifacts.usvseg_social_csv, ...
+    "syllable", "event", "vocalization_detection", "vocalization_event", "REC_SOCIAL_DYAD_01_dat", "USVSEG syllable CSV");
 
 insertExtractorObjectRecording(conn, objects.ds_social_audio, recordings.social);
 insertExtractorObjectRecording(conn, objects.ds_social_calls, recordings.social);
@@ -560,6 +581,9 @@ insertExtractorObjectRecording(conn, objects.mupet_dataset, recordings.social);
 insertExtractorObjectRecording(conn, objects.mupet_syllables, recordings.social);
 insertExtractorObjectRecording(conn, objects.ds_baseline_audio, recordings.baseline);
 insertExtractorObjectRecording(conn, objects.ds_baseline_calls, recordings.baseline);
+insertExtractorObjectRecording(conn, objects.usvseg_audio, recordings.social);
+insertExtractorObjectRecording(conn, objects.usvseg_pass, recordings.social);
+insertExtractorObjectRecording(conn, objects.usvseg_syllables, recordings.social);
 end
 
 function objectId = insertExtractorObject(conn, runId, parentId, artifactId, nativeLevel, canonicalLevel, subtype, equivalenceClass, nativeId, label)
@@ -612,6 +636,18 @@ features.mupet.center = lookupFeatureRef(conn, versions.mupet, "mean frequency (
 features.mupet.bandwidth = lookupFeatureRef(conn, versions.mupet, "frequency bandwidth (kHz)", "per_syllable_csv", "spectral_filterbank", "", "frequency_bandwidth");
 features.mupet.energy = lookupFeatureRef(conn, versions.mupet, "total syllable energy (dB)", "per_syllable_csv", "spectral", "", "total_energy");
 features.mupet.amplitude = lookupFeatureRef(conn, versions.mupet, "peak syllable amplitude (dB)", "per_syllable_csv", "spectral", "", "peak_amplitude");
+
+% USVSEG exports exactly seven measurement columns. It reports no frequency
+% extent, no detection score, and no inter-event interval, so this fixture
+% registers no such measurement for it.
+features.usvseg = struct();
+features.usvseg.start = lookupFeatureRef(conn, versions.usvseg, "start", "usvseg_dat_csv", "spectral_segmentation", "", "call_start_time");
+features.usvseg.finish = lookupFeatureRef(conn, versions.usvseg, "end", "usvseg_dat_csv", "spectral_segmentation", "", "call_end_time");
+features.usvseg.duration = lookupFeatureRef(conn, versions.usvseg, "duration", "usvseg_dat_csv", "onset_offset_difference", "onset_offset_difference", "call_duration");
+features.usvseg.peak = lookupFeatureRef(conn, versions.usvseg, "maxfreq", "usvseg_dat_csv", "spectral_peak_tracking", "peak_frequency_at_maximum_amplitude_frame", "peak_frequency");
+features.usvseg.amplitude = lookupFeatureRef(conn, versions.usvseg, "maxamp", "usvseg_dat_csv", "multitaper_spectrogram", "uncalibrated_multitaper_spectrogram_amplitude_at_peak_frequency", "peak_amplitude");
+features.usvseg.center = lookupFeatureRef(conn, versions.usvseg, "meanfreq", "usvseg_dat_csv", "spectral_peak_tracking", "mean_of_primary_peak_frequency_trace", "frequency_center");
+features.usvseg.cv = lookupFeatureRef(conn, versions.usvseg, "cvfreq", "usvseg_dat_csv", "spectral_peak_tracking", "coefficient_of_variation_of_primary_peak_frequency_trace", "frequency_cv");
 end
 
 function ref = lookupFeatureRef(conn, extractorVersionId, nativeName, sourceArtifactType, derivationStage, operationalVariant, canonicalName)
@@ -648,10 +684,20 @@ detections.mupet_only = insertDetection(conn, runs.mupet_social, recordings.soci
 detections.mupet_split_a = insertDetection(conn, runs.mupet_social, recordings.social, artifacts.mupet_social_csv, objects.mupet_syllables, "3", 40.002, 40.045, 0.86, "First MUPET syllable in split/merge fixture case.");
 detections.mupet_split_b = insertDetection(conn, runs.mupet_social, recordings.social, artifacts.mupet_social_csv, objects.mupet_syllables, "4", 40.052, 40.098, 0.84, "Second MUPET syllable in split/merge fixture case.");
 detections.ds_baseline_repeat_id = insertDetection(conn, runs.ds_baseline, recordings.baseline, artifacts.ds_baseline_stats, objects.ds_baseline_calls, "1", 12.000, 12.040, 0.76, "Baseline detection repeats native event id 1 in a distinct run/artifact scope.");
+
+% USVSEG detections on the shared social recording. The geometry makes every
+% unordered extractor pair separately interpretable. USVSEG exports no detection
+% score, so that column stays NULL rather than carrying an invented number.
+detections.usvseg_match = insertDetection(conn, runs.usvseg_social, recordings.social, artifacts.usvseg_social_csv, objects.usvseg_syllables, "1", 10.0020, 10.0490, NaN, "Third extractor at the one-to-one locus: DeepSqueak, MUPET, and USVSEG converge.");
+detections.usvseg_ds_only = insertDetection(conn, runs.usvseg_social, recordings.social, artifacts.usvseg_social_csv, objects.usvseg_syllables, "2", 20.0010, 20.0410, NaN, "Corroborates the DeepSqueak-only event; MUPET reports nothing here.");
+detections.usvseg_mupet_only = insertDetection(conn, runs.usvseg_social, recordings.social, artifacts.usvseg_social_csv, objects.usvseg_syllables, "3", 30.0010, 30.0360, NaN, "Corroborates the MUPET-only event; DeepSqueak reports nothing here.");
+detections.usvseg_split_a = insertDetection(conn, runs.usvseg_social, recordings.social, artifacts.usvseg_social_csv, objects.usvseg_syllables, "4", 40.0010, 40.0430, NaN, "First USVSEG syllable inside the long DeepSqueak call.");
+detections.usvseg_split_b = insertDetection(conn, runs.usvseg_social, recordings.social, artifacts.usvseg_social_csv, objects.usvseg_syllables, "5", 40.0500, 40.0990, NaN, "Second USVSEG syllable inside the long DeepSqueak call.");
+detections.usvseg_only = insertDetection(conn, runs.usvseg_social, recordings.social, artifacts.usvseg_social_csv, objects.usvseg_syllables, "6", 50.0000, 50.0600, NaN, "USVSEG-unique detection with no DeepSqueak or MUPET counterpart.");
 end
 
 function detectionId = insertDetection(conn, runId, recordingId, artifactId, objectId, nativeEventId, startS, endS, score, notes)
-detectionId = insertRow(conn, "detections", struct( ...
+values = struct( ...
     extraction_run_id=runId, ...
     recording_id=recordingId, ...
     source_artifact_id=artifactId, ...
@@ -661,9 +707,14 @@ detectionId = insertRow(conn, "detections", struct( ...
     start_time_s=startS, ...
     end_time_s=endS, ...
     timing_basis="profile_selected_event_geometry", ...
-    detection_score=score, ...
     imported_at_utc="2026-08-25T00:00:00.000Z", ...
-    notes=notes), "detection_id");
+    notes=notes);
+% An extractor that exports no score leaves the column NULL. A placeholder
+% number would be a fabricated measurement.
+if ~isnan(score)
+    values.detection_score = score;
+end
+detectionId = insertRow(conn, "detections", values, "detection_id");
 end
 
 function insertMeasurements(conn, detections, artifacts, features)
@@ -692,6 +743,25 @@ insertMupetMeasurements(conn, detections.mupet_split_a, artifacts.mupet_social_c
 insertMupetMeasurements(conn, detections.mupet_split_b, artifacts.mupet_social_csv, features.mupet, 4, struct( ...
     start=40.052, finish=40.098, interval_missing=true, interval_raw="NA", duration_ms=46, min_khz=44.0, ...
     max_khz=83.0, center_khz=64.0, bandwidth_khz=39.0, energy_db=11.8, amplitude_db=-34.5));
+
+insertUsvsegMeasurements(conn, detections.usvseg_match, artifacts.usvseg_social_csv, features.usvseg, 1, struct( ...
+    start=10.0020, finish=10.0490, duration_ms=47.0, maxfreq_khz=71.200, maxamp_db=-18.4, ...
+    meanfreq_khz=62.100, cvfreq=0.0640));
+insertUsvsegMeasurements(conn, detections.usvseg_ds_only, artifacts.usvseg_social_csv, features.usvseg, 2, struct( ...
+    start=20.0010, finish=20.0410, duration_ms=40.0, maxfreq_khz=70.500, maxamp_db=-19.6, ...
+    meanfreq_khz=60.800, cvfreq=0.0510));
+insertUsvsegMeasurements(conn, detections.usvseg_mupet_only, artifacts.usvseg_social_csv, features.usvseg, 3, struct( ...
+    start=30.0010, finish=30.0360, duration_ms=35.0, maxfreq_khz=69.400, maxamp_db=-21.2, ...
+    meanfreq_khz=59.700, cvfreq=0.0470));
+insertUsvsegMeasurements(conn, detections.usvseg_split_a, artifacts.usvseg_social_csv, features.usvseg, 4, struct( ...
+    start=40.0010, finish=40.0430, duration_ms=42.0, maxfreq_khz=75.600, maxamp_db=-18.9, ...
+    meanfreq_khz=58.900, cvfreq=0.0880));
+insertUsvsegMeasurements(conn, detections.usvseg_split_b, artifacts.usvseg_social_csv, features.usvseg, 5, struct( ...
+    start=40.0500, finish=40.0990, duration_ms=49.0, maxfreq_khz=82.400, maxamp_db=-18.1, ...
+    meanfreq_khz=63.800, cvfreq=0.0930));
+insertUsvsegMeasurements(conn, detections.usvseg_only, artifacts.usvseg_social_csv, features.usvseg, 6, struct( ...
+    start=50.0000, finish=50.0600, duration_ms=60.0, maxfreq_khz=73.000, maxamp_db=-20.5, ...
+    meanfreq_khz=61.400, cvfreq=0.0720));
 end
 
 function insertDeepSqueakMeasurements(conn, detectionId, artifactId, features, rowNumber, m)
@@ -726,18 +796,39 @@ insertRealMeasurement(conn, detectionId, features.energy, artifactId, m.energy_d
 insertRealMeasurement(conn, detectionId, features.amplitude, artifactId, m.amplitude_db, "dB", m.amplitude_db, "dB", "identity", locator + "peak syllable amplitude (dB)", "");
 end
 
+% USVSEG prints each column with a fixed format: four decimal seconds for the
+% boundaries, one decimal millisecond for duration, three decimals for the two
+% frequency columns, one for amplitude, and four for the coefficient of
+% variation. The raw tokens are stored exactly as the exporter would print them
+% rather than as MATLAB would shorten them.
+function insertUsvsegMeasurements(conn, detectionId, artifactId, features, rowNumber, m)
+locator = "row=" + string(rowNumber) + "; column=";
+insertRealMeasurement(conn, detectionId, features.start, artifactId, m.start, "s", m.start, "s", "identity", locator + "start", "", sprintf("%.4f", m.start));
+insertRealMeasurement(conn, detectionId, features.finish, artifactId, m.finish, "s", m.finish, "s", "identity", locator + "end", "", sprintf("%.4f", m.finish));
+insertRealMeasurement(conn, detectionId, features.duration, artifactId, m.duration_ms, "ms", m.duration_ms / 1000, "s", "ms_to_s", locator + "duration", "onset_offset_difference", sprintf("%.1f", m.duration_ms));
+insertRealMeasurement(conn, detectionId, features.peak, artifactId, m.maxfreq_khz, "kHz", m.maxfreq_khz * 1000, "Hz", "kHz_to_Hz", locator + "maxfreq", "peak_frequency_at_maximum_amplitude_frame", sprintf("%.3f", m.maxfreq_khz));
+insertRealMeasurement(conn, detectionId, features.amplitude, artifactId, m.maxamp_db, "dB", m.maxamp_db, "dB", "identity", locator + "maxamp", "uncalibrated_multitaper_spectrogram_amplitude_at_peak_frequency", sprintf("%.1f", m.maxamp_db));
+insertRealMeasurement(conn, detectionId, features.center, artifactId, m.meanfreq_khz, "kHz", m.meanfreq_khz * 1000, "Hz", "kHz_to_Hz", locator + "meanfreq", "mean_of_primary_peak_frequency_trace", sprintf("%.3f", m.meanfreq_khz));
+insertRealMeasurement(conn, detectionId, features.cv, artifactId, m.cvfreq, "ratio", m.cvfreq, "ratio", "identity", locator + "cvfreq", "coefficient_of_variation_of_primary_peak_frequency_trace", sprintf("%.4f", m.cvfreq));
+end
+
 function insertKHzMeasurement(conn, detectionId, feature, artifactId, valueKHz, locator, operationalVariant)
 insertRealMeasurement(conn, detectionId, feature, artifactId, valueKHz, "kHz", valueKHz * 1000, "Hz", "kHz_to_Hz", locator, operationalVariant);
 end
 
-function insertRealMeasurement(conn, detectionId, feature, artifactId, nativeValue, nativeUnit, canonicalValue, canonicalUnit, transformKey, locator, operationalVariant)
+function insertRealMeasurement(conn, detectionId, feature, artifactId, nativeValue, nativeUnit, canonicalValue, canonicalUnit, transformKey, locator, operationalVariant, rawToken)
+% rawToken is supplied when the source format's print precision is part of the
+% native evidence. Otherwise the shortest exact numeric token is used.
+if nargin < 12 || strlength(string(rawToken)) == 0
+    rawToken = numericToken(nativeValue);
+end
 insertRow(conn, "event_measurements", struct( ...
     detection_id=detectionId, ...
     extractor_feature_id=feature.extractor_feature_id, ...
     canonical_feature_id=feature.canonical_feature_id, ...
     source_artifact_id=artifactId, ...
     native_value_type="real", ...
-    native_raw_token=numericToken(nativeValue), ...
+    native_raw_token=string(rawToken), ...
     native_value_real=nativeValue, ...
     native_unit=nativeUnit, ...
     canonical_value_real=canonicalValue, ...
@@ -1130,6 +1221,11 @@ summary.notes = [
     "Fixture intentionally repeats native event id 1 across extractor/run/artifact scopes."
     "DeepSqueak Accepted curation is stored separately from manual adjudication."
     "External alignment uses target_time = source_time + 0.55."
+    "Three extractors run on REC_SOCIAL_DYAD_01. The stored matching analysis " + ...
+        "remains the DeepSqueak/MUPET pair; the other two pairs are produced by " + ...
+        "vawlume.matching.compare in tests rather than hand-authored here."
+    "USVSEG detections carry no detection score and no curation event because " + ...
+        "USVSEG exports neither."
 ];
 end
 

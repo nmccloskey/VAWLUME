@@ -40,21 +40,34 @@ runs = textColumn(rows, "extraction_run_key");
 verifyEqual(testCase, sum(runs == "fixture_deepsqueak_social_v1"), 3);
 verifyEqual(testCase, sum(runs == "fixture_mupet_social_v1"), 4);
 verifyEqual(testCase, sum(runs == "fixture_deepsqueak_baseline_v1"), 1);
+verifyEqual(testCase, sum(runs == "fixture_usvseg_social_v1"), 6);
 verifyTrue(testCase, any(runs == "fixture_mupet_social_v1" & textColumn(rows, "native_event_id") == "4"));
+verifyTrue(testCase, any(runs == "fixture_usvseg_social_v1" & textColumn(rows, "native_event_id") == "6"));
+
+% All three extractors reach the same relational surface through their own
+% runs, versions, and artifacts.
+verifyEqual(testCase, sort(unique(textColumn(rows, "extractor_name"))), ...
+    sort(["DeepSqueak"; "MUPET"; "USVSEG"]));
 end
 
 function verifySharedRecordingQuery(testCase, rows)
 verifyEqual(testCase, textColumn(rows, "native_recording_id"), "REC_SOCIAL_DYAD_01");
+verifyEqual(testCase, numberColumn(rows, "distinct_extractor_count"), 3);
 verifyEqual(testCase, numberColumn(rows, "deepsqueak_run_count"), 1);
 verifyEqual(testCase, numberColumn(rows, "mupet_run_count"), 1);
+verifyEqual(testCase, numberColumn(rows, "usvseg_run_count"), 1);
 verifyFalse(testCase, any(contains(textColumn(rows, "native_recording_id"), "BASELINE")));
+for expected = ["fixture_deepsqueak_social_v1", "fixture_mupet_social_v1", ...
+        "fixture_usvseg_social_v1"]
+    verifyTrue(testCase, contains(textColumn(rows, "extractor_runs"), expected), expected);
+end
 end
 
 function verifyFeatureRegistryQueries(testCase, featureRows, relationshipRows)
 verifyEqual(testCase, sum(textColumn(featureRows, "extractor_name") == "DeepSqueak"), 14);
 verifyEqual(testCase, sum(textColumn(featureRows, "extractor_name") == "MUPET"), 12);
-% USVSEG is registered but runs no extraction in this fixture. Its feature
-% semantics are still part of the registry.
+% The registry is independent of which extractors happen to have runs. USVSEG
+% now has one, and its seven registered features are the same seven either way.
 verifyEqual(testCase, sum(textColumn(featureRows, "extractor_name") == "USVSEG"), 7);
 verifyTrue(testCase, any(textColumn(featureRows, "native_name") == "Principle Frequency (kHz)" & ...
     textColumn(featureRows, "canonical_name") == "contour_median_frequency" & ...
@@ -102,10 +115,18 @@ end
 
 function verifyScopedNativeIdQuery(testCase, rows)
 ids = textColumn(rows, "native_event_id");
-verifyEqual(testCase, sum(ids == "1"), 3);
-verifyEqual(testCase, sum(ids == "2"), 2);
-verifyEqual(testCase, sum(ids == "3"), 2);
+verifyEqual(testCase, sum(ids == "1"), 4);
+verifyEqual(testCase, sum(ids == "2"), 3);
+verifyEqual(testCase, sum(ids == "3"), 3);
+verifyEqual(testCase, sum(ids == "4"), 2);
 verifyTrue(testCase, all(strlength(textColumn(rows, "source_artifact_uri")) > 0));
+
+% A third extractor reusing the same 1-based ordinals collides with nothing:
+% every repeat is separated by run and artifact.
+usvseg = textColumn(rows, "extraction_run_key") == "fixture_usvseg_social_v1";
+verifyEqual(testCase, sum(usvseg), 4);
+verifyEqual(testCase, numel(unique(textColumn(rows(usvseg, :), "source_artifact_uri"))), 1);
+verifyEqual(testCase, numel(unique(textColumn(rows, "detection_id"))), height(rows));
 end
 
 function verifyCandidateAndMembershipQueries(testCase, candidateRows, membershipRows, splitRows)
@@ -140,6 +161,22 @@ verifyEqual(testCase, textColumn(rows(mupetDuration, :), "operational_variant"),
 missingInterval = extractors == "MUPET" & nativeIds == "4" & nativeNames == "inter-syllable interval (sec)";
 verifyEqual(testCase, textColumn(rows(missingInterval, :), "native_raw_token"), "NA");
 verifyEqual(testCase, textColumn(rows(missingInterval, :), "canonical_value_real"), "");
+
+% USVSEG uses the same two transforms while keeping its own native column
+% names, operational variants, and export print precision.
+verifyEqual(testCase, sum(extractors == "USVSEG"), 3);
+usvsegPeak = extractors == "USVSEG" & nativeIds == "1" & nativeNames == "maxfreq";
+verifyClose(testCase, singleNumber(rows, "native_value_real", usvsegPeak), 71.2, 1e-9);
+verifyClose(testCase, singleNumber(rows, "canonical_value_real", usvsegPeak), 71200, 1e-6);
+verifyEqual(testCase, textColumn(rows(usvsegPeak, :), "native_raw_token"), "71.200");
+verifyEqual(testCase, textColumn(rows(usvsegPeak, :), "operational_variant"), ...
+    "peak_frequency_at_maximum_amplitude_frame");
+
+usvsegDuration = extractors == "USVSEG" & nativeIds == "1" & nativeNames == "duration";
+verifyClose(testCase, singleNumber(rows, "native_value_real", usvsegDuration), 47, 1e-9);
+verifyClose(testCase, singleNumber(rows, "canonical_value_real", usvsegDuration), 0.047, 1e-12);
+verifyEqual(testCase, textColumn(rows(usvsegDuration, :), "native_unit"), "ms");
+verifyEqual(testCase, textColumn(rows(usvsegDuration, :), "canonical_unit"), "s");
 end
 
 function verifyAlignmentAndReviewQueries(testCase, alignmentRows, reviewRows)
@@ -155,6 +192,8 @@ verifyTrue(testCase, any(textColumn(reviewRows, "review_target_type") == "consen
 end
 
 function verifyProvenanceQuery(testCase, rows)
+% The stored fixture consensus event belongs to the DeepSqueak/MUPET pairwise
+% analysis. A third extractor on the recording does not join it.
 verifyEqual(testCase, sort(textColumn(rows, "extractor_name")), sort(["DeepSqueak"; "MUPET"]));
 verifyEqual(testCase, unique(textColumn(rows, "native_recording_id")), "REC_SOCIAL_DYAD_01");
 verifyTrue(testCase, all(strlength(textColumn(rows, "output_mapping_profile_checksum")) == 64));
@@ -165,7 +204,7 @@ end
 function n = expectedRowCount(blockId)
 switch string(blockId)
     case "Q01"
-        n = 8;
+        n = 14;
     case "Q02"
         n = 1;
     case "Q03"
@@ -177,7 +216,7 @@ switch string(blockId)
     case "Q06"
         n = 4;
     case "Q07"
-        n = 7;
+        n = 12;
     case "Q08"
         n = 3;
     case "Q09"
@@ -185,7 +224,7 @@ switch string(blockId)
     case "Q10"
         n = 3;
     case "Q11"
-        n = 10;
+        n = 13;
     case "Q12"
         n = 2;
     case "Q13"

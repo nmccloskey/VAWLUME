@@ -328,9 +328,9 @@ is the best single thing to read.
 
 To explore the relational model without running a workflow at all, build the
 deterministic Phase 1 synthetic fixture — one study, several subjects, a dyadic
-recording, two sessions, DeepSqueak and MUPET runs over one recording, matched
-and unmatched detections, a split/merge ambiguity, device and setup profiles,
-and an external event stream:
+recording, two sessions, DeepSqueak, MUPET, and USVSEG runs over one recording,
+matched and unmatched detections, a split/merge ambiguity, device and setup
+profiles, and an external event stream:
 
 ```matlab
 [conn, summary] = vawlume.db.createPhase1FixtureDatabase( ...

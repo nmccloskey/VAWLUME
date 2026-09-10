@@ -8,13 +8,16 @@
 -- stable logical fixture keys and semantic identities rather than generated IDs.
 
 -- Q01 - Detections by extraction run
--- Question: Which detections belong to each DeepSqueak and MUPET run?
+-- Question: Which detections belong to each extraction run?
 -- Difficulty: CLEAR
 -- Expected logical result:
---   8 rows total across 3 extraction runs.
+--   14 rows total across 4 extraction runs.
 --   DeepSqueak social run has native events 1, 2, 3.
 --   MUPET social run has native events 1, 2, 3, 4.
 --   DeepSqueak baseline run has native event 1.
+--   USVSEG social run has native events 1-6.
+--   The query names no extractor, so a run from a newly supported extractor
+--   appears here without editing it.
 SELECT
     extraction_run_key,
     extractor_name,
@@ -27,19 +30,21 @@ SELECT
     end_time_s
 FROM v_detection_core
 WHERE project_key = 'phase1_synthetic_fixture'
-  AND extractor_name IN ('DeepSqueak', 'MUPET')
 ORDER BY
     extraction_run_key,
     CAST(native_event_id AS INTEGER),
     detection_id;
 
--- Q02 - Recordings analyzed by both extractors
--- Question: Which recordings have at least one DeepSqueak run and at least
--- one MUPET run?
+-- Q02 - Recordings analyzed by more than one extractor
+-- Question: Which recordings carry extraction runs from at least two distinct
+-- extractors, and which runs are they?
 -- Difficulty: CLEAR
 -- Expected logical result:
---   REC_SOCIAL_DYAD_01 appears once.
---   REC_BASELINE_M01 does not appear.
+--   REC_SOCIAL_DYAD_01 appears once with three distinct extractors.
+--   REC_BASELINE_M01 does not appear; it has DeepSqueak only.
+--   The eligibility rule counts distinct extractors rather than naming any, so
+--   a further extractor on a recording does not change the result shape. The
+--   per-extractor columns name the shipped extractors for readability only.
 WITH recording_extractor_runs AS (
     SELECT DISTINCT
         p.project_key,
@@ -60,16 +65,17 @@ WITH recording_extractor_runs AS (
 SELECT
     native_recording_id,
     recording_relative_path,
+    COUNT(DISTINCT extractor_name) AS distinct_extractor_count,
     SUM(CASE WHEN extractor_name = 'DeepSqueak' THEN 1 ELSE 0 END) AS deepsqueak_run_count,
     SUM(CASE WHEN extractor_name = 'MUPET' THEN 1 ELSE 0 END) AS mupet_run_count,
+    SUM(CASE WHEN extractor_name = 'USVSEG' THEN 1 ELSE 0 END) AS usvseg_run_count,
     GROUP_CONCAT(extractor_name || ':' || run_key, '; ') AS extractor_runs
 FROM recording_extractor_runs
 GROUP BY
     recording_id,
     native_recording_id,
     recording_relative_path
-HAVING deepsqueak_run_count >= 1
-   AND mupet_run_count >= 1
+HAVING distinct_extractor_count >= 2
 ORDER BY native_recording_id;
 
 -- Q03 - Registered native and canonical features
@@ -249,8 +255,10 @@ ORDER BY
 -- to different extraction runs/artifacts.
 -- Difficulty: CLEAR
 -- Expected logical result:
---   7 rows. Native event id 1 appears in 3 rows; native event ids 2 and 3
---   each appear in 2 rows. Each repeat is scoped by run/recording/artifact.
+--   12 rows. Native event id 1 appears in 4 rows; native event ids 2 and 3
+--   each appear in 3 rows; native event id 4 appears in 2 rows. Each repeat is
+--   scoped by run/recording/artifact. USVSEG native ids 5 and 6 are unique in
+--   this fixture and are therefore absent.
 WITH repeated_native_ids AS (
     SELECT native_event_id
     FROM v_detection_core
@@ -438,9 +446,12 @@ ORDER BY
 -- alongside canonical feature/value/unit and transform.
 -- Difficulty: CLEAR
 -- Expected logical result:
---   10 rows: 4 DeepSqueak kHz_to_Hz rows for social native event 1, 4 MUPET
+--   13 rows: 4 DeepSqueak kHz_to_Hz rows for social native event 1, 4 MUPET
 --   kHz_to_Hz rows for social native event 1, 1 MUPET ms_to_s row for social
---   native event 1, and 1 final MUPET missing inter-syllable interval row.
+--   native event 1, 1 final MUPET missing inter-syllable interval row, and for
+--   USVSEG social native event 1 its 2 kHz_to_Hz rows plus 1 ms_to_s row.
+--   All three extractors canonicalize through the same transform registry
+--   while keeping their own native names, units, and print precision.
 SELECT
     vc.extractor_name,
     vc.extractor_version,
@@ -475,6 +486,10 @@ WHERE vc.project_key = 'phase1_synthetic_fixture'
        AND vc.native_event_id = '4'
        AND vml.canonical_name = 'inter_call_interval'
        AND em.native_value_type = 'missing')
+      OR
+      (vc.extractor_name = 'USVSEG'
+       AND vc.native_event_id = '1'
+       AND vml.transform_key IN ('kHz_to_Hz', 'ms_to_s'))
   )
 ORDER BY
     vc.extractor_name,
