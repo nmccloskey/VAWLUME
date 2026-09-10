@@ -1,0 +1,86 @@
+{
+  "profile": {
+    "id": "vawlume.agreement.multi_extractor.v0_1",
+    "name": "Prototype arbitrary-N extractor-agreement policy",
+    "kind": "consilience_policy",
+    "profile_schema_version": "0.1-draft",
+    "status": "built_in_template_draft",
+    "profile_version": "0.1.0"
+  },
+
+  "calibration_status": {
+    "calibrated": false,
+    "statement": "This policy states composition rules, not calibrated scientific settings. It declares no temporal, feature, or agreement threshold of its own, so there is nothing here to calibrate; every numeric threshold that bounds the evidence lives in the versioned pairwise matching specification the source analyses already recorded."
+  },
+
+  "algorithm": {
+    "key": "multi_extractor_agreement_composition",
+    "version": "0.1.0",
+    "summary": "Compose the exact candidate edges of a complete set of pairwise matching analyses into components over native detections, for one recording and N distinct extractors."
+  },
+
+  "source_analyses": {
+    "required_run_type": "cross_extractor_matching",
+    "required_status": "completed",
+    "minimum_source_analyses": 1,
+    "pairwise_coverage": "complete_unordered_pair_set",
+    "coverage_reason": "Every unordered extractor pair must have been assessed exactly once. Without complete coverage, an absent supporting edge cannot be distinguished from a pair that was never compared, and any agreement pattern derived from the result would be unreadable.",
+    "require_distinct_extractor_per_run": true,
+    "require_single_recording": true,
+    "require_identical_matching_specification_version": true,
+    "specification_reason": "Two pairwise analyses run under different matching specifications have different candidate universes. Composing them would produce a component whose edges answer different questions.",
+    "sources_are_evidence_not_children": true,
+    "immutability": "A source analysis is read, never rewritten. Its candidate rows, groups, consensus events, and consilience assessments are untouched by composition."
+  },
+
+  "edge_universe": {
+    "source": "stored_candidate_pairs_of_declared_source_analyses",
+    "defines_no_temporal_threshold": true,
+    "threshold_authority": "the versioned matching specification recorded by each source analysis",
+    "reason": "The candidate universe is already bounded by each source analysis's own min_temporal_iou floor. Declaring a second threshold here would create two authorities that can disagree, and would silently re-filter evidence the pairwise layer already decided.",
+    "second_threshold_forbidden": true
+  },
+
+  "composition": {
+    "component_rule": "connected_components_over_supporting_edges",
+    "clique_completeness": "reported_not_required",
+    "clique_reason": "Requiring every unordered pair inside a component to carry a supporting edge would discard the genuinely partial patterns three extractors produce. Completeness is derivable from the stored edges and is reported rather than enforced.",
+    "singleton_inclusion": true,
+    "singleton_reason": "A detection no other extractor corroborated is single-extractor evidence, which is the arbitrary-N analogue of an unmatched pairwise group. Dropping it would make the derived population disagree with the native one.",
+    "ambiguity_propagation": "recorded_per_edge_never_used_to_exclude",
+    "ambiguity_reason": "A pairwise group's topology is derivable from each supporting edge and is reported. An ambiguous pairwise topology never removes an edge or a member from the derived component.",
+    "feature_support_is_admission_criterion": false,
+    "feature_support_reason": "Potential feature support, realized availability, and observed outcome are separate queryable dimensions. None of them decides whether a detection or an edge belongs to a component."
+  },
+
+  "non_filtering_contract": {
+    "separately_queryable_dimensions": [
+      "temporal correspondence and its metrics, from the cited candidate rows",
+      "pairwise topology, derivable from each cited edge",
+      "potential feature support, from the exact registered feature relationships",
+      "realized feature availability, from the member detections' measurements",
+      "observed feature outcome, from the pairwise comparison under its declared tolerances"
+    ],
+    "prohibitions": [
+      "no membership or supporting-edge row may be withheld because a feature-support category is weak, unavailable, or below a categorical minimum",
+      "no stored support count, support fraction, completeness measure, extractor-set label, or agreement pattern label",
+      "no second temporal threshold",
+      "no rewriting of a source pairwise analysis"
+    ],
+    "filtering_belongs_to": "later query, report, and exploratory-analysis surfaces, which may sort and filter on any dimension above"
+  },
+
+  "analysis_identity": {
+    "run_key_is_caller_declared": true,
+    "canonical_source_order": "ascending sorted extractor-name pair, then source analysis run_key",
+    "reuse_requires": [
+      "same project and run_key",
+      "same agreement policy profile version and checksum",
+      "same participating extraction runs",
+      "same set of source pairwise analyses"
+    ],
+    "conflict_rather_than_rewrite": true,
+    "composition_pending_status": "started",
+    "status_reason": "An applied run that carries lineage but no composed groups is deliberately left 'started'. Marking it 'completed' would claim a derivation that has not been performed."
+  }
+}

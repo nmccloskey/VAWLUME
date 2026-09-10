@@ -515,12 +515,14 @@ verifyEqual(testCase, corroborationCount(fixture, "fixture_deepsqueak_social_v1"
 verifyEqual(testCase, corroborationCount(fixture, "fixture_mupet_social_v1", "2"), 1);
 verifyEqual(testCase, corroborationCount(fixture, "fixture_usvseg_social_v1", "6"), 0);
 
-% Counting corroboration this way is not an agreement group, and this pass
-% created no agreement layer to hold one. The only agreement table in the
-% schema is still the pairwise, analysis-scoped one, and nothing wrote to it.
-verifyEqual(testCase, countWhere(fixture.conn, "sqlite_master", ...
-    "type = 'table' AND name LIKE '%agreement%'"), 1);
-verifyEqual(testCase, countWhere(fixture.conn, "agreement_statistics", "1 = 1"), 0);
+% Counting corroboration this way is not an agreement group. Pairwise matching
+% writes nothing into the derived agreement layer or its lineage relation, so
+% every arbitrary-N surface stays empty no matter how many pairs are analysed.
+for name = ["agreement_statistics", "agreement_groups", ...
+        "agreement_group_members", "agreement_supporting_edges", ...
+        "analysis_run_sources"]
+    verifyEqual(testCase, countWhere(fixture.conn, name, "1 = 1"), 0, name);
+end
 
 clear cleanup
 end

@@ -325,6 +325,13 @@ profiles = [
     profile(repoRoot, ...
         "config/06_alignment_manifests/synthetic_session_alignment_manifest", ...
         false, "")
+    % Not executable, for the same reason as the matching specification: the
+    % arbitrary-N agreement policy declares composition rules rather than how to
+    % interpret a table. It is read directly and registered as a
+    % checksum-bearing config profile version.
+    profile(repoRoot, ...
+        "config/07_agreement_profiles/prototype_multi_extractor_agreement_spec", ...
+        false, "")
     ];
 end
 

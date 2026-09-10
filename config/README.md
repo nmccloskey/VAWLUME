@@ -226,7 +226,35 @@ The tracked
 is illustrative. Its clocks, rates, and file names are synthetic, and it is an
 example of the manifest grammar rather than a template of validated settings.
 
-### 10. Cross-profile examples
+### 10. Arbitrary-N extractor-agreement policies
+
+Location:
+
+```text
+config/07_agreement_profiles/
+```
+
+An agreement policy governs how a set of pairwise matching analyses is composed
+into arbitrary-N agreement over native detections: which source analyses are
+composable, how components are formed, whether single-extractor detections are
+retained, and how pairwise ambiguity is carried. Like a matching specification
+it is registered and checksummed in `config_profile_versions`, but it is linked
+under its own assignment role, `multi_extractor_agreement_spec`, because
+`agreement_spec` already names the *matching* specification of a pairwise
+agreement-statistics run.
+
+The shipped
+[`prototype_multi_extractor_agreement_spec.json`](07_agreement_profiles/prototype_multi_extractor_agreement_spec.json)
+declares **no threshold of any kind**, and the loader refuses a variant that
+adds one. The candidate universe it composes over is already bounded by the
+versioned matching specification each source analysis recorded; a second
+threshold here would be a competing authority that could silently re-filter
+evidence the pairwise layer already decided. For the same reason the policy
+cannot make feature support an admission criterion: potential support, realized
+availability, and observed outcome stay separately queryable rather than
+becoming a membership test.
+
+### 11. Cross-profile examples
 
 Examples that demonstrate how multiple profile kinds are associated can live in:
 
