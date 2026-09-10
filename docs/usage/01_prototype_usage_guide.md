@@ -509,12 +509,22 @@ required, and **settings evidence is required to apply**: supply either
 when its configuration changes and a run without its exact settings is not
 reproducible.
 
-Inspect either export without a database first:
+**USVSEG** - one `<stem>_dat.csv` per segmentation pass. Export inspection is
+implemented and database-free; a database-facing run importer is not yet
+implemented. Supply `ExtractorVersion="0.9r2"` because USVSEG writes no version
+string into its artifacts. The adapter preserves the literal `#` header and
+source tokens, and treats a header-only CSV as a valid zero-detection result.
+
+Inspect any supported export without a database first:
 
 ```matlab
 export = vawlume.ingest.deepsqueakExport(artifactPath, RepoRoot=repoRoot, ...
     ExtractorVersion="3.2.1");
 vawlume.source_mapping.preview(export.ir, Print=true);
+
+usvseg = vawlume.ingest.usvsegExport(usvsegCsvPath, RepoRoot=repoRoot, ...
+    ExtractorVersion="0.9r2");
+vawlume.source_mapping.preview(usvseg.ir, Print=true);
 ```
 
 For an extractor VAWLUME ships no profile for, the path is to author a new
@@ -717,7 +727,7 @@ assertSuccess(results);
 assert(~any([results.Incomplete]), "Incomplete tests.");
 ```
 
-The suite is currently **331 tests**. Runtime is machine-dependent; observed
+The suite is currently **341 tests**. Runtime is machine-dependent; observed
 wall times range from roughly nine to twenty-five minutes. Passing it
 is the strongest available check that an environment is correctly configured.
 Use the [canonical batch gate in the README](../../README.md#quick-start) for

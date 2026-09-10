@@ -36,6 +36,7 @@ spec = struct(artifact_key=artifactKey, ...
     canonical_artifact_type=profileText(match, "canonical_artifact_type"), ...
     row_level=profileText(match, "row_level"), ...
     sheet_selector="first_sheet", header_row=1, delimiter=",");
+spec.header_literal = "";
 if isfield(match, "table") && isstruct(match.table)
     selector = profileText(match.table, "sheet_selector");
     if strlength(selector) > 0, spec.sheet_selector = selector; end
@@ -43,6 +44,8 @@ if isfield(match, "table") && isstruct(match.table)
     if ~isnan(number), spec.header_row = number; end
     delimiter = profileText(match.table, "delimiter");
     if strlength(delimiter) > 0, spec.delimiter = delimiter; end
+    headerLiteral = profileText(match.table, "header_literal");
+    if strlength(headerLiteral) > 0, spec.header_literal = headerLiteral; end
 end
 if spec.header_row < 1 || fix(spec.header_row) ~= spec.header_row
     error(identifier, "Profile declares an unsupported header_row for artifact '%s': %s.", ...

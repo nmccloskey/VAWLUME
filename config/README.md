@@ -84,9 +84,11 @@ config/01_mapping_profiles/extractors/usvseg/
 
 All three profiles are registered by default, so their extractor identities,
 native features, canonical mappings, and eligible cross-extractor feature
-relationships are part of the shipped semantic vocabulary. USVSEG has no import
-adapter yet, so its semantics are registered but no USVSEG artifact can be
-ingested; see
+relationships are part of the shipped semantic vocabulary. The database-free
+`vawlume.ingest.usvsegExport` adapter now interprets the primary USVSEG event
+CSV through this profile; database population remains a later pass. See
+[`docs/development/15_usvseg_export_adapter.md`](../docs/development/15_usvseg_export_adapter.md)
+and the underlying design evidence in
 [`docs/reference/extractors/USVSEG_Extractor_Design_Reference.md`](../docs/reference/extractors/USVSEG_Extractor_Design_Reference.md).
 
 ### 3. External-stream source mapping profile

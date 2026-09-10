@@ -69,7 +69,7 @@ To check the environment is correctly configured:
 
 ```matlab
 addpath("src")
-results = runtests("tests", IncludeSubfolders=true);   % 331 tests, ~9-25 minutes
+results = runtests("tests", IncludeSubfolders=true);   % 341 tests, ~9-25 minutes
 table(results)
 assert(~isempty(results), "No tests discovered.");
 assertSuccess(results);
@@ -194,6 +194,15 @@ artifact, event CSV, optional native processed `.mat` artifact, the syllable
 detections, and their native and canonical measurements. Settings provenance is
 required to apply, because MUPET reprocesses a recording when its configuration
 changes and a run without its exact settings is not reproducible.
+
+`vawlume.ingest.usvsegExport` reads the profile-declared USVSEG
+`<stem>_dat.csv` event export without database access. It preserves the literal
+`#` identifier header and every printed source token, accepts a header-only CSV
+as a valid zero-detection result, retains unexpected columns in the returned
+source table while the shared mapper reports them, and requires the caller to
+declare the USVSEG version because the artifact contains no version string. A
+database-facing USVSEG run importer is not implemented yet. See
+[`docs/development/15_usvseg_export_adapter.md`](docs/development/15_usvseg_export_adapter.md).
 
 MUPET's differences from DeepSqueak are preserved rather than smoothed over. The
 exported duration keeps its pre-noise-reduction operational variant and is never
