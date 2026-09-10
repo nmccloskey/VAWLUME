@@ -47,7 +47,26 @@ for index = 1:numel(detections)
     end
 
     counts = applyMeasurements(conn, detection, counts);
+    counts = applyUnmappedValues(conn, scope, detection, counts);
     detections{index} = detection;
+end
+end
+
+function counts = applyUnmappedValues(conn, scope, detection, counts)
+if ~isfield(detection, "unmapped_values"), return, end
+for index = 1:height(detection.unmapped_values)
+    value = table2struct(detection.unmapped_values(index,:));
+    if string(value.action) ~= "create"
+        counts.reused_unmapped_source_values = counts.reused_unmapped_source_values + 1;
+        continue
+    end
+    insertIntakeRow(conn, "unmapped_source_values", struct( ...
+        extraction_run_id=scope.extraction_run_id, detection_id=detection.detection_id, ...
+        source_artifact_id=scope.source_artifact_id, native_field_name=value.native_field_name, ...
+        raw_value_text=value.raw_value_text, native_unit=value.native_unit, ...
+        source_locator=value.source_locator, reason_unmapped=value.reason_unmapped, ...
+        mapping_profile_version_id=scope.mapping_profile_version_id));
+    counts.unmapped_source_values = counts.unmapped_source_values + 1;
 end
 end
 
