@@ -18,7 +18,9 @@ validation, transactional project intake, DeepSqueak and MUPET import,
 cross-extractor matching and consensus, detection- and feature-level agreement
 with categorical consilience statuses and independent manual review, and
 anchor-based temporal alignment onto a common clock with a coverage-aware
-regularized timeline.
+regularized timeline. Arbitrary-N extractor agreement can be composed from
+pairwise evidence and queried as exact or coarse analysis populations without
+collapsing native detections.
 
 **Not yet implemented:** sequence, bout, motif, and hierarchy-aware analysis;
 continuous-signal ingestion; full acquisition synchronization. These are the
@@ -59,7 +61,7 @@ addpath("examples")
 matching_consensus_demo      % the full cross-extractor path, end to end
 ```
 
-The five demonstrations under [`examples/`](examples/) create every input they
+The six demonstrations under [`examples/`](examples/) create every input they
 need under the system temporary directory and remove it before returning, so
 they need no data of your own. To run them all, and to build your own database
 from your own recordings, follow the
@@ -69,7 +71,7 @@ To check the environment is correctly configured:
 
 ```matlab
 addpath("src")
-results = runtests("tests", IncludeSubfolders=true);   % 341 tests, ~9-25 minutes
+results = runtests("tests", IncludeSubfolders=true);   % 407 tests, ~9-25 minutes
 table(results)
 assert(~isempty(results), "No tests discovered.");
 assertSuccess(results);
@@ -293,6 +295,13 @@ provenance. The fixture deliberately contains one-to-one, one-to-many, and
 unmatched topology. Its thresholds illustrate behavior only; they are not a
 scientific recommendation.
 
+The agreement population demonstration at
+[`examples/agreement_filter_demo.m`](examples/agreement_filter_demo.m) composes
+three-extractor agreement over the Phase 1 synthetic fixture, selects exact and
+coarse support shapes, keeps clean complete and complete ambiguous components
+separate, and joins native members to synthetic time-bounded hierarchy context
+and long-form duration measurements. Its summaries are descriptive only.
+
 From the repository root:
 
 ```matlab
@@ -302,9 +311,10 @@ deepsqueak_import_demo
 mupet_import_demo
 matching_consensus_demo
 temporal_alignment_demo
+agreement_filter_demo
 ```
 
-All five create every input they need under the system temporary directory and
+All six create every input they need under the system temporary directory and
 remove it before returning.
 
 ## Configuration policy

@@ -727,7 +727,7 @@ assertSuccess(results);
 assert(~any([results.Incomplete]), "Incomplete tests.");
 ```
 
-The suite is currently **341 tests**. Runtime is machine-dependent; observed
+The suite is currently **407 tests**. Runtime is machine-dependent; observed
 wall times range from roughly nine to twenty-five minutes. Passing it
 is the strongest available check that an environment is correctly configured.
 Use the [canonical batch gate in the README](../../README.md#quick-start) for

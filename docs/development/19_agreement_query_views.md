@@ -146,3 +146,7 @@ one-for-one exact edges, the five required component shapes, exact missing-pair
 identity, agreement with the composition planner's reported dimensions, and a
 four-extractor case. tests/unit/test_agreement_schema.m covers candidate-only
 topology, and tests/unit/test_schema_creation.m holds the view inventory.
+
+The read-only MATLAB filtering API and hierarchy/measurement EDA hooks layered
+over these views are documented in
+[`20_agreement_population_selection.md`](20_agreement_population_selection.md).
