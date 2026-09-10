@@ -192,3 +192,7 @@ potential/realized/observed feature-support dimensions from
 [16_multi_extractor_agreement_schema.md](16_multi_extractor_agreement_schema.md).
 
 None of it is stored, and none of it may become a membership test.
+
+Phase 1.9 now exposes these derivations through
+[19_agreement_query_views.md](19_agreement_query_views.md), while leaving this
+composition and storage contract unchanged.

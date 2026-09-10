@@ -1798,6 +1798,429 @@ JOIN extraction_runs er ON er.extraction_run_id = d.extraction_run_id
 JOIN extractor_versions ev ON ev.extractor_version_id = er.extractor_version_id
 JOIN extractors e ON e.extractor_id = ev.extractor_id;
 
+-- Long-form arbitrary-N agreement membership. Native detections remain the
+-- represented observations; the agreement group adds derived connectivity but
+-- does not replace their run, extractor, native identity, or timing.
+CREATE VIEW v_agreement_group_members AS
+SELECT
+    ag.agreement_group_id,
+    ag.analysis_run_id,
+    ar.run_key AS agreement_run_key,
+    ag.recording_id,
+    r.native_recording_id,
+    ag.group_key,
+    ag.derivation_method,
+    agm.detection_id,
+    agm.member_role,
+    d.extraction_run_id,
+    er.run_key AS extraction_run_key,
+    e.extractor_id,
+    e.extractor_key,
+    e.extractor_name,
+    ev.extractor_version_id,
+    ev.version_label AS extractor_version,
+    d.native_event_id,
+    d.event_subtype,
+    d.start_time_s,
+    d.end_time_s,
+    (d.end_time_s - d.start_time_s) AS duration_s
+FROM agreement_groups ag
+JOIN analysis_runs ar ON ar.analysis_run_id = ag.analysis_run_id
+JOIN recordings r ON r.recording_id = ag.recording_id
+JOIN agreement_group_members agm
+  ON agm.agreement_group_id = ag.agreement_group_id
+JOIN detections d ON d.detection_id = agm.detection_id
+JOIN extraction_runs er ON er.extraction_run_id = d.extraction_run_id
+JOIN extractor_versions ev ON ev.extractor_version_id = er.extractor_version_id
+JOIN extractors e ON e.extractor_id = ev.extractor_id;
+
+-- One row per exact stored support edge. Candidate-pair endpoint order remains
+-- visible as the authority stored by the pairwise layer. Display keys are
+-- independently oriented by stable extractor key (and by native selector for
+-- the detection edge) so surrogate-id allocation cannot change them.
+--
+-- Pairwise topology is joined through both edge endpoints and the producing
+-- analysis. A candidate-only source therefore yields NULL topology columns;
+-- the convenience label reports no_group_materialized, which is absence rather
+-- than ambiguity.
+CREATE VIEW v_agreement_supporting_edges AS
+WITH pairwise_topology AS (
+    SELECT
+        mg.analysis_run_id,
+        mg.match_group_id,
+        mg.match_type,
+        mg.ambiguity_status,
+        a.detection_id AS detection_a_id,
+        b.detection_id AS detection_b_id
+    FROM match_groups mg
+    JOIN match_group_members a ON a.match_group_id = mg.match_group_id
+    JOIN match_group_members b
+      ON b.match_group_id = mg.match_group_id
+     AND a.detection_id < b.detection_id
+)
+SELECT
+    ase.agreement_supporting_edge_id,
+    ag.agreement_group_id,
+    ag.analysis_run_id,
+    agreement_run.run_key AS agreement_run_key,
+    ag.recording_id,
+    ag.group_key,
+    ase.candidate_pair_id,
+    cp.analysis_run_id AS source_analysis_run_id,
+    source_run.run_key AS source_analysis_run_key,
+    cp.detection_a_id,
+    cp.detection_b_id,
+    da.extraction_run_id AS extraction_run_a_id,
+    era.run_key AS extraction_run_a_key,
+    ea.extractor_id AS extractor_a_id,
+    ea.extractor_key AS extractor_a_key,
+    ea.extractor_name AS extractor_a_name,
+    eva.extractor_version_id AS extractor_version_a_id,
+    eva.version_label AS extractor_a_version,
+    da.native_event_id AS native_event_a_id,
+    db.extraction_run_id AS extraction_run_b_id,
+    erb.run_key AS extraction_run_b_key,
+    eb.extractor_id AS extractor_b_id,
+    eb.extractor_key AS extractor_b_key,
+    eb.extractor_name AS extractor_b_name,
+    evb.extractor_version_id AS extractor_version_b_id,
+    evb.version_label AS extractor_b_version,
+    db.native_event_id AS native_event_b_id,
+    CASE WHEN ea.extractor_key < eb.extractor_key
+         THEN ea.extractor_key || '--' || eb.extractor_key
+         ELSE eb.extractor_key || '--' || ea.extractor_key
+    END AS extractor_pair_key,
+    CASE WHEN ea.extractor_key < eb.extractor_key
+         THEN ea.extractor_name || ' -- ' || eb.extractor_name
+         ELSE eb.extractor_name || ' -- ' || ea.extractor_name
+    END AS extractor_pair_label,
+    CASE WHEN era.run_key || '#' || IFNULL(da.native_event_id, '')
+                   < erb.run_key || '#' || IFNULL(db.native_event_id, '')
+         THEN era.run_key || '#' || IFNULL(da.native_event_id, '') || '--' ||
+              erb.run_key || '#' || IFNULL(db.native_event_id, '')
+         ELSE erb.run_key || '#' || IFNULL(db.native_event_id, '') || '--' ||
+              era.run_key || '#' || IFNULL(da.native_event_id, '')
+    END AS detection_edge_key,
+    cp.temporal_overlap_s,
+    cp.temporal_iou,
+    cp.onset_difference_s,
+    cp.offset_difference_s,
+    cp.duration_difference_s,
+    cp.candidate_score,
+    cp.candidate_status,
+    cp.details_json,
+    pt.match_group_id AS pairwise_match_group_id,
+    pt.match_type AS pairwise_match_type,
+    pt.ambiguity_status AS pairwise_ambiguity_status,
+    IFNULL(pt.match_type, 'no_group_materialized') AS pairwise_topology_label
+FROM agreement_supporting_edges ase
+JOIN agreement_groups ag ON ag.agreement_group_id = ase.agreement_group_id
+JOIN analysis_runs agreement_run
+  ON agreement_run.analysis_run_id = ag.analysis_run_id
+JOIN candidate_pairs cp ON cp.candidate_pair_id = ase.candidate_pair_id
+JOIN analysis_runs source_run ON source_run.analysis_run_id = cp.analysis_run_id
+JOIN detections da ON da.detection_id = cp.detection_a_id
+JOIN extraction_runs era ON era.extraction_run_id = da.extraction_run_id
+JOIN extractor_versions eva ON eva.extractor_version_id = era.extractor_version_id
+JOIN extractors ea ON ea.extractor_id = eva.extractor_id
+JOIN detections db ON db.detection_id = cp.detection_b_id
+JOIN extraction_runs erb ON erb.extraction_run_id = db.extraction_run_id
+JOIN extractor_versions evb ON evb.extractor_version_id = erb.extractor_version_id
+JOIN extractors eb ON eb.extractor_id = evb.extractor_id
+LEFT JOIN pairwise_topology pt
+  ON pt.analysis_run_id = cp.analysis_run_id
+ AND pt.detection_a_id = cp.detection_a_id
+ AND pt.detection_b_id = cp.detection_b_id;
+
+-- One row per theoretically possible unordered extractor pair represented in an
+-- agreement group. This is the coarse reduction: several exact detection edges
+-- may support one row, but remain individually queryable above. Unsupported rows
+-- remain present, so a missing pair is identifiable rather than merely counted.
+-- Phase 1 agreement runs declare exactly one source analysis for every pair of
+-- participating extraction runs. source_analysis_count and is_assessed expose
+-- that fact without baking it into a stored summary.
+CREATE VIEW v_agreement_extractor_pair_support AS
+WITH represented_runs AS (
+    SELECT DISTINCT
+        agreement_group_id,
+        analysis_run_id,
+        agreement_run_key,
+        recording_id,
+        group_key,
+        extraction_run_id,
+        extraction_run_key,
+        extractor_id,
+        extractor_key,
+        extractor_name,
+        extractor_version_id,
+        extractor_version
+    FROM v_agreement_group_members
+),
+possible_pairs AS (
+    SELECT
+        a.agreement_group_id,
+        a.analysis_run_id,
+        a.agreement_run_key,
+        a.recording_id,
+        a.group_key,
+        a.extraction_run_id AS extraction_run_a_id,
+        a.extraction_run_key AS extraction_run_a_key,
+        a.extractor_id AS extractor_a_id,
+        a.extractor_key AS extractor_a_key,
+        a.extractor_name AS extractor_a_name,
+        a.extractor_version_id AS extractor_version_a_id,
+        a.extractor_version AS extractor_a_version,
+        b.extraction_run_id AS extraction_run_b_id,
+        b.extraction_run_key AS extraction_run_b_key,
+        b.extractor_id AS extractor_b_id,
+        b.extractor_key AS extractor_b_key,
+        b.extractor_name AS extractor_b_name,
+        b.extractor_version_id AS extractor_version_b_id,
+        b.extractor_version AS extractor_b_version,
+        a.extractor_key || '--' || b.extractor_key AS extractor_pair_key,
+        a.extractor_name || ' -- ' || b.extractor_name AS extractor_pair_label
+    FROM represented_runs a
+    JOIN represented_runs b
+      ON b.agreement_group_id = a.agreement_group_id
+     AND a.extractor_key < b.extractor_key
+),
+source_pair_coverage AS (
+    SELECT
+        ars.analysis_run_id,
+        ars.source_analysis_run_id,
+        source_run.run_key AS source_analysis_run_key,
+        MIN(first_input.extraction_run_id, second_input.extraction_run_id)
+            AS extraction_run_low_id,
+        MAX(first_input.extraction_run_id, second_input.extraction_run_id)
+            AS extraction_run_high_id
+    FROM analysis_run_sources ars
+    JOIN analysis_runs source_run
+      ON source_run.analysis_run_id = ars.source_analysis_run_id
+    JOIN analysis_run_extraction_inputs first_input
+      ON first_input.analysis_run_id = ars.source_analysis_run_id
+    JOIN analysis_run_extraction_inputs second_input
+      ON second_input.analysis_run_id = ars.source_analysis_run_id
+     AND first_input.extraction_run_id < second_input.extraction_run_id
+),
+assessed AS (
+    SELECT
+        pp.agreement_group_id,
+        pp.extractor_pair_key,
+        COUNT(spc.source_analysis_run_id) AS source_analysis_count,
+        MIN(spc.source_analysis_run_id) AS source_analysis_run_id,
+        MIN(spc.source_analysis_run_key) AS source_analysis_run_key
+    FROM possible_pairs pp
+    LEFT JOIN source_pair_coverage spc
+      ON spc.analysis_run_id = pp.analysis_run_id
+     AND spc.extraction_run_low_id =
+         MIN(pp.extraction_run_a_id, pp.extraction_run_b_id)
+     AND spc.extraction_run_high_id =
+         MAX(pp.extraction_run_a_id, pp.extraction_run_b_id)
+    GROUP BY pp.agreement_group_id, pp.extractor_pair_key
+),
+edge_support AS (
+    SELECT
+        agreement_group_id,
+        extractor_pair_key,
+        COUNT(*) AS support_edge_count
+    FROM v_agreement_supporting_edges
+    GROUP BY agreement_group_id, extractor_pair_key
+)
+SELECT
+    pp.*,
+    assessed.source_analysis_count,
+    assessed.source_analysis_run_id,
+    assessed.source_analysis_run_key,
+    CASE WHEN assessed.source_analysis_count > 0 THEN 1 ELSE 0 END AS is_assessed,
+    IFNULL(edge_support.support_edge_count, 0) AS support_edge_count,
+    CASE WHEN IFNULL(edge_support.support_edge_count, 0) > 0 THEN 1 ELSE 0 END
+        AS is_supported
+FROM possible_pairs pp
+JOIN assessed
+  ON assessed.agreement_group_id = pp.agreement_group_id
+ AND assessed.extractor_pair_key = pp.extractor_pair_key
+LEFT JOIN edge_support
+  ON edge_support.agreement_group_id = pp.agreement_group_id
+ AND edge_support.extractor_pair_key = pp.extractor_pair_key;
+
+-- Group-level query summary. Every value here is derived from long-form members,
+-- exact edges, possible extractor pairs, and declared source analyses. In
+-- particular, complete pair support, one-detection-per-extractor membership, and
+-- unambiguous one-to-one topology are three independent dimensions.
+CREATE VIEW v_agreement_group_summary AS
+WITH member_rows AS (
+    SELECT * FROM v_agreement_group_members
+),
+exact_edges AS (
+    SELECT * FROM v_agreement_supporting_edges
+),
+pair_support AS (
+    SELECT * FROM v_agreement_extractor_pair_support
+),
+member_counts AS (
+    SELECT
+        agreement_group_id,
+        COUNT(*) AS member_count,
+        COUNT(DISTINCT extraction_run_id) AS extraction_run_count,
+        COUNT(DISTINCT extractor_id) AS extractor_count
+    FROM member_rows
+    GROUP BY agreement_group_id
+),
+extractor_sets AS (
+    SELECT
+        agreement_group_id,
+        group_concat(extractor_key, '|') AS extractor_set_key,
+        group_concat(extractor_name, ' | ') AS extractor_set_label,
+        group_concat(extraction_run_key, '|') AS extraction_run_set_key
+    FROM (
+        SELECT DISTINCT
+            agreement_group_id,
+            extractor_key,
+            extractor_name,
+            extraction_run_key
+        FROM member_rows
+        ORDER BY agreement_group_id, extractor_key, extraction_run_key
+    )
+    GROUP BY agreement_group_id
+),
+edge_counts AS (
+    SELECT
+        agreement_group_id,
+        COUNT(*) AS support_edge_count,
+        SUM(CASE WHEN pairwise_match_type = 'one_to_one'
+                      AND pairwise_ambiguity_status = 'unambiguous'
+                 THEN 0 ELSE 1 END) AS non_clean_edge_count
+    FROM exact_edges
+    GROUP BY agreement_group_id
+),
+topology_patterns AS (
+    SELECT
+        agreement_group_id,
+        group_concat(pairwise_topology_label, '|') AS pairwise_topology_pattern
+    FROM (
+        SELECT DISTINCT agreement_group_id, pairwise_topology_label
+        FROM exact_edges
+        ORDER BY agreement_group_id, pairwise_topology_label
+    )
+    GROUP BY agreement_group_id
+),
+ambiguous_topology_patterns AS (
+    SELECT
+        agreement_group_id,
+        group_concat(pairwise_topology_label, '|')
+            AS ambiguous_pairwise_topology_pattern
+    FROM (
+        SELECT DISTINCT agreement_group_id, pairwise_topology_label
+        FROM exact_edges
+        WHERE pairwise_topology_label IN
+              ('one_to_many', 'many_to_one', 'many_to_many', 'ambiguous')
+        ORDER BY agreement_group_id, pairwise_topology_label
+    )
+    GROUP BY agreement_group_id
+),
+pair_counts AS (
+    SELECT
+        agreement_group_id,
+        COUNT(*) AS possible_extractor_pair_count,
+        SUM(is_assessed) AS assessed_extractor_pair_count,
+        SUM(is_supported) AS supported_extractor_pair_count
+    FROM pair_support
+    GROUP BY agreement_group_id
+),
+supported_patterns AS (
+    SELECT
+        agreement_group_id,
+        group_concat(extractor_pair_key, '|') AS supported_extractor_pair_pattern,
+        group_concat(extractor_pair_label, ';') AS supported_extractor_pair_label
+    FROM (
+        SELECT agreement_group_id, extractor_pair_key, extractor_pair_label
+        FROM pair_support
+        WHERE is_supported = 1
+        ORDER BY agreement_group_id, extractor_pair_key
+    )
+    GROUP BY agreement_group_id
+),
+unsupported_patterns AS (
+    SELECT
+        agreement_group_id,
+        group_concat(extractor_pair_key, '|') AS unsupported_extractor_pair_pattern,
+        group_concat(extractor_pair_label, ';') AS unsupported_extractor_pair_label
+    FROM (
+        SELECT agreement_group_id, extractor_pair_key, extractor_pair_label
+        FROM pair_support
+        WHERE is_supported = 0
+        ORDER BY agreement_group_id, extractor_pair_key
+    )
+    GROUP BY agreement_group_id
+)
+SELECT
+    ag.agreement_group_id,
+    ag.analysis_run_id,
+    ar.run_key AS agreement_run_key,
+    ag.recording_id,
+    r.native_recording_id,
+    ag.group_key,
+    ag.derivation_method,
+    mc.member_count,
+    mc.extraction_run_count,
+    mc.extractor_count,
+    es.extractor_set_key,
+    es.extractor_set_label,
+    es.extraction_run_set_key,
+    IFNULL(ec.support_edge_count, 0) AS support_edge_count,
+    IFNULL(pc.supported_extractor_pair_count, 0)
+        AS supported_extractor_pair_count,
+    IFNULL(pc.possible_extractor_pair_count, 0)
+        AS possible_extractor_pair_count,
+    IFNULL(pc.assessed_extractor_pair_count, 0)
+        AS assessed_extractor_pair_count,
+    CASE WHEN IFNULL(pc.possible_extractor_pair_count, 0) > 0
+         THEN 1.0 * pc.supported_extractor_pair_count /
+              pc.possible_extractor_pair_count
+         ELSE NULL
+    END AS support_fraction,
+    IFNULL(sp.supported_extractor_pair_pattern, '')
+        AS supported_extractor_pair_pattern,
+    IFNULL(sp.supported_extractor_pair_label, '')
+        AS supported_extractor_pair_label,
+    IFNULL(up.unsupported_extractor_pair_pattern, '')
+        AS unsupported_extractor_pair_pattern,
+    IFNULL(up.unsupported_extractor_pair_label, '')
+        AS unsupported_extractor_pair_label,
+    CASE WHEN IFNULL(pc.possible_extractor_pair_count, 0) > 0
+               AND pc.supported_extractor_pair_count =
+                   pc.possible_extractor_pair_count
+         THEN 1 ELSE 0
+    END AS is_extractor_pair_support_complete,
+    CASE WHEN IFNULL(pc.possible_extractor_pair_count, 0) > 0
+               AND pc.assessed_extractor_pair_count =
+                   pc.possible_extractor_pair_count
+         THEN 1 ELSE 0
+    END AS is_pairwise_assessment_complete,
+    CASE WHEN mc.member_count = mc.extractor_count THEN 1 ELSE 0 END
+        AS is_one_detection_per_extractor,
+    CASE WHEN IFNULL(ec.support_edge_count, 0) > 0
+               AND ec.non_clean_edge_count = 0
+         THEN 1 ELSE 0
+    END AS is_unambiguous_one_to_one,
+    IFNULL(tp.pairwise_topology_pattern, '') AS pairwise_topology_pattern,
+    IFNULL(atp.ambiguous_pairwise_topology_pattern, '')
+        AS ambiguous_pairwise_topology_pattern,
+    CASE WHEN mc.member_count = 1 THEN 1 ELSE 0 END AS is_singleton,
+    CASE WHEN mc.extractor_count = 1 THEN 1 ELSE 0 END AS is_extractor_unique
+FROM agreement_groups ag
+JOIN analysis_runs ar ON ar.analysis_run_id = ag.analysis_run_id
+JOIN recordings r ON r.recording_id = ag.recording_id
+JOIN member_counts mc ON mc.agreement_group_id = ag.agreement_group_id
+JOIN extractor_sets es ON es.agreement_group_id = ag.agreement_group_id
+LEFT JOIN edge_counts ec ON ec.agreement_group_id = ag.agreement_group_id
+LEFT JOIN topology_patterns tp ON tp.agreement_group_id = ag.agreement_group_id
+LEFT JOIN ambiguous_topology_patterns atp
+  ON atp.agreement_group_id = ag.agreement_group_id
+LEFT JOIN pair_counts pc ON pc.agreement_group_id = ag.agreement_group_id
+LEFT JOIN supported_patterns sp ON sp.agreement_group_id = ag.agreement_group_id
+LEFT JOIN unsupported_patterns up ON up.agreement_group_id = ag.agreement_group_id;
+
 -- Registered cross-extractor feature comparability. This is the only defensible
 -- route for comparing measurements across extractors: a shared canonical_name is
 -- neither necessary nor sufficient. DeepSqueak's contour median and MUPET's
