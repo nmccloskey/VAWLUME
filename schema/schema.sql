@@ -1,6 +1,6 @@
 -- VAWLUME prototype relational schema
--- Version: 0.5-draft
--- Date: 2026-08-30
+-- Version: 0.6-draft
+-- Date: 2026-09-10
 -- Target: SQLite (MATLAB-centered workflow)
 --
 -- Design priorities:
@@ -13,6 +13,9 @@
 --   * explicit artifact/model/settings lineage
 --   * conservative native-to-canonical feature mapping
 --   * cross-extractor candidate matching, match groups, consensus, and review
+--   * arbitrary-N extractor agreement as a derived layer over exact pairwise
+--     candidate edges, with multi-source analysis lineage and no stored
+--     summary counts, fractions, or agreement labels
 --   * sequence/hierarchy-aware derived analyses
 --   * lightweight support for external behavioral/neural streams and time alignment
 --   * timebase-level temporal alignment: one native audio clock per recording,
@@ -44,9 +47,9 @@ CREATE TABLE schema_info (
 );
 
 INSERT OR IGNORE INTO schema_info(schema_version, description)
-VALUES ('0.5-draft', 'Phase 7 alignment intake: registered pre-fit status for pairwise transform runs');
+VALUES ('0.6-draft', 'Arbitrary-N extractor agreement: multi-source analysis lineage, agreement groups and members, exact supporting candidate edges');
 
-PRAGMA user_version = 5;
+PRAGMA user_version = 6;
 
 -- ============================================================================
 -- 1. Project and configuration-profile infrastructure
@@ -691,6 +694,29 @@ CREATE TABLE analysis_run_extraction_inputs (
     PRIMARY KEY(analysis_run_id, extraction_run_id, input_role)
 );
 
+-- One derived analysis may consume several source analyses. analysis_runs
+-- .parent_analysis_run_id cannot express that: an arbitrary-N agreement
+-- derivation over three extractors composes three pairwise analyses and there is
+-- no single parent among them. parent_analysis_run_id keeps its existing meaning
+-- for genuinely single-parent child runs, such as the pairwise agreement
+-- statistics run, and is not overloaded here.
+--
+-- source_analysis_run_id is RESTRICT on purpose. A derived result must not
+-- silently outlive the evidence it was composed from, so deleting a source
+-- analysis fails while a derived analysis still cites it; the derived analysis
+-- must be deleted first, which cascades these rows away.
+--
+-- dependency_role is descriptive, not part of identity: one source analysis
+-- contributes to one derived analysis once.
+CREATE TABLE analysis_run_sources (
+    analysis_run_id        INTEGER NOT NULL REFERENCES analysis_runs(analysis_run_id) ON DELETE CASCADE,
+    source_analysis_run_id INTEGER NOT NULL REFERENCES analysis_runs(analysis_run_id) ON DELETE RESTRICT,
+    dependency_role        TEXT NOT NULL DEFAULT 'source_analysis',
+    notes                  TEXT,
+    PRIMARY KEY(analysis_run_id, source_analysis_run_id),
+    CHECK(analysis_run_id <> source_analysis_run_id)
+);
+
 -- ============================================================================
 -- 10. Cross-extractor correspondence and consilience
 -- ============================================================================
@@ -829,6 +855,85 @@ CREATE TABLE agreement_statistics (
     upper_bound         REAL,
     n_observations      INTEGER CHECK (n_observations IS NULL OR n_observations >= 0),
     notes               TEXT
+);
+
+-- --------------------------------------------------------------------------
+-- Arbitrary-N extractor agreement: a derived layer over pairwise evidence
+-- --------------------------------------------------------------------------
+--
+-- Pairwise correspondence remains the primitive. An agreement group is a derived
+-- component over native detections for one recording, composed from the exact
+-- candidate edges of the pairwise analyses declared in analysis_run_sources. It
+-- does not replace match_groups, which remain the authoritative partition of one
+-- ordered run pair, and it does not replace consensus_events, which remain the
+-- derived interval geometry of one pairwise group.
+--
+-- Nothing summarising is stored in this layer. Participating extractor count,
+-- supported-edge count, possible-edge count, support fraction, pattern labels
+-- such as '2 of 3', feature-support capacity counts, extractor-set labels, and
+-- confidence categories are all derivable from agreement_group_members,
+-- agreement_supporting_edges, the source analyses' declared extraction inputs,
+-- and feature_relationships. Storing any of them would create a second answer
+-- that can drift out of agreement with the evidence it summarises.
+CREATE TABLE agreement_groups (
+    agreement_group_id  INTEGER PRIMARY KEY,
+    analysis_run_id     INTEGER NOT NULL REFERENCES analysis_runs(analysis_run_id) ON DELETE CASCADE,
+    recording_id        INTEGER NOT NULL REFERENCES recordings(recording_id) ON DELETE CASCADE,
+    group_key           TEXT NOT NULL,
+    derivation_method   TEXT NOT NULL,
+    notes               TEXT,
+    UNIQUE(analysis_run_id, group_key)
+);
+
+-- group_key is this group's deterministic identity within its agreement run, in
+-- the sense the pairwise layer already uses for components: an ordered member
+-- identity string. A rerun needs it before members exist in order to decide
+-- reuse versus conflict, which is why it is stored rather than derived. It is an
+-- identity, not a summary, and must not encode counts, fractions, or agreement
+-- labels.
+
+-- A detection joins an agreement group on temporal correspondence evidence
+-- alone. Membership is deliberately not gated on feature support: whether any
+-- eligible non-timing feature relationship exists for the participating
+-- extractor versions (potential), whether both events carried usable values
+-- (realized availability), and whether the comparison fell within tolerance
+-- (observed outcome) are three separate dimensions, each separately queryable.
+-- A group whose members have no comparable non-timing feature at all is a real
+-- observation about the extractors, not a defective row to be filtered out.
+CREATE TABLE agreement_group_members (
+    agreement_group_id  INTEGER NOT NULL REFERENCES agreement_groups(agreement_group_id) ON DELETE CASCADE,
+    detection_id        INTEGER NOT NULL REFERENCES detections(detection_id) ON DELETE CASCADE,
+    member_role         TEXT,
+    PRIMARY KEY(agreement_group_id, detection_id)
+);
+
+-- The exact pairwise edge is the stored authority for why a group holds together.
+-- candidate_pair_id reaches the producing analysis, its recording, its temporal
+-- metrics, its versioned matching specification, and its pairwise match group,
+-- so none of those is copied here.
+--
+-- Topology needs no second stored FK: a pairwise analysis assigns each detection
+-- to at most one match group, and a candidate edge's two endpoints are joined
+-- into the same component, so the edge's pairwise group is reachable and unique.
+-- A candidate-only source analysis simply has no group to report, which is
+-- absence rather than ambiguity.
+--
+-- This row is never gated on consilience_assessments.status. A pairwise edge
+-- stays queryable evidence when no eligible non-timing feature relationship
+-- exists, when only one exists, when a measurement is missing for this event,
+-- when the group is only temporally_matched under the current categorical rule,
+-- and when the feature evidence is discrepant. Those conditions are for later
+-- surfaces to label, sort, and filter on, not for this layer to erase.
+--
+-- RESTRICT for the same reason as analysis_run_sources: deleting a candidate
+-- pair, or an analysis run whose deletion would cascade into candidate_pairs, is
+-- refused while a derived agreement group cites that edge.
+CREATE TABLE agreement_supporting_edges (
+    agreement_supporting_edge_id INTEGER PRIMARY KEY,
+    agreement_group_id  INTEGER NOT NULL REFERENCES agreement_groups(agreement_group_id) ON DELETE CASCADE,
+    candidate_pair_id   INTEGER NOT NULL REFERENCES candidate_pairs(candidate_pair_id) ON DELETE RESTRICT,
+    notes               TEXT,
+    UNIQUE(agreement_group_id, candidate_pair_id)
 );
 
 -- ============================================================================
@@ -1372,6 +1477,112 @@ BEGIN
     SELECT RAISE(ABORT, 'Consensus-event member is not a member of its match group');
 END;
 
+-- --------------------------------------------------------------------------
+-- Arbitrary-N extractor-agreement invariants
+-- --------------------------------------------------------------------------
+
+-- A derived analysis and the analysis it consumes belong to one project.
+CREATE TRIGGER trg_analysis_run_source_project_scope
+BEFORE INSERT ON analysis_run_sources
+FOR EACH ROW
+WHEN (
+    (SELECT project_id FROM analysis_runs WHERE analysis_run_id = NEW.analysis_run_id) <>
+    (SELECT project_id FROM analysis_runs WHERE analysis_run_id = NEW.source_analysis_run_id)
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Analysis-run source belongs to a different project than the derived analysis');
+END;
+
+-- Agreement groups live only on an arbitrary-N agreement run, never grafted onto
+-- a pairwise matching analysis, and their recording belongs to that run's project.
+CREATE TRIGGER trg_agreement_group_run_scope
+BEFORE INSERT ON agreement_groups
+FOR EACH ROW
+WHEN (
+    (SELECT run_type FROM analysis_runs WHERE analysis_run_id = NEW.analysis_run_id)
+        <> 'multi_extractor_agreement'
+    OR
+    (SELECT project_id FROM recordings WHERE recording_id = NEW.recording_id) <>
+    (SELECT project_id FROM analysis_runs WHERE analysis_run_id = NEW.analysis_run_id)
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Agreement group requires a multi_extractor_agreement run and a recording in that project');
+END;
+
+CREATE TRIGGER trg_agreement_member_recording
+BEFORE INSERT ON agreement_group_members
+FOR EACH ROW
+WHEN (
+    SELECT d.recording_id <> ag.recording_id
+    FROM detections d, agreement_groups ag
+    WHERE d.detection_id = NEW.detection_id
+      AND ag.agreement_group_id = NEW.agreement_group_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Agreement-group member recording does not match agreement-group recording');
+END;
+
+-- An agreement group partitions only detections from its own analysis inputs,
+-- and a detection may occur in only one agreement group of a given agreement
+-- run. The same detection may of course participate in several agreement runs.
+CREATE TRIGGER trg_agreement_member_analysis_partition
+BEFORE INSERT ON agreement_group_members
+FOR EACH ROW
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM agreement_groups ag
+    JOIN detections d ON d.detection_id = NEW.detection_id
+    JOIN analysis_run_extraction_inputs arei
+      ON arei.analysis_run_id = ag.analysis_run_id
+     AND arei.extraction_run_id = d.extraction_run_id
+    WHERE ag.agreement_group_id = NEW.agreement_group_id
+)
+OR EXISTS (
+    SELECT 1
+    FROM agreement_groups target
+    JOIN agreement_groups existing
+      ON existing.analysis_run_id = target.analysis_run_id
+    JOIN agreement_group_members member
+      ON member.agreement_group_id = existing.agreement_group_id
+    WHERE target.agreement_group_id = NEW.agreement_group_id
+      AND existing.agreement_group_id <> NEW.agreement_group_id
+      AND member.detection_id = NEW.detection_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Agreement-group member is outside the analysis inputs or already assigned in this agreement run');
+END;
+
+-- A supporting edge must come from a declared source analysis, describe the same
+-- recording, and join two detections that are both members of the group it
+-- supports. Nothing here consults feature support or consilience status.
+CREATE TRIGGER trg_agreement_supporting_edge_scope
+BEFORE INSERT ON agreement_supporting_edges
+FOR EACH ROW
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM agreement_groups ag
+    JOIN candidate_pairs cp ON cp.candidate_pair_id = NEW.candidate_pair_id
+    JOIN analysis_run_sources ars
+      ON ars.analysis_run_id = ag.analysis_run_id
+     AND ars.source_analysis_run_id = cp.analysis_run_id
+    WHERE ag.agreement_group_id = NEW.agreement_group_id
+      AND cp.recording_id = ag.recording_id
+)
+OR NOT EXISTS (
+    SELECT 1
+    FROM candidate_pairs cp
+    JOIN agreement_group_members a
+      ON a.agreement_group_id = NEW.agreement_group_id
+     AND a.detection_id = cp.detection_a_id
+    JOIN agreement_group_members b
+      ON b.agreement_group_id = NEW.agreement_group_id
+     AND b.detection_id = cp.detection_b_id
+    WHERE cp.candidate_pair_id = NEW.candidate_pair_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Agreement supporting edge is outside its declared source analyses, recording, or group membership');
+END;
+
 -- Classification assignments must involve a detection from the classification run's
 -- parent extraction run, and the class must belong to the same classification run.
 CREATE TRIGGER trg_classification_assignment_scope
@@ -1645,6 +1856,102 @@ LEFT JOIN feature_mappings fmb ON fmb.extractor_feature_id = b.extractor_feature
 LEFT JOIN canonical_features cfb ON cfb.canonical_feature_id = fmb.canonical_feature_id
 WHERE ea.extractor_id <> eb.extractor_id;
 
+-- The same registered relationships, oriented per endpoint: exactly two rows per
+-- cross-extractor relationship, one from each feature's point of view.
+--
+-- v_cross_extractor_feature_pairs answers "what is this pair?". Feature-support
+-- capacity asks the other question - "which counterparts does this feature
+-- have, in which extractors?" - and answering it from the pair view requires
+-- checking both orientations every time, because feature_a/feature_b order
+-- follows the ascending-id CHECK and carries no extractor meaning.
+--
+-- How much cross-extractor feature support is potentially available is a
+-- property of this relationship graph, of consilience_eligible, of equivalence
+-- class and operational variant, of unit compatibility, and of the active
+-- versioned comparison policy. It is deliberately not a column on
+-- extractor_features: the same native feature has different support capacity
+-- depending on which extractor versions are being compared. Counts, fractions,
+-- and convenience categories over these rows are query products for a chosen
+-- extractor set, never stored properties.
+--
+-- Which equivalence classes count as primary temporal evidence rather than
+-- independent support is a policy statement, so equivalence_class is exposed
+-- verbatim and nothing is classified here. canonical_feature is deliberately
+-- not joined: a feature may carry several canonical mappings across profile
+-- versions, and fanning them out here would make counterpart counting wrong.
+CREATE VIEW v_feature_relationship_endpoints AS
+SELECT
+    fr.feature_relationship_id,
+    fr.relationship_type,
+    fr.consilience_eligible,
+    fr.comparison_method,
+    fr.unit_normalization,
+    fr.default_role,
+    f.extractor_feature_id  AS feature_id,
+    fx.extractor_id         AS extractor_id,
+    fx.extractor_name       AS extractor_name,
+    fv.extractor_version_id AS extractor_version_id,
+    fv.version_label        AS extractor_version,
+    f.native_name           AS feature_native_name,
+    f.native_unit           AS feature_native_unit,
+    f.equivalence_class     AS feature_equivalence_class,
+    f.operational_variant   AS feature_operational_variant,
+    f.derivation_stage      AS feature_derivation_stage,
+    c.extractor_feature_id  AS counterpart_feature_id,
+    cx.extractor_id         AS counterpart_extractor_id,
+    cx.extractor_name       AS counterpart_extractor_name,
+    cv.extractor_version_id AS counterpart_extractor_version_id,
+    cv.version_label        AS counterpart_extractor_version,
+    c.native_name           AS counterpart_native_name,
+    c.native_unit           AS counterpart_native_unit,
+    c.equivalence_class     AS counterpart_equivalence_class,
+    c.operational_variant   AS counterpart_operational_variant,
+    c.derivation_stage      AS counterpart_derivation_stage
+FROM feature_relationships fr
+JOIN extractor_features f ON f.extractor_feature_id = fr.feature_a_id
+JOIN extractor_features c ON c.extractor_feature_id = fr.feature_b_id
+JOIN extractor_versions fv ON fv.extractor_version_id = f.extractor_version_id
+JOIN extractors fx ON fx.extractor_id = fv.extractor_id
+JOIN extractor_versions cv ON cv.extractor_version_id = c.extractor_version_id
+JOIN extractors cx ON cx.extractor_id = cv.extractor_id
+WHERE fx.extractor_id <> cx.extractor_id
+UNION ALL
+SELECT
+    fr.feature_relationship_id,
+    fr.relationship_type,
+    fr.consilience_eligible,
+    fr.comparison_method,
+    fr.unit_normalization,
+    fr.default_role,
+    f.extractor_feature_id  AS feature_id,
+    fx.extractor_id         AS extractor_id,
+    fx.extractor_name       AS extractor_name,
+    fv.extractor_version_id AS extractor_version_id,
+    fv.version_label        AS extractor_version,
+    f.native_name           AS feature_native_name,
+    f.native_unit           AS feature_native_unit,
+    f.equivalence_class     AS feature_equivalence_class,
+    f.operational_variant   AS feature_operational_variant,
+    f.derivation_stage      AS feature_derivation_stage,
+    c.extractor_feature_id  AS counterpart_feature_id,
+    cx.extractor_id         AS counterpart_extractor_id,
+    cx.extractor_name       AS counterpart_extractor_name,
+    cv.extractor_version_id AS counterpart_extractor_version_id,
+    cv.version_label        AS counterpart_extractor_version,
+    c.native_name           AS counterpart_native_name,
+    c.native_unit           AS counterpart_native_unit,
+    c.equivalence_class     AS counterpart_equivalence_class,
+    c.operational_variant   AS counterpart_operational_variant,
+    c.derivation_stage      AS counterpart_derivation_stage
+FROM feature_relationships fr
+JOIN extractor_features f ON f.extractor_feature_id = fr.feature_b_id
+JOIN extractor_features c ON c.extractor_feature_id = fr.feature_a_id
+JOIN extractor_versions fv ON fv.extractor_version_id = f.extractor_version_id
+JOIN extractors fx ON fx.extractor_id = fv.extractor_id
+JOIN extractor_versions cv ON cv.extractor_version_id = c.extractor_version_id
+JOIN extractors cx ON cx.extractor_id = cv.extractor_id
+WHERE fx.extractor_id <> cx.extractor_id;
+
 CREATE VIEW v_external_events_aligned AS
 SELECT
     ee.external_event_id,
@@ -1752,6 +2059,10 @@ CREATE INDEX idx_class_assignments_detection ON classification_assignments(detec
 CREATE INDEX idx_candidate_pairs_recording ON candidate_pairs(analysis_run_id, recording_id);
 CREATE INDEX idx_match_groups_recording ON match_groups(analysis_run_id, recording_id);
 CREATE INDEX idx_match_members_detection ON match_group_members(detection_id);
+CREATE INDEX idx_analysis_run_sources_source ON analysis_run_sources(source_analysis_run_id);
+CREATE INDEX idx_agreement_groups_recording ON agreement_groups(analysis_run_id, recording_id);
+CREATE INDEX idx_agreement_members_detection ON agreement_group_members(detection_id);
+CREATE INDEX idx_agreement_supporting_edges_candidate ON agreement_supporting_edges(candidate_pair_id);
 CREATE INDEX idx_consensus_events_recording_time ON consensus_events(recording_id, start_time_s, end_time_s);
 CREATE INDEX idx_manual_reference_events_recording_time ON manual_reference_events(recording_id, reference_set_key, start_time_s, end_time_s);
 CREATE INDEX idx_external_streams_recording ON external_streams(recording_id);

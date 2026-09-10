@@ -15,8 +15,8 @@ cleanupDb = onCleanup(@() cleanupDatabase(conn, dbFile));
 summary = vawlume.db.applySchema(conn, fullfile(repoRoot, "schema", "schema.sql"));
 
 verifyGreaterThan(testCase, summary.statements_executed, 0);
-verifyEqual(testCase, string(firstValue(conn, "SELECT schema_version FROM schema_info")), "0.5-draft");
-verifyEqual(testCase, double(firstValue(conn, "PRAGMA user_version")), 5);
+verifyEqual(testCase, string(firstValue(conn, "SELECT schema_version FROM schema_info")), "0.6-draft");
+verifyEqual(testCase, double(firstValue(conn, "PRAGMA user_version")), 6);
 verifyEqual(testCase, double(firstValue(conn, "PRAGMA foreign_keys")), 1);
 verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
 
@@ -45,6 +45,10 @@ expectedTables = [
     "manual_reviews"
     "manual_reference_events"
     "agreement_statistics"
+    "analysis_run_sources"
+    "agreement_groups"
+    "agreement_group_members"
+    "agreement_supporting_edges"
     "timebases"
     "external_streams"
     "external_stream_sources"
@@ -65,6 +69,7 @@ expectedViews = [
     "v_event_measurements_long"
     "v_match_group_members"
     "v_cross_extractor_feature_pairs"
+    "v_feature_relationship_endpoints"
     "v_external_events_aligned"
     "v_sequence_members"
 ];
