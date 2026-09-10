@@ -270,8 +270,9 @@ fprintf('Group and native-member counts by synthetic context window:\n');
 disp(value.condition_counts);
 fprintf('Native-member call durations by context window and extractor:\n');
 disp(value.duration_summary);
-fprintf('Proves:\n  %s\n', strjoin(value.proves, '\n  '));
-fprintf('Does not prove:\n  %s\n', strjoin(value.does_not_prove, '\n  '));
+fprintf('Proves:\n  %s\n', strjoin(value.proves, newline + "  "));
+fprintf('Does not prove:\n  %s\n', ...
+    strjoin(value.does_not_prove, newline + "  "));
 end
 
 function value = allPairPattern()

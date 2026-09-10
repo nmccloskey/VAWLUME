@@ -14,7 +14,7 @@
 VAWLUME is a MATLAB-centered, relational framework that maps heterogeneous project and extractor semantics into a provenance-aware common model, so vocalization detections can be compared and validated across extractors without erasing how those data were originally produced.
 
 **Implemented today:** extractor-independent source mapping and dry-run
-validation, transactional project intake, DeepSqueak and MUPET import,
+validation, transactional project intake, DeepSqueak, MUPET, and USVSEG import,
 cross-extractor matching and consensus, detection- and feature-level agreement
 with categorical consilience statuses and independent manual review, and
 anchor-based temporal alignment onto a common clock with a coverage-aware
@@ -40,7 +40,7 @@ data, and the current limitations.
 | Toolbox | **Database Toolbox**, which supplies the `sqlite` connection object used throughout |
 | SQLite | No separate installation; the database is a file created through MATLAB's `sqlite` interface |
 | Python / PyYAML | **Not required.** Configuration is canonical JSON read with `fileread` and `jsondecode` |
-| External extractors | Not required to run VAWLUME. DeepSqueak and MUPET are *integrations*: VAWLUME reads artifacts they already produced and neither bundles nor invokes them |
+| External extractors | Not required to run VAWLUME. DeepSqueak, MUPET, and USVSEG are *integrations*: VAWLUME reads artifacts they already produced and neither bundles nor invokes them |
 
 Nothing is compiled or installed. Setup is: clone the repository, open
 `VAWLUME.prj` (or `addpath("src")`), and create a database file.
@@ -58,10 +58,11 @@ From the repository root, in MATLAB:
 openProject("VAWLUME.prj")   % or: addpath("src")
 addpath("examples")
 
-matching_consensus_demo      % the full cross-extractor path, end to end
+matching_consensus_demo          % the full pairwise cross-extractor path
+multi_extractor_agreement_demo   % all three extractors, end to end
 ```
 
-The six demonstrations under [`examples/`](examples/) create every input they
+The eight demonstrations under [`examples/`](examples/) create every input they
 need under the system temporary directory and remove it before returning, so
 they need no data of your own. To run them all, and to build your own database
 from your own recordings, follow the
@@ -71,7 +72,7 @@ To check the environment is correctly configured:
 
 ```matlab
 addpath("src")
-results = runtests("tests", IncludeSubfolders=true);   % 407 tests, ~9-25 minutes
+results = runtests("tests", IncludeSubfolders=true);   % 412 tests, ~9-25 minutes
 table(results)
 assert(~isempty(results), "No tests discovered.");
 assertSuccess(results);
@@ -131,12 +132,13 @@ Normalization is additive rather than destructive. Native fields, values, units,
 The current design includes:
 
 - an executable `schema/schema.sql` draft with Phase 1 integrity triggers and query views;
-- DeepSqueak and MUPET extractor design references;
-- built-in DeepSqueak and MUPET JSON output-mapping profiles plus synthetic
-  external-event and long/wide alignment-anchor mapping profiles;
+- DeepSqueak, MUPET, and USVSEG extractor design references;
+- built-in DeepSqueak, MUPET, and USVSEG JSON output-mapping profiles plus
+  synthetic external-event and long/wide alignment-anchor mapping profiles;
 - example project-input, recording-device, experimental-setup, and profile-linkage JSON;
 - a specified source-mapping architecture;
-- semantic seed registration for shipped DeepSqueak/MUPET output-mapping profiles;
+- semantic seed registration for the shipped DeepSqueak, MUPET, and USVSEG
+  output-mapping profiles;
 - a deterministic Phase 1 synthetic fixture with representative acceptance queries and MATLAB tests;
 - project-source discovery/path parsing and extractor table-field mapping;
 - one provenance-bearing, validated source-mapping intermediate representation
@@ -202,9 +204,23 @@ changes and a run without its exact settings is not reproducible.
 `#` identifier header and every printed source token, accepts a header-only CSV
 as a valid zero-detection result, retains unexpected columns in the returned
 source table while the shared mapper reports them, and requires the caller to
-declare the USVSEG version because the artifact contains no version string. A
-database-facing USVSEG run importer is not implemented yet. See
-[`docs/development/15_usvseg_export_adapter.md`](docs/development/15_usvseg_export_adapter.md).
+declare the USVSEG version because the artifact contains no version string.
+
+`vawlume.ingest.usvseg` then plans or atomically applies that export as an
+extraction run: the run and artifact provenance, the syllable detections, their
+native and canonical measurements, and every unclaimed source column preserved
+row by row in `unmapped_source_values`. Its two deliberate differences from the
+other importers are both consequences of what USVSEG actually writes. The
+version is required from the caller and raises rather than warning, because no
+output carries one. Settings evidence is *optional*, unlike MUPET's: USVSEG
+writes `usvseg_prm.mat` when the application closes rather than beside the CSV
+it may or may not correspond to, so it is registered as application-scoped weak
+evidence and never becomes the run's settings profile version. No curation,
+classification, detection-score, or frequency-bound row is created, because
+USVSEG exports none of them and none may be synthesized. See
+[`docs/development/15_usvseg_export_adapter.md`](docs/development/15_usvseg_export_adapter.md)
+and
+[`docs/development/21_usvseg_import.md`](docs/development/21_usvseg_import.md).
 
 MUPET's differences from DeepSqueak are preserved rather than smoothed over. The
 exported duration keeps its pre-noise-reduction operational variant and is never
@@ -212,9 +228,34 @@ recomputed from the boundaries; the terminal inter-syllable interval keeps its
 exported `NA` token as explicit missingness rather than becoming zero; and
 because the per-syllable CSV exports no review state, no class label, and no
 detector score, a MUPET import creates no curation or classification rows and no
-detection score. Both importers share one extractor-neutral core for feature
-resolution, event routing, profile-declared validation, and detection and
-measurement population.
+detection score. All three importers share one extractor-neutral core for
+feature resolution, event routing, profile-declared validation, and detection
+and measurement population, so what stays extractor-specific is only what the
+source format genuinely requires.
+
+**All three extractors therefore reach one relational model over one
+recording**, which is what makes agreement beyond a pair meaningful.
+`vawlume.agreement.compose` takes a complete set of pairwise matching analyses
+— for N runs, all `N*(N-1)/2` extractor pairs, each citing the same versioned
+matching specification — and composes their exact supporting edges into
+components over native detections. Requiring the complete set is the point: a
+missing supporting edge must never be confusable with a pair that was never
+assessed. Membership is connectivity, and connectivity is not completeness: a
+component of three detections says they are connected, never that all three
+extractor pairs support one another. No transitive edge is synthesized to make a
+component look complete, and an extractor-unique detection survives as a
+single-member group.
+
+`vawlume.agreement.selectPopulation` then reads those components back as
+analysis populations, keeping *which* extractor pairs are supported separate
+from *how many* are supported: two components can both be two of three while
+supporting different pairs, and only the coarse query merges them. Group counts
+and native-member counts stay separate denominators, so a split/merge component
+is one group with several native observations rather than several matches. See
+[`docs/development/22_phase1_correspondence_boundaries.md`](docs/development/22_phase1_correspondence_boundaries.md)
+for where each of those boundaries sits, and note the line none of this crosses:
+agreement is methodological evidence about extractor convergence, never a
+calibrated confidence probability and never a biological truth label.
 
 `vawlume.matching.compare` consumes two explicitly selected runs on one
 recording and the tracked matching specification. Planning is read-only and
@@ -295,12 +336,36 @@ provenance. The fixture deliberately contains one-to-one, one-to-many, and
 unmatched topology. Its thresholds illustrate behavior only; they are not a
 scientific recommendation.
 
+A fifth covers the USVSEG path at
+[`examples/usvseg_import_demo.m`](examples/usvseg_import_demo.m). It
+establishes one project recording, generates a small synthetic
+`<stem>_dat.csv`, inspects it without touching the database, plans and applies
+the import, and reads back run and artifact provenance, syllable detections,
+and native plus canonical measurements. It then shows the three behaviours that
+distinguish this importer: optional `usvseg_prm.mat` recorded as
+application-scoped weak evidence, an unexpected source column preserved in
+`unmapped_source_values` rather than discarded, and a header-only export
+committing as a valid zero-detection run. It states the zero curation,
+classification, detection-score, and frequency-bound counts positively.
+
+The three-extractor demonstration at
+[`examples/multi_extractor_agreement_demo.m`](examples/multi_extractor_agreement_demo.m)
+is the one to read for the arbitrary-N path. It imports DeepSqueak, MUPET, and
+USVSEG onto one synthetic recording, runs all three pairwise comparisons under
+one specification, composes them into agreement groups, and then queries the
+same run two ways. Its fixture holds six deliberate component shapes: a clean
+triple, a complete split/merge, a two-extractor pair, an extractor-unique
+singleton, and **two open chains that support the same number of extractor
+pairs and different pairs** — which is precisely what an exact edge-pattern
+query separates and a coarse K-of-possible query merges.
+
 The agreement population demonstration at
 [`examples/agreement_filter_demo.m`](examples/agreement_filter_demo.m) composes
-three-extractor agreement over the Phase 1 synthetic fixture, selects exact and
-coarse support shapes, keeps clean complete and complete ambiguous components
-separate, and joins native members to synthetic time-bounded hierarchy context
-and long-form duration measurements. Its summaries are descriptive only.
+three-extractor agreement over the Phase 1 synthetic fixture instead, selects
+exact and coarse support shapes, keeps clean complete and complete ambiguous
+components separate, and joins native members to synthetic time-bounded
+hierarchy context and long-form duration measurements. Its summaries are
+descriptive only.
 
 From the repository root:
 
@@ -309,13 +374,16 @@ addpath("examples")
 project_intake_demo
 deepsqueak_import_demo
 mupet_import_demo
+usvseg_import_demo
 matching_consensus_demo
-temporal_alignment_demo
+multi_extractor_agreement_demo
 agreement_filter_demo
+temporal_alignment_demo
 ```
 
-All six create every input they need under the system temporary directory and
-remove it before returning.
+All eight create every input they need under the system temporary directory and
+remove it before returning, and each is covered by an integration test under
+[`tests/integration/`](tests/integration/).
 
 ## Configuration policy
 
@@ -381,6 +449,16 @@ Phase 7 completed item 10 and its integration and exit review has passed. It
 split that item so temporal alignment came first: sequence analysis over
 vocalization events is only meaningful once those events share a defensible
 common clock with the behavioural or neural events they are being related to.
+
+A subsequent development round added USVSEG as a third extractor on the same
+contracts — its output-mapping profile, the database-free export adapter, and
+the database-facing importer — and then generalized correspondence beyond a
+pair. Arbitrary-N extractor agreement composes a complete set of compatible
+pairwise analyses into components over native detections, retains every exact
+supporting edge, and is queryable as exact or coarse analysis populations. That
+work added no new threshold: the agreement policy declares none, and the
+candidate universe stays bounded by the matching specification each source
+analysis already recorded.
 
 **VAWLUME now supports lightweight timestamped external-event registration and
 anchor-based source-to-reference clock alignment**, with mapping-profile and
@@ -480,6 +558,14 @@ metric identity is never asserted.
 - [`docs/development/12_alignment_intake_and_registration.md`](docs/development/12_alignment_intake_and_registration.md) — session manifest contract, the recording-native clock rule, what one apply registers, and the conflict and transaction semantics
 - [`docs/development/13_transform_fitting_and_alignment_qc.md`](docs/development/13_transform_fitting_and_alignment_qc.md) — offset and affine models, logical-anchor pairing, residual evidence, why a fit is `estimated` rather than `validated`, and stored-transform application
 - [`docs/development/14_common_time_views_and_regularized_timeline.md`](docs/development/14_common_time_views_and_regularized_timeline.md) — common-time event union, identity transforms, projected coverage, half-open bins, and absent-versus-unavailable semantics
+- [`docs/development/15_usvseg_export_adapter.md`](docs/development/15_usvseg_export_adapter.md) — the database-free USVSEG export boundary, file contract, and version behavior
+- [`docs/development/16_multi_extractor_agreement_schema.md`](docs/development/16_multi_extractor_agreement_schema.md) — arbitrary-N agreement groups, members, and exact supporting edges as a storage contract
+- [`docs/development/17_agreement_run_planning.md`](docs/development/17_agreement_run_planning.md) — source-analysis resolution, the complete-pairwise-set requirement, and analysis identity
+- [`docs/development/18_agreement_composition.md`](docs/development/18_agreement_composition.md) — connectivity over exact edges, why no transitive edge is synthesized, and atomic apply
+- [`docs/development/19_agreement_query_views.md`](docs/development/19_agreement_query_views.md) — long-form members, exact edges, possible-versus-supported extractor pairs, and the pattern convention
+- [`docs/development/20_agreement_population_selection.md`](docs/development/20_agreement_population_selection.md) — the read-only filtering API, its independent shape dimensions, and its group/member denominators
+- [`docs/development/21_usvseg_import.md`](docs/development/21_usvseg_import.md) — USVSEG import contract, caller-supplied version, optional weak settings evidence, and the deliberate absences
+- [`docs/development/22_phase1_correspondence_boundaries.md`](docs/development/22_phase1_correspondence_boundaries.md) — **read this to orient**: the boundary between native detections, pairwise candidate/match/consensus, arbitrary-N agreement groups, and future caller-attribution evidence
 
 Extractor-specific design references should live under:
 
@@ -504,24 +590,28 @@ The first prototype is not intended to provide:
 
 The goal is a vertically integrated, reproducible demonstration of the architecture.
 
-## Relationship to DeepSqueak and MUPET
+## Relationship to DeepSqueak, MUPET, and USVSEG
 
-VAWLUME does not detect or extract vocalizations, and it contains no DeepSqueak
-or MUPET code. It reads artifacts those tools have already produced —
-a DeepSqueak Excel call-statistics export, a MUPET per-syllable CSV — through
-versioned mapping profiles that live in this repository.
+VAWLUME does not detect or extract vocalizations, and it contains no DeepSqueak,
+MUPET, or USVSEG code. It reads artifacts those tools have already produced —
+a DeepSqueak Excel call-statistics export, a MUPET per-syllable CSV, a USVSEG
+`<stem>_dat.csv` — through versioned mapping profiles that live in this
+repository. In particular, VAWLUME does **not** wrap or run USVSEG.
 
-Both are therefore **integrations, not components**, and both remain the work
-and property of their own authors:
+All three are therefore **integrations, not components**, and each remains the
+work and property of its own authors:
 
 - DeepSqueak — <https://github.com/DrCoffey/DeepSqueak>
 - MUPET — <https://github.com/mvansegbroeck/mupet>
+- USVSEG — <https://github.com/rtachi-lab/usvseg>
 
-Support for these two extractors reflects where the prototype started, not a
+Support for these three extractors reflects where the prototype started, not a
 judgement that they are the only ones worth supporting. The mapping-profile
-layer, relational model, matching, consilience, and alignment machinery are
-extractor-independent by design; adding another extractor means authoring a new
-output-mapping profile rather than changing the architecture.
+layer, relational model, matching, consilience, agreement, and alignment
+machinery are extractor-independent by design; adding another extractor means
+authoring a new output-mapping profile rather than changing the architecture,
+and the arbitrary-N agreement layer is combinatorial in N rather than
+hard-coded to three.
 
 ## License
 

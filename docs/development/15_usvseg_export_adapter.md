@@ -11,8 +11,12 @@ preview = vawlume.source_mapping.preview(export.ir);
 
 The adapter reads only the profile-selected `usvseg_dat_csv` artifact. It does
 not wrap or run USVSEG, import optional trace/WAV/image outputs, infer an
-extractor version, or access SQLite. Database registration of the extraction
-run and detections is a separate later boundary.
+extractor version, or access SQLite.
+
+Database registration of the extraction run and its detections is a separate
+boundary, `vawlume.ingest.usvseg`, documented in
+[`21_usvseg_import.md`](21_usvseg_import.md). This adapter remains useful on
+its own as the dry-run inspection point before anything is written.
 
 ## File contract
 
@@ -57,17 +61,19 @@ The result includes:
 
 Unknown source columns remain in `result.table` exactly as read. The shared
 mapper also emits `SOURCE_COLUMN_UNMAPPED` according to the profile's
-`preserve_and_warn` policy. The current IR does not yet materialize per-row
-unknown values into the schema's `unmapped_source_values`; retaining the full
-source table keeps those values recoverable for that later database importer.
+`preserve_and_warn` policy. The IR itself does not materialize per-row unknown
+values; retaining the full source table is what lets
+`vawlume.ingest.usvseg` write them to `unmapped_source_values` at the database
+boundary.
 
 ## Version behavior
 
 USVSEG outputs carry no version string. `ExtractorVersion` is therefore caller
 evidence. `0.9r2` matches the shipped profile's preferred scope. A missing or
 incompatible declaration remains explicit in `extractor_version` and produces
-an adapter warning during database-free inspection; the later database-facing
-importer is responsible for enforcing the profile's required-at-ingest policy.
+an adapter warning during database-free inspection. Enforcing the profile's
+`version_required_at_ingest` policy is `vawlume.ingest.usvseg`'s
+responsibility, and it raises rather than warning.
 
 The factual format and semantic evidence behind this contract is documented in
 [`../reference/extractors/USVSEG_Extractor_Design_Reference.md`](../reference/extractors/USVSEG_Extractor_Design_Reference.md).

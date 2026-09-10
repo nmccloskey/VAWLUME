@@ -84,12 +84,21 @@ config/01_mapping_profiles/extractors/usvseg/
 
 All three profiles are registered by default, so their extractor identities,
 native features, canonical mappings, and eligible cross-extractor feature
-relationships are part of the shipped semantic vocabulary. The database-free
-`vawlume.ingest.usvsegExport` adapter now interprets the primary USVSEG event
-CSV through this profile; database population remains a later pass. See
-[`docs/development/15_usvseg_export_adapter.md`](../docs/development/15_usvseg_export_adapter.md)
+relationships are part of the shipped semantic vocabulary. All three are also
+importable end to end: the database-free
+`vawlume.ingest.usvsegExport` adapter interprets the primary USVSEG event CSV
+through this profile, and `vawlume.ingest.usvseg` registers the extraction run,
+detections, and measurements. See
+[`docs/development/15_usvseg_export_adapter.md`](../docs/development/15_usvseg_export_adapter.md),
+[`docs/development/21_usvseg_import.md`](../docs/development/21_usvseg_import.md),
 and the underlying design evidence in
 [`docs/reference/extractors/USVSEG_Extractor_Design_Reference.md`](../docs/reference/extractors/USVSEG_Extractor_Design_Reference.md).
+
+USVSEG's settings capture differs deliberately from MUPET's. MUPET's
+`config.csv` is genuinely run-scoped and is required to apply; USVSEG's
+`usvseg_prm.mat` is written when the application closes and is therefore
+optional, weak, application-scoped evidence that never becomes an extraction
+run's settings profile version.
 
 ### 3. External-stream source mapping profile
 

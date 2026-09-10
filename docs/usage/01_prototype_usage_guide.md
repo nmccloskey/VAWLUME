@@ -27,15 +27,19 @@ Concretely, the prototype can today:
   preview;
 - **ingest** that IR transactionally into a relational project, experimental
   entity, and recording graph with immutable ingestion provenance;
-- **import** DeepSqueak Excel call-statistics exports and MUPET per-syllable
-  CSVs onto an established recording, creating extraction runs, artifacts,
-  detections, and native plus canonical event measurements;
+- **import** DeepSqueak Excel call-statistics exports, MUPET per-syllable CSVs,
+  and USVSEG `<stem>_dat.csv` event exports onto an established recording,
+  creating extraction runs, artifacts, detections, and native plus canonical
+  event measurements;
 - **match** two explicitly selected extraction runs on one recording by temporal
   overlap, preserving ambiguity as connected-component match groups, and derive
   consensus events only where topology permits;
 - **quantify** detection- and feature-level agreement, assign provenance-bearing
   consilience statuses, evaluate against an independent reviewer-authored
   reference set, and compare several matching thresholds side by side;
+- **compose** a complete set of compatible pairwise analyses into arbitrary-N
+  extractor agreement over native detections, and select exact or coarse
+  agreement populations without collapsing split/merge components;
 - **register** timestamped external event streams (behavioural, neural/TTL) and
   logical alignment anchors from one session manifest, **fit** offset or affine
   source-to-reference clock transforms with per-anchor residual evidence, project
@@ -44,9 +48,16 @@ Concretely, the prototype can today:
 ### Important limitations
 
 - **Extractor coverage is deliberately narrow.** DeepSqueak (Excel
-  call-statistics export) and MUPET (per-syllable CSV) are the only implemented
-  importers. Native DeepSqueak `.mat` containers, detector networks, and
-  classification models are registered and checksummed but never parsed.
+  call-statistics export), MUPET (per-syllable CSV), and USVSEG
+  (`<stem>_dat.csv`) are the only implemented importers, and only their primary
+  event export is read. Native DeepSqueak `.mat` containers, detector networks,
+  classification models, and USVSEG's optional trace/WAV/image outputs are
+  registered and checksummed where supplied but never parsed. VAWLUME does not
+  wrap or run any extractor.
+- **Extractor agreement is not truth.** Convergence between two or three
+  extractors is methodological evidence about the extractors. It is not a
+  confidence probability, not a claim that a vocalization occurred, and not
+  evidence about which animal called.
 - **No GUI, no CLI.** VAWLUME is a set of namespaced MATLAB functions called
   from the MATLAB command window or a script.
 - **No continuous-signal ingestion.** Only *timestamped events* enter the
@@ -64,9 +75,11 @@ Concretely, the prototype can today:
 
 VAWLUME does **not** detect or extract vocalizations. It consumes what an
 external extractor already produced. The conceptual machinery — mapping
-profiles, the IR, the relational model, matching, consilience, alignment — is
-extractor-independent; only the shipped output-mapping profiles and the two thin
-artifact adapters are extractor-specific.
+profiles, the IR, the relational model, matching, consilience, agreement,
+alignment — is extractor-independent; only the shipped output-mapping profiles
+and the three thin artifact adapters are extractor-specific. Nothing in the
+architecture is hard-coded to three extractors: the agreement layer is
+combinatorial in N.
 
 Normalization is **additive, never destructive**. Native artifacts, field names,
 values, units, hierarchy, labels, missing tokens, and extractor/run provenance
@@ -85,7 +98,7 @@ events — is never a claim of metric identity.
 | SQLite | No separate installation. The database is a file created through MATLAB's `sqlite` interface |
 | Python / PyYAML | **Not required.** Configuration is canonical JSON read with `fileread` + `jsondecode` |
 | Excel reading | MATLAB's built-in `readtable` — needed only for DeepSqueak workbook imports |
-| Extractor input | A DeepSqueak Excel call-statistics export, and/or a MUPET per-syllable CSV plus its native `config.csv` |
+| Extractor input | Any of: a DeepSqueak Excel call-statistics export; a MUPET per-syllable CSV plus its native `config.csv`; a USVSEG `<stem>_dat.csv` |
 
 See [`../development/01_environment.md`](../development/01_environment.md).
 
@@ -105,7 +118,8 @@ macOS or Linux, treat the test suite (§9) as your first check.
 ```text
 user project structure          extractor artifacts          external event tables
 (folders, filenames)            (DeepSqueak xlsx,            (behaviour, neural TTL)
-                                 MUPET csv)                   + anchor tables
+                                 MUPET csv,                   + anchor tables
+                                 USVSEG csv)
         |                              |                              |
         +---------------- mapping profiles (JSON) --------------------+
                                        |
@@ -118,6 +132,7 @@ user project structure          extractor artifacts          external event tabl
         |                   |                      |                   |
  vawlume.ingest.project  vawlume.ingest.       vawlume.ingest.    (session manifest)
                          deepsqueak / mupet    alignment
+                         / usvseg
         |                   |                      |
         +-------------------+----------------------+
                                        |
@@ -128,8 +143,17 @@ user project structure          extractor artifacts          external event tabl
  vawlume.matching.compare     vawlume.consilience.        vawlume.alignment.fit
  (candidates, groups,         summarize / sensitivity     -> commonTime
   consensus)                  (agreement, consilience,    -> vawlume.sequence.
-                               manual QC)                    regularizeTimeline
+        |                      manual QC)                    regularizeTimeline
+        |
+ vawlume.agreement.compose  ->  vawlume.agreement.selectPopulation
+ (arbitrary-N groups over        (exact pattern / coarse K populations)
+  native detections)
 ```
+
+A third boundary follows from the last row. **Pairwise matching is the
+primitive and arbitrary-N agreement is derived from it.** `compose` takes a set
+of completed pairwise *analyses*, not a set of runs, and never reimplements
+matching as a second matcher.
 
 Two boundaries are enforced rather than merely recommended:
 
@@ -185,12 +209,15 @@ Configuration is never discovered implicitly. You pass a profile path — and a
 `ProfileId` when the document holds several profiles — to the function that
 needs it.
 
-Only two things have a default, and both resolve to a *tracked* file beneath
+Only three things have a default, and all resolve to a *tracked* file beneath
 `RepoRoot`: the extractor importers fall back to their shipped output-mapping
-profile, and `vawlume.matching.compare` falls back to
+profile, `vawlume.matching.compare` falls back to
 `config/05_matching_profiles/prototype_matching_consilience_spec.json` when
-`matchSpec.profile_path` is omitted. Project-input profiles, external-stream and
-anchor profiles, and alignment manifests must always be named explicitly.
+`matchSpec.profile_path` is omitted, and `vawlume.agreement.compose` falls back
+to `config/07_agreement_profiles/prototype_multi_extractor_agreement_spec.json`
+when `agreementSpec.profile_path` is omitted. Project-input profiles,
+external-stream and anchor profiles, and alignment manifests must always be
+named explicitly.
 
 ---
 
@@ -202,22 +229,26 @@ All tracked configuration is canonical JSON under `config/`. See
 | Directory | Kind | Needed for |
 |---|---|---|
 | `config/01_mapping_profiles/project_inputs/` | `project_input` | project intake |
-| `config/01_mapping_profiles/extractors/deepsqueak/`, `.../mupet/` | `extractor_output` | extractor import (shipped; usable as-is) |
+| `config/01_mapping_profiles/extractors/deepsqueak/`, `.../mupet/`, `.../usvseg/` | `extractor_output` | extractor import (shipped; usable as-is) |
 | `config/01_mapping_profiles/external_streams/` | `external_stream_mapping` | external event registration |
 | `config/01_mapping_profiles/alignment_anchors/` | `alignment_anchor_mapping` | anchor registration |
 | `config/02_device_profiles/`, `config/03_setup_profiles/` | device / setup examples | optional acquisition provenance |
 | `config/04_examples/profile_linkage_example.json` | linkage | optional device/setup assignment at intake |
 | `config/05_matching_profiles/` | `consilience_policy` | matching and consilience |
 | `config/06_alignment_manifests/` | session manifest (**not** a profile kind) | alignment intake |
+| `config/07_agreement_profiles/` | `multi_extractor_agreement_spec` | arbitrary-N agreement composition |
 
 ### 5.1 Defaults versus what you must author
 
 **Usable as shipped, no editing needed:**
 
-- both extractor-output mapping profiles;
+- all three extractor-output mapping profiles;
 - the prototype matching/consilience specification
   (`prototype_matching_consilience_spec.json`) — but read §10 about its
   thresholds;
+- the prototype arbitrary-N agreement policy
+  (`prototype_multi_extractor_agreement_spec.json`), which declares no
+  threshold of any kind and refuses a variant that adds one;
 - the external-stream and alignment-anchor mapping profiles, *if* your event
   tables happen to use the same columns.
 
@@ -308,23 +339,33 @@ verdict without touching the database.
 
 ### 6.1 The shortest path: run a shipped demonstration
 
-Five runnable demonstrations create every input they need under the system
+Eight runnable demonstrations create every input they need under the system
 temporary directory and remove it before returning. From the repository root:
 
 ```matlab
 addpath("src")
 addpath("examples")
 
-project_intake_demo        % source mapping -> preview -> intake -> read-back
-deepsqueak_import_demo     % + DeepSqueak run, artifacts, detections, measurements
-mupet_import_demo          % + MUPET syllables, settings provenance, NA missingness
-matching_consensus_demo    % + matching, consensus, agreement, consilience, sensitivity
-temporal_alignment_demo    % + manifest registration, transform fitting, common time
+project_intake_demo            % source mapping -> preview -> intake -> read-back
+deepsqueak_import_demo         % + DeepSqueak run, artifacts, detections, measurements
+mupet_import_demo              % + MUPET syllables, settings provenance, NA missingness
+usvseg_import_demo             % + USVSEG syllables, weak settings, zero-detection run
+matching_consensus_demo        % + matching, consensus, agreement, consilience, sensitivity
+multi_extractor_agreement_demo % + three extractors, arbitrary-N agreement, exact vs coarse
+agreement_filter_demo          % + agreement populations joined to context and features
+temporal_alignment_demo        % + manifest registration, transform fitting, common time
 ```
 
-Each returns a struct and prints a compact report; pass `Print=false` to suppress
-the printing. `matching_consensus_demo` is the complete cross-extractor path and
-is the best single thing to read.
+Each returns a struct and prints a compact report; pass `Print=false` to
+suppress the printing. Every one is covered by an integration test, so the
+numbers they print are asserted rather than merely observed.
+
+Two are worth reading first. `matching_consensus_demo` is the complete
+**pairwise** path, including consilience and threshold sensitivity.
+`multi_extractor_agreement_demo` is the complete **three-extractor** path:
+it imports all three extractors onto one recording, runs all three pairwise
+comparisons, composes them into agreement groups, and then queries the same run
+by exact edge pattern and by coarse K-of-possible support.
 
 To explore the relational model without running a workflow at all, build the
 deterministic Phase 1 synthetic fixture — one study, several subjects, a dyadic
@@ -453,6 +494,86 @@ agreement = vawlume.consilience.summarize(conn, struct(run_key="match-01"), ...
 is the tested version of exactly this sequence, including the synthetic extractor
 exports it imports.
 
+### 6.4 Three extractors: arbitrary-N agreement
+
+Once a recording carries three extraction runs by three distinct extractors,
+agreement over all of them is composed from the pairwise analyses rather than
+computed directly.
+
+**Step 1 — every pairwise comparison, under one specification.** For N runs you
+need all `N*(N-1)/2` extractor pairs, each exactly once, and each citing the
+same versioned matching specification. Composition refuses an incomplete or
+mixed set, so that a missing supporting edge can never be confused with a pair
+that was never assessed.
+
+```matlab
+specPath = fullfile(repoRoot, "config", "05_matching_profiles", ...
+    "prototype_matching_consilience_spec.json");
+pairs = {"m-ds-mupet",     "ds-run-01",    "mupet-run-01"
+         "m-ds-usvseg",    "ds-run-01",    "usvseg-run-01"
+         "m-mupet-usvseg", "mupet-run-01", "usvseg-run-01"};
+for k = 1:size(pairs, 1)
+    vawlume.matching.compare(conn, recordingRef, ...
+        struct(run_a=pairs{k,2}, run_b=pairs{k,3}), ...
+        struct(run_key=pairs{k,1}, profile_path=specPath), ...
+        RepoRoot=repoRoot, Apply=true);
+end
+```
+
+**Step 2 — compose.** `sources` is the set of *analyses*, not runs. Order
+carries no meaning.
+
+```matlab
+composed = vawlume.agreement.compose(conn, recordingRef, ...
+    ["m-ds-mupet", "m-ds-usvseg", "m-mupet-usvseg"], ...
+    struct(run_key="agree-01"), RepoRoot=repoRoot, Apply=true);
+```
+
+**Step 3 — select populations.** `selectPopulation` is read-only.
+
+```matlab
+ref = struct(project_key="quickstart", run_key="agree-01");
+
+all      = vawlume.agreement.selectPopulation(conn, ref);
+exact    = vawlume.agreement.selectPopulation(conn, ref, ...
+    ExactSupportPattern="deepsqueak--mupet|mupet--usvseg");
+coarse   = vawlume.agreement.selectPopulation(conn, ref, ...
+    MinSupportedPairCount=2);
+ambiguous = vawlume.agreement.selectPopulation(conn, ref, ...
+    Completeness="complete", Multiplicity="multiple_per_extractor");
+```
+
+**Reading the result correctly** matters more here than anywhere else in the
+prototype:
+
+- **Exact and coarse are different questions.** `ExactSupportPattern` asks
+  *which* extractor pairs are supported; `MinSupportedPairCount` /
+  `ExactSupportedPairCount` ask *how many*. Two components can both support two
+  of three possible pairs while supporting different pairs, and only the coarse
+  query merges them.
+- **The denominator is component-local.** `possible_extractor_pair_count` is
+  `C(N,2)` over the extractors actually represented in that component, not a
+  run-wide constant. A two-extractor component has a denominator of 1.
+- **A singleton's support fraction is `NaN`, not 0.** No extractor pair was
+  possible, which is not the same as corroboration that failed.
+- **Groups and members are different denominators.** `result.groups` is one row
+  per component; `result.members` is one row per native detection. A split/merge
+  component is one group with several native observations. Say which
+  denominator a summary used.
+- **Connectivity is not completeness.** A three-member component says its
+  members are connected, never that all three extractor pairs support one
+  another. Check `is_extractor_pair_support_complete`.
+
+[`../../examples/multi_extractor_agreement_demo.m`](../../examples/multi_extractor_agreement_demo.m)
+is the tested version of this whole sequence, from three imports through both
+query styles, over a fixture built to contain each of those shapes.
+[`../../examples/agreement_filter_demo.m`](../../examples/agreement_filter_demo.m)
+goes one step further and joins the selected native members to time-bounded
+experimental context and long-form measurements.
+
+Agreement strength is methodological evidence about extractor convergence. It
+is not a calibrated confidence probability and not a biological truth label.
+
 ---
 
 ## 7. Using your own data
@@ -509,11 +630,34 @@ required, and **settings evidence is required to apply**: supply either
 when its configuration changes and a run without its exact settings is not
 reproducible.
 
-**USVSEG** - one `<stem>_dat.csv` per segmentation pass. Export inspection is
-implemented and database-free; a database-facing run importer is not yet
-implemented. Supply `ExtractorVersion="0.9r2"` because USVSEG writes no version
-string into its artifacts. The adapter preserves the literal `#` header and
-source tokens, and treats a header-only CSV as a valid zero-detection result.
+**USVSEG** — one `<stem>_dat.csv` per segmentation pass. `run_key` and
+`extractor_version` are required, and `extractor_version` **raises** rather than
+warning if it is missing or outside the profile's scope, because USVSEG writes
+no version string into any artifact and there is nothing to fall back on.
+
+Settings evidence is **optional** here, which is the opposite of MUPET. USVSEG
+writes `usvseg_prm.mat` when the application closes, holding whatever parameters
+were active at that moment, and not beside the CSV it may or may not correspond
+to. Requiring it would refuse ordinary correct output. Supply it through
+`runSpec.settings = struct(artifact_path="…/usvseg_prm.mat")` to have it hashed
+and registered — but it is recorded as application-scoped *weak* evidence and
+never becomes the run's settings profile version.
+
+The importer preserves the literal `#` header and every printed source token,
+treats a header-only CSV as a valid zero-detection run, and writes any source
+column the profile does not claim to `unmapped_source_values` rather than
+discarding it. It creates no curation, classification, detection-score, or
+frequency-bound row, because USVSEG exports none and none may be synthesized.
+
+```matlab
+usvsegSpec = struct(run_key="usvseg-run-01", extractor_version="0.9r2");
+result = vawlume.ingest.usvseg(conn, usvsegCsvPath, recordingRef, usvsegSpec, ...
+    RepoRoot=repoRoot);                     % plan
+result = vawlume.ingest.usvseg(conn, usvsegCsvPath, recordingRef, usvsegSpec, ...
+    RepoRoot=repoRoot, Apply=true);         % commit
+```
+
+See [`../development/21_usvseg_import.md`](../development/21_usvseg_import.md).
 
 Inspect any supported export without a database first:
 
@@ -529,8 +673,10 @@ vawlume.source_mapping.preview(usvseg.ir, Print=true);
 
 For an extractor VAWLUME ships no profile for, the path is to author a new
 `extractor_output` profile against that extractor's documented fields and
-validate it through `loadProfile` and `preview`. Nothing in the ingest, matching,
-consilience, or alignment layers is DeepSqueak- or MUPET-specific.
+validate it through `loadProfile` and `preview`. Nothing in the ingest,
+matching, consilience, agreement, or alignment layers is specific to any of the
+three shipped extractors, and the agreement layer's combinatorics are in N
+rather than fixed at three.
 
 ### 7.4 Register external events and align clocks
 
@@ -570,15 +716,23 @@ in the prototype; derived tables are returned to MATLAB.
 |---|---|
 | Schema + seed | `schema_info`, `extractors`, `extractor_versions`, `canonical_features`, `extractor_features`, `feature_mappings`, `feature_relationships`, `config_profiles`, `config_profile_versions` |
 | Project intake | `projects`, `source_files`, `entity_types`, `experimental_entities`, `entity_relationships`, `recordings`, `recording_entity_links`, `*_profile_assignments`, `ingestion_runs`, `ingestion_files` |
-| Extractor import | `extraction_runs`, `extraction_run_inputs`, `extraction_run_profiles`, `artifacts`, `extraction_run_artifacts`, `detections`, `event_measurements`, and — DeepSqueak only — `curation_events`, `classification_runs`, `classification_classes`, `classification_assignments` |
+| Extractor import | `extraction_runs`, `extraction_run_inputs`, `extraction_run_profiles`, `artifacts`, `extraction_run_artifacts`, `detections`, `event_measurements`; `unmapped_source_values` for unclaimed source columns; and — DeepSqueak only — `curation_events`, `classification_runs`, `classification_classes`, `classification_assignments` |
 | Matching | `analysis_runs`, `analysis_run_profiles`, `analysis_run_extraction_inputs`, `candidate_pairs`, `match_groups`, `match_group_members`, `consensus_events`, `consensus_event_members` |
 | Consilience | `consilience_assessments`, `agreement_statistics`; `manual_reviews` and `manual_reference_events` hold independent human input |
+| Arbitrary-N agreement | `analysis_runs` (a `multi_extractor_agreement` run with many-parent lineage), `agreement_groups`, `agreement_group_members`, `agreement_supporting_edges` |
 | Alignment | `timebases`, `external_streams`, `external_stream_sources`, `external_stream_coverage`, `external_events`, `external_event_attributes`, `alignment_sets`, `alignment_anchors`, `alignment_anchor_observations`, `time_alignment_runs`, `alignment_segments`, `alignment_anchor_residuals` |
+
+Note that `agreement_statistics` belongs to *pairwise* consilience despite its
+name; the arbitrary-N layer stores no summary at all. Its counts, fractions,
+patterns, and status flags are SQLite views over the member and edge rows, so
+they cannot drift from the evidence they summarize.
 
 Convenience views: `v_detection_core`, `v_recording_entity_context`,
 `v_event_measurements_long`, `v_match_group_members`,
-`v_cross_extractor_feature_pairs`, `v_external_events_aligned`,
-`v_sequence_members`.
+`v_agreement_group_members`, `v_agreement_supporting_edges`,
+`v_agreement_extractor_pair_support`, `v_agreement_group_summary`,
+`v_cross_extractor_feature_pairs`, `v_feature_relationship_endpoints`,
+`v_external_events_aligned`, `v_sequence_members`.
 
 ### 8.2 Identifiers and provenance
 
@@ -602,9 +756,16 @@ recording ──< extraction_run ──< detection ──< event_measurement
      │              └── artifacts, settings, model, mapping profile
      │
      ├──< analysis_run (matching) ──< candidate_pair ──< match_group ──< consensus_event
+     │              │                       │
+     │              │                       └── cited exactly by
+     │              │                           agreement_supporting_edges
      │              │
-     │              └──< analysis_run (consilience, child) ──< consilience_assessment
-     │                                                        agreement_statistics
+     │              ├──< analysis_run (consilience, child) ──< consilience_assessment
+     │              │                                          agreement_statistics
+     │              │
+     │              └──< analysis_run (arbitrary-N agreement, many parents)
+     │                        └──< agreement_group ──< agreement_group_member
+     │                                                    └── one native detection
      │
      ├──< manual_reference_events   (reviewer-authored, scoped to the recording,
      │                               never derived from extractor curation)
@@ -624,8 +785,10 @@ never updated — an aligned time is derived on demand from stored coefficients.
 
 **Derived (regenerable from source plus configuration):** `candidate_pairs`,
 `match_groups`, `consensus_events`, `consilience_assessments`,
-`agreement_statistics`, `alignment_segments`, `alignment_anchor_residuals`, the
-whole `commonTime` table, and the regularized timeline. The regularized timeline
+`agreement_statistics`, `agreement_groups`, `agreement_group_members`,
+`agreement_supporting_edges`, `alignment_segments`,
+`alignment_anchor_residuals`, the whole `commonTime` table, and the regularized
+timeline. The regularized timeline
 is a **MATLAB working artifact only** — deliberately not persisted, which is why
 `sequences` and `sequence_members` stay empty after a full workflow.
 
@@ -680,12 +843,36 @@ exception:
 | Recording not resolved | `:DeepSqueakRecordingRefInvalid`, `:MupetRecordingRefInvalid` | Supply exactly one of `recording_id`, or `project_key` **with** `source_relative_path` — never both modes |
 | Run spec rejected | `:DeepSqueakRunSpecInvalid`, `:MupetRunSpecInvalid` | `run_key` and `extractor_version` are required |
 | MUPET apply refused | `:MupetSettingsRequired` | Supply `settings.config_path` or `settings.json_path`. No default configuration is ever substituted |
+| USVSEG version missing or wrong | `:UsvsegVersionRequired`, `:UsvsegVersionIncompatible` | USVSEG writes no version string, so you must declare one in the profile's scope (`"0.9r2"`). This raises rather than warning |
+| USVSEG settings rejected | `:UsvsegSettingsNotFound`, `:UsvsegSettingsInvalid` | The path does not exist, or the `.mat` holds no `prm` variable. Settings are optional — omit them rather than supplying a wrong file |
+| USVSEG export carries review or class columns | `:UsvsegUnsupportedEventEvidence` | USVSEG exports no curation or classification evidence, so such a column means the artifact is not what the profile describes. It is refused rather than silently dropped |
+| USVSEG event validation failed | `:UsvsegEventValidationFailed` | Duplicate `#` identifiers, or `end` before `start`, in the export |
 | Workbook or CSV unreadable | `:DeepSqueakArtifactUnreadable`, `:MupetArtifactUnreadable`, `:*ArtifactUnsupported`, `:*ArtifactNotFound` | Wrong file, wrong sheet, or a format outside the profile's declared artifact class |
 | IR not valid | `:MupetIRNotValid` | Fix the mapping issues the preview reported before importing |
 
 The DeepSqueak profile's version scope prefers 3.2.x within the 3.x family; a
 version outside it is reported in the adapter result rather than silently
 accepted.
+
+### Arbitrary-N agreement
+
+Most of these mean the source set is not a coherent basis for composition. That
+is deliberate: a missing supporting edge must never be confusable with a pair
+that was never assessed.
+
+| Symptom | Identifier | Cause |
+|---|---|---|
+| Not every extractor pair is covered | `vawlume:agreement:IncompletePairCoverage` | For N runs you must supply all `N*(N-1)/2` pairwise analyses. Run the missing comparison first |
+| Two sources cover the same pair | `:DuplicateExtractorPair`, `:DuplicateSourceAnalysis` | Each unordered extractor pair must appear exactly once |
+| Sources cite different specifications | `:SpecificationVersionMismatch` | Every source analysis must cite the same versioned matching specification, or its edges are not comparable |
+| A source is not usable | `:SourceAnalysisNotFound`, `:SourceAnalysisAmbiguous`, `:SourceAnalysisIncomplete`, `:SourceRunTypeInvalid` | Each source must resolve to exactly one **completed** `cross_extractor_matching` analysis |
+| A source describes another recording or project | `:SourceRecordingMismatch`, `:SourceProjectMismatch` | `recordingRef` is validated against every source analysis; it is not derived, because a valid source may legitimately hold no rows |
+| Two runs by the same extractor | `:SameExtractorPair`, `:RepeatedExtractor` | Agreement is across extractors. Two runs of one extractor are not an extractor pair |
+| Agreement policy rejected | `:SpecificationDeclaresThreshold`, `:SpecificationInvalid`, `:UnexpectedSpecificationKind` | The policy declares no threshold of any kind. A variant that adds one is refused rather than allowed to re-filter evidence the pairwise layer already settled |
+| Apply refused, nothing written | `:PlanConflict` | Stored components or edges differ from the recomputed plan. Inspect the returned conflicts |
+| `selectPopulation` refuses | `:AnalysisNotFound`, `:AnalysisAmbiguous`, `:AnalysisTypeInvalid`, `:AnalysisNotCompleted` | The reference must resolve to exactly one completed `multi_extractor_agreement` run; add `project_key` to disambiguate |
+| Filter rejected | `:PopulationFilterInvalid`, `:PopulationFilterConflict` | Counts must be nonnegative integers, and `ExactSupportedPairCount` cannot be below `MinSupportedPairCount` |
+| A singleton's `support_fraction` is `NaN` | — | Not an error. No extractor pair was possible, which is not the same as corroboration that failed |
 
 ### Matching, consilience, alignment
 
@@ -727,7 +914,7 @@ assertSuccess(results);
 assert(~any([results.Incomplete]), "Incomplete tests.");
 ```
 
-The suite is currently **407 tests**. Runtime is machine-dependent; observed
+The suite is currently **412 tests**. Runtime is machine-dependent; observed
 wall times range from roughly nine to twenty-five minutes. Passing it
 is the strongest available check that an environment is correctly configured.
 Use the [canonical batch gate in the README](../../README.md#quick-start) for
@@ -742,10 +929,12 @@ tests. Synthetic regression coverage does not establish scientific calibration.
 
 Schema and semantic seeding; project-input, extractor-output, external-stream,
 and alignment-anchor source mapping with dry-run preview; transactional project
-intake; DeepSqueak and MUPET import; cross-extractor matching,
+intake; DeepSqueak, MUPET, and USVSEG import; cross-extractor matching,
 connected-component assignment, explicit unmatched groups, and topology-gated
 consensus; detection- and feature-level agreement; consilience statuses;
-manual-reference evaluation; threshold sensitivity; alignment registration,
+manual-reference evaluation; threshold sensitivity; arbitrary-N extractor
+agreement composed from compatible pairwise analyses with exact supporting
+edges retained and exact/coarse population selection; alignment registration,
 offset/affine transform fitting with residual QC, common-time projection, and
 coverage-aware regularized timelines.
 
@@ -767,6 +956,24 @@ coverage-aware regularized timelines.
 - MUPET creates no curation, classification, or detection-score rows — the
   per-syllable CSV exports none, and surviving MUPET's programmatic filtering is
   not a reviewed state.
+- USVSEG creates none of those either, and no frequency minimum, maximum, or
+  bandwidth. Its `usvseg_prm.mat` is application-scoped weak evidence, never the
+  verified configuration of a run, and its version is always a caller assertion.
+- **Agreement is not calibrated and not truth.** Every supporting edge inherits
+  the matching specification's uncalibrated temporal-IoU floor. The agreement
+  layer adds no threshold of its own, which bounds the problem but does not
+  solve it: change that floor and the component shapes change with it. Report
+  which specification produced a population.
+- Arbitrary-N agreement requires a **complete** pairwise set, so N extractors
+  cost `N*(N-1)/2` matching analyses. Query performance is exercised at
+  synthetic-fixture scale only; no index or materialization has been justified
+  against a representative workload.
+- Extractor-pair patterns are delimited by `--` within a pair and `|` between
+  pairs. The schema does not constrain extractor keys from containing those
+  characters.
+- A canonical feature may have several native or operational variants, so a
+  measurement join must select the intended variant rather than assume one
+  feature row per native detection.
 - Project-intake profile-linkage validation covers the demonstrated linkage
   language; generalized profile composition and full device/setup domain
   validation are not implemented.
@@ -804,10 +1011,14 @@ extractor-native classes; publication artefacts.
 - [`../development/04_project_intake.md`](../development/04_project_intake.md) — intake boundary, identity, transactions, provenance
 - [`../development/05_deepsqueak_import.md`](../development/05_deepsqueak_import.md) — DeepSqueak import contract and limitations
 - [`../development/06_mupet_import.md`](../development/06_mupet_import.md) — MUPET import, the deliberate absences, and the shared extractor core
+- [`../development/15_usvseg_export_adapter.md`](../development/15_usvseg_export_adapter.md) and [`../development/21_usvseg_import.md`](../development/21_usvseg_import.md) — the database-free USVSEG boundary, then the import contract, caller-supplied version, and optional weak settings evidence
+- [`../development/22_phase1_correspondence_boundaries.md`](../development/22_phase1_correspondence_boundaries.md) — **the orientation document**: what separates native detections, pairwise candidate/match/consensus, arbitrary-N agreement groups, and future caller-attribution evidence
 - [`../development/07_matching_and_consensus.md`](../development/07_matching_and_consensus.md) — the end-to-end matching → consilience workflow
 - [`../development/07_matching_candidate_generation.md`](../development/07_matching_candidate_generation.md) and [`../development/08_matching_assignment_and_consensus.md`](../development/08_matching_assignment_and_consensus.md) — candidates, topology, consensus lineage
 - [`../development/09_detection_and_feature_agreement.md`](../development/09_detection_and_feature_agreement.md) — agreement denominators and feature-pair discovery
 - [`../development/10_consilience_manual_qc_and_sensitivity.md`](../development/10_consilience_manual_qc_and_sensitivity.md) — status rules, manual reference, sensitivity
+- [`../development/16_multi_extractor_agreement_schema.md`](../development/16_multi_extractor_agreement_schema.md), [`../development/17_agreement_run_planning.md`](../development/17_agreement_run_planning.md), and [`../development/18_agreement_composition.md`](../development/18_agreement_composition.md) — arbitrary-N storage, source resolution, and composition
+- [`../development/19_agreement_query_views.md`](../development/19_agreement_query_views.md) and [`../development/20_agreement_population_selection.md`](../development/20_agreement_population_selection.md) — the agreement views and the read-only selection API
 - [`../development/11_temporal_alignment_schema.md`](../development/11_temporal_alignment_schema.md) — the alignment data dictionary
 - [`../development/12_alignment_intake_and_registration.md`](../development/12_alignment_intake_and_registration.md) — manifest contract and transaction semantics
 - [`../development/13_transform_fitting_and_alignment_qc.md`](../development/13_transform_fitting_and_alignment_qc.md) — fit models, residuals, `estimated` versus `validated`
@@ -823,6 +1034,7 @@ extractor-native classes; publication artefacts.
 
 - [`../reference/extractors/DeepSqueak_Extractor_Design_Reference.md`](../reference/extractors/DeepSqueak_Extractor_Design_Reference.md)
 - [`../reference/extractors/MUPET_Extractor_Design_Reference.md`](../reference/extractors/MUPET_Extractor_Design_Reference.md)
+- [`../reference/extractors/USVSEG_Extractor_Design_Reference.md`](../reference/extractors/USVSEG_Extractor_Design_Reference.md)
 
 ### Development conventions
 

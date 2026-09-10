@@ -1,13 +1,39 @@
 function result = usvsegExport(artifactPath, options)
 %USVSEGEXPORT Read a USVSEG event CSV into validated extractor IR.
 %
-% RESULT = vawlume.ingest.usvsegExport(ARTIFACTPATH, ...) preserves the
-% source CSV's literal labels and value tokens, then delegates field semantics
-% and unit transforms to SOURCE_MAPPING. A header-only export is a valid
-% zero-detection result. This adapter performs no database access.
+% RESULT = vawlume.ingest.usvsegExport(ARTIFACTPATH, ...) preserves the source
+% CSV's literal labels and value tokens, then delegates field semantics and
+% unit transforms to SOURCE_MAPPING. This adapter performs no database access,
+% so it is the boundary at which an export can be inspected before anything is
+% written:
+%
+%   export = vawlume.ingest.usvsegExport(csvPath, RepoRoot=repoRoot, ...
+%       ExtractorVersion="0.9r2");
+%   vawlume.source_mapping.preview(export.ir, Print=true);
+%
+% Only the profile-selected `usvseg_dat_csv` artifact is read. The adapter does
+% not wrap or run USVSEG, and does not read the optional peak-trace CSVs,
+% segment WAVs, or spectrogram images.
+%
+% The literal `#` identifier column is preserved rather than rewritten into a
+% reader-generated variable name, and every cell is read as a string before
+% source mapping, so the exact printed token stays recoverable while the
+% profile performs numeric typing and unit transforms. A header-only export is
+% a valid zero-detection result; a zero-byte file is unreadable. Unknown source
+% columns remain in RESULT.table and are reported by the shared mapper under
+% the profile's preserve_and_warn policy.
 %
 % USVSEG writes no version into its outputs, so ExtractorVersion is caller
 % evidence and is assessed against the mapping profile's declared scope.
+% RESULT.extractor_version reports that assessment and RESULT.issues carries
+% the corresponding adapter warning; enforcing the profile's
+% required-at-ingest policy is the database-facing importer's job.
+%
+% RESULT fields: ir, table, artifact, profile, profile_document,
+% extractor_version, issues, source_key, adapter_error_count,
+% adapter_warning_count, and valid_for_ingest.
+%
+% See also VAWLUME.INGEST.USVSEG, VAWLUME.SOURCE_MAPPING.PREVIEW.
 
 arguments
     artifactPath (1,1) string

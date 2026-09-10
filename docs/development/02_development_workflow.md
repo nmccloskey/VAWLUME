@@ -165,7 +165,7 @@ Minimum target:
 - multiple subjects;
 - one dyad or multi-subject recording;
 - two sessions;
-- DeepSqueak and MUPET runs over the same recording;
+- DeepSqueak, MUPET, and USVSEG runs over the same recording;
 - matched detections;
 - unmatched detections;
 - one split/merge ambiguity;
@@ -263,7 +263,7 @@ Add integration tests when multiple layers are connected.
 Each bug that changes a semantic or relational invariant should ideally produce a regression test.
 
 The current checkpoint has completed source mapping, transactional project
-intake, DeepSqueak import, and MUPET import, each through atomic apply and each
+intake, and all three extractor importers, each through atomic apply and each
 with a runnable demonstration under `examples/`:
 
 ```text
@@ -284,8 +284,27 @@ alignment intake and registration complete
 transform fitting and alignment QC complete
 common-time views and regularized timeline complete
 Phase 7 integration/exit review complete
+USVSEG export adapter complete
+USVSEG import complete
+arbitrary-N agreement schema complete
+agreement run planning and composition complete
+agreement query views complete
+agreement population selection complete
+three-extractor agreement demonstration complete
 sequence / bout / hierarchy-aware analyses next
 ```
+
+The three-extractor round is what generalized correspondence beyond a pair.
+USVSEG joined on the same import contracts as DeepSqueak and MUPET, and
+`vawlume.agreement.compose` then composed a complete set of compatible pairwise
+analyses into components over native detections, retaining every exact
+supporting edge. Pairwise matching remains the primitive; the arbitrary-N layer
+is derived from it and adds no threshold of its own. The boundary between those
+layers is documented in
+[`22_phase1_correspondence_boundaries.md`](22_phase1_correspondence_boundaries.md),
+and
+[`examples/multi_extractor_agreement_demo.m`](../../examples/multi_extractor_agreement_demo.m)
+crosses all of them in one runnable script.
 
 Phase 7 splits Step 10 so that temporal alignment is built before sequence
 analytics. Its contract, exit criteria, and inherited-schema audit are in
