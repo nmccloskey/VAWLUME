@@ -32,8 +32,10 @@ legitimately hold neither.
 `agreementSpec` mirrors `matchSpec`: `run_key` is required, and `run_label`,
 `vawlume_version`, `source_commit`, `notes`, and `profile_path` are optional.
 
-This pass plans and persists the analysis boundary only. It composes no
-agreement group, member, or supporting edge.
+This document covers the analysis boundary: which sources are composable, how
+the derived run is identified, and what provenance is persisted. The composition
+those sources feed is
+[18_agreement_composition.md](18_agreement_composition.md).
 
 ## Compatibility contract
 
@@ -108,7 +110,8 @@ be added.
 
 ## What apply persists
 
-One transaction, and only the provenance skeleton:
+The boundary rows below. Composition adds the component rows in the same
+transaction; see [18_agreement_composition.md](18_agreement_composition.md).
 
 - `config_profiles` + `config_profile_versions` for the policy (created or reused);
 - one `analysis_runs` row, `run_type = 'multi_extractor_agreement'`;
@@ -119,16 +122,17 @@ One transaction, and only the provenance skeleton:
 `parent_analysis_run_id` stays NULL. Three pairwise parents cannot live in one
 parent column; that is what `analysis_run_sources` exists for.
 
-### Status is 'started' on purpose
+### Status tracks whether components exist
 
-An applied run carries lineage but no composed groups, so it is left with status
-`started`. Marking it `completed` would claim a derivation that has not been
-performed. `started` is therefore a **reusable** state for an agreement run, and
-the composition pass will be what flips it to `completed`. A `failed` run is not
-reusable: its provenance may be partial.
+A run that carries lineage but no composed components is `started`, because
+marking it `completed` would claim a derivation that has not been performed.
+`started` is therefore a **reusable** state: composition completes such a run
+rather than creating a second one, and the run keeps its `analysis_run_id`. A
+`failed` run is not reusable, since its provenance may be partial.
 
-The run's notes record `composition_pending=true`, the algorithm key and
-version, and the canonical source run keys.
+A boundary-only run's notes record `composition_pending=true`; once composed,
+the notes record the component rule instead. Notes are audit text either way -
+derived identity is `group_key`, never a note.
 
 ## Identity, reuse, and conflict
 

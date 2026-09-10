@@ -2,9 +2,9 @@ function result = compose(conn, recordingRef, sources, agreementSpec, options)
 %COMPOSE Plan or atomically persist one arbitrary-N extractor-agreement run.
 %
 % RESULT = vawlume.agreement.compose(CONN, RECORDINGREF, SOURCES, AGREEMENTSPEC)
-% validates a set of completed pairwise matching analyses, resolves the derived
-% agreement run's identity and provenance, and returns the plan. Planning is the
-% default and writes nothing.
+% validates a set of completed pairwise matching analyses, composes their exact
+% supporting edges into components over native detections, and returns the plan.
+% Planning is the default and writes nothing.
 %
 % SOURCES is the set of source pairwise analyses, not a run signature. The
 % arbitrary-N layer composes analyses, so it takes analyses:
@@ -47,9 +47,23 @@ function result = compose(conn, recordingRef, sources, agreementSpec, options)
 %
 % RESULT = vawlume.agreement.compose(..., Apply=true) creates or reuses the
 % policy profile version, the derived analysis run, its participating extraction
-% inputs, its many-parent lineage rows, and its policy linkage, in one
-% transaction. It composes no agreement groups: the derived run is left with
-% status 'started' because its composition has not been performed.
+% inputs, its many-parent lineage rows, its policy linkage, and then the
+% agreement groups, their native detection members, and one row per exact
+% supporting candidate pair - all in one transaction. The run reaches status
+% 'completed' once its components exist; a boundary left 'started' by an earlier
+% pass is composed into rather than duplicated.
+%
+% Membership comes from connectivity over those exact edges, and connectivity is
+% not completeness: a component of three detections says they are connected,
+% never that all three extractor pairs support one another. No transitive edge is
+% ever synthesized to make a component look complete, and an extractor-unique
+% detection survives as a single-member group.
+%
+% The result reports each component's member and extractor counts, which
+% unordered extractor pairs are supported, which are not, and which contributing
+% pairwise topologies were ambiguous. Those are separate reported dimensions
+% recomputed from the stored rows, never stored summaries and never collapsed
+% into one score.
 %
 % The agreement policy declares no temporal, feature, or agreement threshold.
 % Thresholds stay in the pairwise matching specification the source analyses
@@ -71,7 +85,8 @@ if options.Apply && ~plan.has_conflicts
     result = agreementPlanResult(plan);
     result.committed = true;
     result.applied_counts = counts;
-    if plan.analysis.action == "reuse"
+    result.composition_pending = false;
+    if plan.analysis.action == "reuse" && plan.analysis.graph_action == "reuse"
         result.status = "reused";
     else
         result.status = "committed";

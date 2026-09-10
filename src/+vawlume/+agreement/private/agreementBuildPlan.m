@@ -1,10 +1,14 @@
 function plan = agreementBuildPlan(conn, recordingRef, sources, agreementSpec, repoRoot)
-%AGREEMENTBUILDPLAN Resolve one arbitrary-N agreement run's identity and lineage.
+%AGREEMENTBUILDPLAN Resolve one arbitrary-N agreement run and compose it.
 %
-% Composition is not performed here. What this produces is the reproducible
-% analysis boundary: which pairwise analyses are being consumed, which extraction
-% runs they cover, whether the pairwise coverage is complete, which policy
-% version governs the derivation, and whether an identical run already exists.
+% Two halves. The analysis boundary: which pairwise analyses are being consumed,
+% which extraction runs they cover, whether the pairwise coverage is complete,
+% which policy version governs the derivation. And the composition itself: the
+% detection node set, the exact support edges, and the components they form.
+%
+% Nothing is written. Every derived row is classified create, reuse, or conflict
+% against what is already stored, so a rerun over the same evidence resolves to
+% the same components rather than adding a second copy.
 
 repoRoot = resolveRepoRoot(repoRoot);
 plan = struct();
@@ -15,9 +19,14 @@ plan.sources = agreementResolveSources(conn, plan.recording, sources, ...
     plan.specification);
 [plan.extractor_runs, plan.coverage] = agreementValidateCoverage(plan.sources, ...
     plan.specification);
+plan.graph = agreementResolveGraph(conn, plan.recording, plan.sources, ...
+    plan.extractor_runs);
+[plan.groups, plan.members, plan.support_edges] = ...
+    agreementBuildComponents(plan.graph, plan.specification);
 plan.configuration = resolveConfiguration(conn, plan.recording.project_id, ...
     plan.specification);
 plan.analysis = resolveAnalysis(conn, plan);
+plan = agreementResolveDerivedGraph(conn, plan);
 plan.conflicts = strings(0, 1);
 plan = appendConflict(plan, plan.configuration.conflict_message);
 plan = appendConflict(plan, plan.analysis.conflict_message);
@@ -135,9 +144,9 @@ function analysis = resolveAnalysis(conn, plan)
 % An applied agreement run that carries lineage but no composed groups is left
 % with status 'started', so 'started' is a reusable state here rather than a
 % broken one. A failed run is not reusable: its provenance may be partial.
-analysis = struct(action="create", analysis_run_id=NaN, ...
-    run_type="multi_extractor_agreement", run_key=plan.context.run_key, ...
-    status="", conflict_message="");
+analysis = struct(action="create", graph_action="create", ...
+    analysis_run_id=NaN, run_type="multi_extractor_agreement", ...
+    run_key=plan.context.run_key, status="", conflict_message="");
 rows = fetch(conn, "SELECT analysis_run_id, run_type, status FROM analysis_runs " + ...
     "WHERE project_id=" + string(plan.recording.project_id) + ...
     " AND run_key=" + sqlText(plan.context.run_key));

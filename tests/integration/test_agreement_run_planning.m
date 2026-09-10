@@ -1,10 +1,13 @@
 function tests = test_agreement_run_planning
 %TEST_AGREEMENT_RUN_PLANNING The arbitrary-N agreement analysis boundary.
 %
-% vawlume.agreement.compose takes source pairwise analyses, not runs. It
-% validates that they form a composable set, resolves the derived run's identity
-% and many-parent lineage, and persists that provenance skeleton. It composes no
-% agreement groups, so an applied run stays 'started'.
+% vawlume.agreement.compose takes source pairwise analyses, not runs. This suite
+% covers the analysis boundary half: that the sources form a composable set, that
+% the derived run's identity and many-parent lineage are right, and that the
+% policy and inputs are linked under their own roles.
+%
+% What gets composed from those sources, and the component shapes it produces,
+% belong to test_agreement_composition.
 %
 % The compatibility rule this suite holds hardest is complete pairwise coverage.
 % With a pair missing, an absent supporting edge in a later composition could not
@@ -27,6 +30,7 @@ shuffled = planAgreement(fixture, "agree-v1", flip(fixture.pairwise));
 verifyEqual(testCase, forward.status, "planned");
 verifyFalse(testCase, forward.committed);
 verifyFalse(testCase, forward.has_conflicts);
+% A plan has composed nothing into the database yet, whatever it computed.
 verifyTrue(testCase, forward.composition_pending);
 verifyEqual(testCase, forward.sources.run_key, shuffled.sources.run_key);
 verifyEqual(testCase, forward.sources.source_ordinal, [1; 2; 3]);
@@ -78,7 +82,7 @@ end
 
 % ------------------------------------------------------------ persistence ---
 
-function testApplyPersistsProvenanceSkeletonOnlyAndLeavesCompositionPending(testCase)
+function testApplyPersistsPolicyInputsAndEveryPairwiseParent(testCase)
 [fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
 result = applyAgreement(fixture, "agree-v1", fixture.pairwise);
 conn = fixture.conn;
@@ -92,28 +96,27 @@ verifyEqual(testCase, result.applied_counts.analysis_run_profiles, 1);
 verifyEqual(testCase, result.applied_counts.analysis_run_extraction_inputs, 3);
 verifyEqual(testCase, result.applied_counts.analysis_run_sources, 3);
 
-% Nothing composed. That is the deliverable boundary of this pass, and the run
-% says so rather than claiming a completed derivation.
-verifyEqual(testCase, result.applied_counts.agreement_groups, 0);
-verifyEqual(testCase, result.applied_counts.agreement_group_members, 0);
-verifyEqual(testCase, result.applied_counts.agreement_supporting_edges, 0);
-for name = ["agreement_groups", "agreement_group_members", ...
-        "agreement_supporting_edges"]
-    verifyEqual(testCase, countOf(conn, name), 0, name);
-end
+% Composition happens in the same call and is asserted in detail elsewhere.
+% What matters here is that the boundary and the components are one transaction:
+% the run is completed only because its components exist.
+verifyEqual(testCase, result.applied_counts.agreement_groups, 5);
+verifyEqual(testCase, result.applied_counts.agreement_group_members, 13);
+verifyEqual(testCase, result.applied_counts.agreement_supporting_edges, 11);
+verifyFalse(testCase, result.composition_pending);
 
 run = fetch(conn, "SELECT run_type, status, IFNULL(run_label,'') AS run_label, " + ...
     "IFNULL(parent_analysis_run_id,-1) AS parent, IFNULL(notes,'') AS notes " + ...
     "FROM analysis_runs WHERE run_key = 'agree-v1'");
 verifyEqual(testCase, height(run), 1);
 verifyEqual(testCase, string(run.run_type(1)), "multi_extractor_agreement");
-verifyEqual(testCase, string(run.status(1)), "started");
+verifyEqual(testCase, string(run.status(1)), "completed");
 verifyEqual(testCase, string(run.run_label(1)), "Three-extractor agreement");
 % Many parents cannot live in one parent column, so that column stays NULL.
 verifyEqual(testCase, double(run.parent(1)), -1);
-verifySubstring(testCase, string(run.notes(1)), "composition_pending=true");
 verifySubstring(testCase, string(run.notes(1)), ...
     "multi_extractor_agreement_composition@0.1.0");
+verifySubstring(testCase, string(run.notes(1)), ...
+    "component_rule=connected_components_over_supporting_edges");
 
 % Every pairwise parent is recorded, in canonical order, through the lineage
 % relation rather than by being rewritten as a child.
