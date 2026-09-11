@@ -1016,6 +1016,7 @@ extractor-native classes; publication artefacts.
 
 - [`../design/01_prototype_development_outline.md`](../design/01_prototype_development_outline.md) — prototype development plan and completion criteria
 - [`../design/02_temporal_alignment_contract.md`](../design/02_temporal_alignment_contract.md) — alignment design contract, exit criteria, known limitations
+- [`../design/03_multimodal_input_contract.md`](../design/03_multimodal_input_contract.md) — multimodal input design contract (tracking, microphone geometry, acoustic references). **Design only; none of it is implemented, and nothing in §1 or §10 describes it as available**
 
 ### Contracts per stage
 

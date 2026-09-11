@@ -543,6 +543,7 @@ metric identity is never asserted.
 - [`docs/usage/01_prototype_usage_guide.md`](docs/usage/01_prototype_usage_guide.md) — **start here**: requirements, configuration, a minimal end-to-end example, using your own data, outputs, troubleshooting, and current limitations
 - [`docs/design/01_prototype_development_outline.md`](docs/design/01_prototype_development_outline.md) — current prototype development plan
 - [`docs/design/02_temporal_alignment_contract.md`](docs/design/02_temporal_alignment_contract.md) — Phase 7 temporal-alignment design contract, exit criteria, inherited-schema audit, and current implementation boundary
+- [`docs/design/03_multimodal_input_contract.md`](docs/design/03_multimodal_input_contract.md) — multimodal input design contract: coordinate systems, microphone placement, tracking inputs, acoustic references, and channel response. **Design only; not yet implemented**
 - [`docs/development/01_repo_structure.md`](docs/development/01_repo_structure.md) — repository policy and MATLAB-specific layout
 - [`docs/development/02_development_workflow.md`](docs/development/02_development_workflow.md) — development conventions for the prototype
 - [`docs/development/03_source_mapping_intermediate_representation.md`](docs/development/03_source_mapping_intermediate_representation.md) — source-mapping IR and dry-run contract
