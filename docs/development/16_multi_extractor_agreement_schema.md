@@ -1,9 +1,14 @@
 # Arbitrary-N extractor-agreement schema
 
-Schema version `0.6-draft`, `PRAGMA user_version = 6`. The `0.5` to `0.6` change
-adds a relational home for arbitrary-N extractor agreement: multi-source
-analysis lineage, agreement groups over native detections, and exact supporting
-candidate edges. No existing table, trigger, view, or index changed.
+Introduced at schema version `0.6-draft` (`PRAGMA user_version = 6`). The `0.5`
+to `0.6` change added a relational home for arbitrary-N extractor agreement:
+multi-source analysis lineage, agreement groups over native detections, and
+exact supporting candidate edges. No existing table, trigger, view, or index
+changed.
+
+The version above is historical, naming when these tables arrived. The current
+schema version is stated in `docs/usage/01_prototype_usage_guide.md` and in the
+`schema.sql` header.
 
 This pass is schema and provenance only. Nothing populates these tables yet,
 there is no derive API, and `vawlume.matching.compare` is untouched and still

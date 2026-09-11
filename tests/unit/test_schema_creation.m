@@ -15,8 +15,8 @@ cleanupDb = onCleanup(@() cleanupDatabase(conn, dbFile));
 summary = vawlume.db.applySchema(conn, fullfile(repoRoot, "schema", "schema.sql"));
 
 verifyGreaterThan(testCase, summary.statements_executed, 0);
-verifyEqual(testCase, string(firstValue(conn, "SELECT schema_version FROM schema_info")), "0.6-draft");
-verifyEqual(testCase, double(firstValue(conn, "PRAGMA user_version")), 6);
+verifyEqual(testCase, string(firstValue(conn, "SELECT schema_version FROM schema_info")), "0.7-draft");
+verifyEqual(testCase, double(firstValue(conn, "PRAGMA user_version")), 7);
 verifyEqual(testCase, double(firstValue(conn, "PRAGMA foreign_keys")), 1);
 verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
 
@@ -28,6 +28,8 @@ expectedTables = [
     "entity_types"
     "experimental_entities"
     "recordings"
+    "coordinate_systems"
+    "channel_placements"
     "extractors"
     "extractor_versions"
     "extraction_runs"

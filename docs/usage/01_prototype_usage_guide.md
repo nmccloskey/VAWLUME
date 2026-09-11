@@ -5,7 +5,7 @@
 > planned functionality. Where this guide and an older design document disagree,
 > the repository is the authority.
 >
-> **Status.** Early prototype. The schema (`0.6-draft`, `PRAGMA user_version = 6`),
+> **Status.** Early prototype. The schema (`0.7-draft`, `PRAGMA user_version = 7`),
 > the configuration contracts, and the `vawlume.*` package API are working design
 > hypotheses and may change before any public release. Every numeric threshold
 > shipped with the prototype is an illustrative demonstration value, not a
@@ -916,7 +916,7 @@ assertSuccess(results);
 assert(~any([results.Incomplete]), "Incomplete tests.");
 ```
 
-The suite is currently **417 tests**. Runtime is machine-dependent; observed
+The suite is currently **430 tests**. Runtime is machine-dependent; observed
 wall times range from roughly nine to twenty-five minutes. Passing it
 is the strongest available check that an environment is correctly configured.
 Use the [canonical batch gate in the README](../../README.md#quick-start) for

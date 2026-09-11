@@ -22,8 +22,8 @@ function testSchemaVersionAndAgreementObjectsExist(testCase)
 [fixture, cleanup] = setUpSchema(); %#ok<ASGLU>
 conn = fixture.conn;
 
-verifyEqual(testCase, textOf(conn, "SELECT schema_version FROM schema_info"), "0.6-draft");
-verifyEqual(testCase, numberOf(conn, "PRAGMA user_version"), 6);
+verifyEqual(testCase, textOf(conn, "SELECT schema_version FROM schema_info"), "0.7-draft");
+verifyEqual(testCase, numberOf(conn, "PRAGMA user_version"), 7);
 
 for name = ["analysis_run_sources", "agreement_groups", ...
         "agreement_group_members", "agreement_supporting_edges"]

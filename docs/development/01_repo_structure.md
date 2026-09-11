@@ -102,6 +102,7 @@ VAWLUME/
 │       ├── +consilience/
 │       ├── +sequence/
 │       ├── +alignment/
+│       ├── +geometry/
 │       └── +report/
 │
 ├── tests/

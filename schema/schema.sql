@@ -1,6 +1,6 @@
 -- VAWLUME prototype relational schema
--- Version: 0.6-draft
--- Date: 2026-09-10
+-- Version: 0.7-draft
+-- Date: 2026-09-11
 -- Target: SQLite (MATLAB-centered workflow)
 --
 -- Design priorities:
@@ -47,9 +47,9 @@ CREATE TABLE schema_info (
 );
 
 INSERT OR IGNORE INTO schema_info(schema_version, description)
-VALUES ('0.6-draft', 'Arbitrary-N extractor agreement: multi-source analysis lineage, agreement groups and members, exact supporting candidate edges');
+VALUES ('0.7-draft', 'Multimodal spatial foundation: declared coordinate systems and per-channel microphone placement');
 
-PRAGMA user_version = 6;
+PRAGMA user_version = 7;
 
 -- ============================================================================
 -- 1. Project and configuration-profile infrastructure
@@ -326,6 +326,78 @@ CREATE TABLE recording_epochs (
     source_file_id      INTEGER REFERENCES source_files(source_file_id) ON DELETE SET NULL,
     notes               TEXT,
     UNIQUE(recording_id, epoch_name, start_time_s, end_time_s)
+);
+
+-- A declared spatial frame. Project-scoped shared reference data: microphone
+-- placement cites it here, and canonicalized tracking streams cite the same
+-- table, so both sides of a spatial comparison name one frame.
+--
+-- Compatibility is IDENTITY of coordinate_system_id, never structural
+-- similarity. Two systems that both declare 2 dimensions and 'cm' are not
+-- interchangeable: they may have different origins, different axis directions,
+-- or describe different arenas. Treating matching metadata as licence to compare
+-- coordinates is how a confident, wrong distance gets computed.
+--
+-- VAWLUME performs no transformation between spatial frames - no rotation,
+-- translation, rescaling, or projection. origin_description and
+-- orientation_description are human-readable provenance, never machine-applied.
+-- The asymmetry with the temporal layer, which does fit and apply clock
+-- transforms, is deliberate: clock transforms are identifiable from explicit
+-- anchor observations users supply, and no equivalent spatial evidence exists.
+CREATE TABLE coordinate_systems (
+    coordinate_system_id INTEGER PRIMARY KEY,
+    project_id          INTEGER NOT NULL REFERENCES projects(project_id) ON DELETE CASCADE,
+    coordinate_system_key TEXT NOT NULL,
+    coordinate_system_name TEXT NOT NULL,
+    -- 2D is the working case; 3D is representable and never required.
+    dimensionality      INTEGER NOT NULL CHECK (dimensionality IN (2,3)),
+    -- A property of the frame, so units cannot disagree between two compatible
+    -- facts. Free text: 'cm', 'mm', 'm', 'px'. Pixel frames are permitted and
+    -- support no real-distance computation; a later phase needing metric
+    -- distance must require a metric unit or an explicit provenance-bearing
+    -- scale, and must never treat pixels as centimetres.
+    unit                TEXT NOT NULL,
+    origin_description  TEXT,
+    orientation_description TEXT,
+    notes               TEXT,
+    UNIQUE(project_id, coordinate_system_key)
+);
+
+-- Where one recording channel's microphone was, in one declared frame.
+--
+-- Placement attaches to the channel because a microphone reaches VAWLUME as a
+-- recording channel. A channel belongs to exactly one recording, so a placement
+-- row is session-specific by construction and cannot claim a position that
+-- outlives the session it was measured in. A four-microphone interface produces
+-- four channels with four placements; those are four different microphones in
+-- four different places, not duplication.
+--
+-- Reusable recording-device and experimental-setup profiles are placement
+-- PROVENANCE, not placement authority. Their geometry blocks may be applied to
+-- many sessions, so neither can answer "where was this microphone during this
+-- recording". A registration call may read a setup profile and write these rows,
+-- citing the profile version in source_profile_version_id; the database then
+-- holds exactly one answer per channel. A two-level model (reusable geometry
+-- plus per-recording override) was rejected for creating two competing answers
+-- to one question - the failure the alignment layer corrected when it removed
+-- the direct source columns from external_streams.
+--
+-- One placement per channel: a microphone moved mid-recording is not
+-- representable and needs an explicit time-bounded model, not a quietly added
+-- nullable interval.
+CREATE TABLE channel_placements (
+    channel_placement_id INTEGER PRIMARY KEY,
+    recording_channel_id INTEGER NOT NULL UNIQUE REFERENCES recording_channels(recording_channel_id) ON DELETE CASCADE,
+    coordinate_system_id INTEGER NOT NULL REFERENCES coordinate_systems(coordinate_system_id) ON DELETE RESTRICT,
+    position_x          REAL NOT NULL,
+    position_y          REAL NOT NULL,
+    -- Permitted only under a 3-dimensional frame (see trigger below), and
+    -- optional even then: an unknown height is missing data, not an error.
+    position_z          REAL,
+    placement_role      TEXT,
+    orientation_description TEXT,
+    source_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,
+    notes               TEXT
 );
 
 -- ============================================================================
@@ -1368,6 +1440,57 @@ CREATE TABLE derived_measurements (
 -- ============================================================================
 -- 13. Integrity triggers for cross-table invariants SQLite cannot express as CHECKs
 -- ============================================================================
+
+-- A z coordinate is meaningful only under a 3-dimensional frame. Expressed as a
+-- trigger rather than a CHECK because the dimensionality lives on another table
+-- and SQLite CHECK constraints cannot reference one.
+--
+-- Insert and update are both guarded: without the update trigger, a row could be
+-- inserted legally and then given a z, or its frame repointed at a 2D system,
+-- reaching exactly the state the insert guard exists to prevent.
+CREATE TRIGGER trg_channel_placement_dimensionality
+BEFORE INSERT ON channel_placements
+FOR EACH ROW
+WHEN NEW.position_z IS NOT NULL AND (
+    SELECT cs.dimensionality
+    FROM coordinate_systems cs
+    WHERE cs.coordinate_system_id = NEW.coordinate_system_id
+) <> 3
+BEGIN
+    SELECT RAISE(ABORT, 'Channel placement declares a z coordinate under a coordinate system that is not 3-dimensional');
+END;
+
+CREATE TRIGGER trg_channel_placement_dimensionality_update
+BEFORE UPDATE ON channel_placements
+FOR EACH ROW
+WHEN NEW.position_z IS NOT NULL AND (
+    SELECT cs.dimensionality
+    FROM coordinate_systems cs
+    WHERE cs.coordinate_system_id = NEW.coordinate_system_id
+) <> 3
+BEGIN
+    SELECT RAISE(ABORT, 'Channel placement declares a z coordinate under a coordinate system that is not 3-dimensional');
+END;
+
+-- A placement and the coordinate system it cites must belong to one project.
+-- The channel reaches its project through its recording; without this, a
+-- placement could cite a frame declared for an unrelated project.
+CREATE TRIGGER trg_channel_placement_project_scope
+BEFORE INSERT ON channel_placements
+FOR EACH ROW
+WHEN (
+    SELECT r.project_id
+    FROM recording_channels rc
+    JOIN recordings r ON r.recording_id = rc.recording_id
+    WHERE rc.recording_channel_id = NEW.recording_channel_id
+) <> (
+    SELECT cs.project_id
+    FROM coordinate_systems cs
+    WHERE cs.coordinate_system_id = NEW.coordinate_system_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Channel placement coordinate system belongs to a different project than the recording channel');
+END;
 
 -- Every detection's recording must be an input to its extraction run.
 CREATE TRIGGER trg_detection_requires_run_input
@@ -2477,6 +2600,7 @@ CREATE INDEX idx_recordings_checksum ON recordings(project_id, checksum_sha256);
 CREATE INDEX idx_recording_entities_recording ON recording_entity_links(recording_id);
 CREATE INDEX idx_recording_entities_entity ON recording_entity_links(entity_id);
 CREATE INDEX idx_recording_epochs_time ON recording_epochs(recording_id, start_time_s, end_time_s);
+CREATE INDEX idx_channel_placements_system ON channel_placements(coordinate_system_id);
 CREATE INDEX idx_extraction_runs_extractor ON extraction_runs(extractor_version_id);
 CREATE INDEX idx_extraction_inputs_recording ON extraction_run_inputs(recording_id, extraction_run_id);
 CREATE INDEX idx_artifacts_type ON artifacts(project_id, artifact_type);
