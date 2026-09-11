@@ -11,7 +11,7 @@ function result = mapTrackingTableToIR(tbl, result, entry, profileLocation, opti
 %
 %   one sources row
 %   one tracking_streams row      the stream, its clock, its frame, its basis
-%   one tracking_series row       per distinct (entity, bodypart) trace
+%   one tracking_series row       per distinct (native track, bodypart) trace
 %   one tracking_columns row      per mapped role
 %   coverage rows                 derived from the native time span, or declared
 %
@@ -89,7 +89,7 @@ columns = entry.columns;
 specs = { ...
     "position_x", ["x", "position_x"], true; ...
     "position_y", ["y", "position_y"], true; ...
-    "entity_label", ["entity", "subject", "individual"], true; ...
+    "track_label", ["entity", "subject", "individual"], true; ...
     "bodypart_label", ["bodypart", "node", "landmark"], true; ...
     "native_time", ["time", "timestamp_s", "time_s"], ismember(basis, ["time", "both"]); ...
     "native_frame", ["frame", "frame_index"], ismember(basis, ["frame", "both"]); ...
@@ -140,55 +140,57 @@ end
 % --------------------------------------------------------------- the series ---
 
 function result = resolveSeries(tbl, resolved, entry, result, sourceKey, streamKey)
-%RESOLVESERIES Derive the distinct (entity, bodypart) traces present in the table.
+%RESOLVESERIES Derive the distinct (native track, bodypart) traces in the table.
 %
 % This is the one place the table's contents are inspected, and it produces one
-% row per trace rather than per sample. Identity is taken verbatim: two labels
-% that differ by whitespace are two labels, because silently merging them would
-% merge two animals' traces.
-if strlength(resolved.entity_label.actual) == 0 || ...
+% row per trace rather than per sample. Track labels are taken verbatim: two
+% labels that differ by whitespace are two trajectories, because silently
+% merging them would merge two traces.
+%
+% A track label is the tracker's trajectory name. It says nothing about which
+% animal the trajectory follows, and nothing here treats it as though it did.
+if strlength(resolved.track_label.actual) == 0 || ...
         strlength(resolved.bodypart_label.actual) == 0
     return
 end
 
-entities = trackingColumnText(tbl, resolved.entity_label.actual);
+trackLabels = trackingColumnText(tbl, resolved.track_label.actual);
 bodyparts = trackingColumnText(tbl, resolved.bodypart_label.actual);
 roles = bodypartRoleMap(entry);
 
-blank = strlength(strtrim(entities)) == 0 | strlength(strtrim(bodyparts)) == 0;
+blank = strlength(strtrim(trackLabels)) == 0 | strlength(strtrim(bodyparts)) == 0;
 if any(blank)
     % An unlabelled sample cannot be attributed to a trace. Assigning it to a
-    % default series would invent identity the source did not supply.
+    % default series would invent a trajectory the source did not supply.
     result = appendIssues(result, makeIssue("error", "TRACKING_IDENTITY_MISSING", ...
-        "columns.entity_label/bodypart_label", ...
-        string(nnz(blank)) + " tracking row(s) carry no entity or bodypart " + ...
+        "columns.track_label/bodypart_label", ...
+        string(nnz(blank)) + " tracking row(s) carry no track or bodypart " + ...
         "label, so their samples cannot be attributed to a trace."), sourceKey);
 end
 
-pairs = entities + newline + bodyparts;
+pairs = trackLabels + newline + bodyparts;
 [distinct, firstIndex] = unique(pairs, "stable");
 counts = zeros(numel(distinct), 1);
 for index = 1:numel(distinct)
     counts(index) = nnz(pairs == distinct(index));
 end
-[~, order] = sort(entities(firstIndex) + newline + bodyparts(firstIndex));
+[~, order] = sort(trackLabels(firstIndex) + newline + bodyparts(firstIndex));
 
 for position = 1:numel(order)
     index = order(position);
-    entityLabel = entities(firstIndex(index));
+    trackLabel = trackLabels(firstIndex(index));
     bodypartLabel = bodyparts(firstIndex(index));
     seriesStatus = "mapped";
-    if strlength(strtrim(entityLabel)) == 0 || strlength(strtrim(bodypartLabel)) == 0
+    if strlength(strtrim(trackLabel)) == 0 || strlength(strtrim(bodypartLabel)) == 0
         seriesStatus = "invalid";
     end
     canonicalRole = "";
     if roles.isKey(bodypartLabel)
         canonicalRole = roles(bodypartLabel);
     end
-    seriesKey = sourceKey + "|series:" + entityLabel + "/" + bodypartLabel;
+    seriesKey = sourceKey + "|series:" + trackLabel + "/" + bodypartLabel;
     result.tracking_series(end + 1, :) = {seriesKey, streamKey, sourceKey, ...
-        entityLabel, bodypartLabel, canonicalRole, entityLabel, ...
-        counts(index), seriesStatus};
+        trackLabel, bodypartLabel, canonicalRole, counts(index), seriesStatus};
 end
 end
 

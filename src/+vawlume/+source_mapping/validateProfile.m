@@ -169,7 +169,7 @@ report = finalizeReport(report);
         % Identity is what makes a sample attributable to a trace. Losing it
         % silently would merge two animals' traces into one series, so both
         % identity columns are required even though either may be constant.
-        for name = ["entity_label", "bodypart_label"]
+        for name = ["track_label", "bodypart_label"]
             if requireMapping(entry.columns, name, location + ".columns." + name)
                 validateColumnRule(entry.columns.(char(name)), ...
                     location + ".columns." + name, true);

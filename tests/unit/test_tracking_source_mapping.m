@@ -1,4 +1,4 @@
-﻿function tests = test_tracking_source_mapping
+function tests = test_tracking_source_mapping
 %TEST_TRACKING_SOURCE_MAPPING Profile validation and database-free tracking IR.
 %
 % The claims this suite holds:
@@ -94,7 +94,7 @@ verifyEqual(testCase, stream.declared_sample_count, 24);
 verifyEqual(testCase, stream.has_confidence, 1);
 
 % Series are the distinct (entity, bodypart) traces, with native labels kept.
-verifyEqual(testCase, sort(ir.tracking_series.native_entity_label), ...
+verifyEqual(testCase, sort(ir.tracking_series.native_track_id), ...
     ["mouse_a"; "mouse_a"; "mouse_b"; "mouse_b"]);
 verifyEqual(testCase, sort(unique(ir.tracking_series.native_bodypart_label)), ...
     ["snout"; "tail_base"]);
@@ -109,7 +109,7 @@ verifyEqual(testCase, unique(tail.canonical_bodypart_role), "");
 
 % The column contract records every role, including the ones not supplied.
 roles = ir.tracking_columns.role;
-verifyTrue(testCase, all(ismember(["position_x", "position_y", "entity_label", ...
+verifyTrue(testCase, all(ismember(["position_x", "position_y", "track_label", ...
     "bodypart_label", "native_time", "confidence"], roles)));
 absent = ir.tracking_columns(ir.tracking_columns.role == "position_z", :);
 verifyEqual(testCase, absent.status, "absent");
@@ -232,4 +232,3 @@ end
 function root = repoRootPath()
 root = fileparts(fileparts(fileparts(mfilename("fullpath"))));
 end
-

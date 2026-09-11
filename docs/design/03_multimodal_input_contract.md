@@ -221,13 +221,12 @@ is one stream ontology with a tracking-specific extension, not two.
 
 ### Series, not an ontology
 
-`tracking_series` names one `(entity, bodypart)` trace within a stream:
+`tracking_series` names one `(native track, bodypart)` trace within a stream:
 
 | Column | Meaning |
 | --- | --- |
-| `native_entity_label` | the source's own subject term, preserved verbatim |
+| `native_track_id` | the source's own trajectory/individual label, preserved verbatim |
 | `native_bodypart_label` | the source's own landmark term, preserved verbatim |
-| `entity_id` | optional link to a VAWLUME experimental entity |
 | `canonical_bodypart_role` | optional normalized role, e.g. `snout` |
 
 **VAWLUME does not define a bodypart ontology.** Native labels are always
@@ -236,8 +235,27 @@ justified per project — the same additive-normalization rule
 `external_events.event_type` follows beside `native_event_label`, and the same
 rule the extractor layer follows for canonical features.
 
-`entity_id` is nullable because a tracking file may name subjects in terms
-VAWLUME has never seen. An unlinked series is honest; a fabricated link is not.
+### A track label is not an animal
+
+`native_track_id` is the **upstream trajectory identity** — `track0`,
+`individual1`, or an animal-like name the tracker happened to use. A tracker may
+emit a stable-looking label while still permitting identity swaps, ambiguous
+crossings, and uncalibrated identity evidence, so the label names a trajectory
+and is not evidence about which animal it follows.
+
+**There is deliberately no `entity_id` on this table.** Associating a native
+track with a canonical experimental entity is time-varying evidence carrying its
+own score semantics, calibration status, review state and provenance — a
+separate layer, not a column. A nullable column here would make an unverified
+guess indistinguishable from a verified assertion, and would force one identity
+per trace for an entire session, so an identity swap mid-session could not be
+represented at all.
+
+Four uncertainties stay separate throughout this layer and must never be
+collapsed into one confidence value: **pose/localization** uncertainty (where a
+bodypart is), **visual-identity** uncertainty (which animal a trajectory
+represents), **temporal-alignment** uncertainty (which samples correspond to an
+event), and later **caller-attribution** uncertainty.
 
 ### Dense samples stay external
 

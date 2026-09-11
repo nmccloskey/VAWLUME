@@ -1200,25 +1200,34 @@ CREATE TABLE tracking_streams (
     CHECK (native_time_basis <> 'frame' OR nominal_frame_rate_hz IS NOT NULL)
 );
 
--- One (entity, bodypart) trace within a tracking stream. Metadata, not data:
--- tens of rows per stream, one per trace, never one per sample.
+-- One (native track, bodypart) trace within a tracking stream. Metadata, not
+-- data: tens of rows per stream, one per trace, never one per sample.
 --
--- Native entity and bodypart labels are preserved verbatim and are always
+-- native_track_id is the UPSTREAM TRAJECTORY LABEL - 'track0', 'individual1',
+-- or an animal-like name the tracker happened to use. It is deliberately NOT
+-- called an entity label: a tracker may emit a stable-looking name while still
+-- permitting identity swaps, ambiguous crossings, and uncalibrated identity
+-- evidence, so a trajectory label is not proof of which animal it follows.
+--
+-- There is therefore NO entity_id here. Associating a native track with a
+-- canonical experimental entity is time-varying evidence with its own score
+-- semantics, calibration status, review state and provenance - it is a separate
+-- layer, not a column. Putting a nullable entity_id on this row would make an
+-- unverified guess indistinguishable from a verified assertion, and would force
+-- one identity per trace for a whole session.
+--
+-- Native track and bodypart labels are preserved verbatim and are always
 -- queryable. VAWLUME defines no bodypart ontology; canonical_bodypart_role is
 -- optional, additive, and justified per project - the same additive rule
 -- external_events.event_type follows beside native_event_label.
---
--- entity_id is nullable because a tracking file may name subjects in terms
--- VAWLUME has never seen. An unlinked series is honest; a fabricated link is not.
 CREATE TABLE tracking_series (
     tracking_series_id  INTEGER PRIMARY KEY,
     external_stream_id  INTEGER NOT NULL REFERENCES tracking_streams(external_stream_id) ON DELETE CASCADE,
-    entity_id           INTEGER REFERENCES experimental_entities(entity_id) ON DELETE SET NULL,
-    native_entity_label TEXT NOT NULL,
+    native_track_id     TEXT NOT NULL,
     native_bodypart_label TEXT NOT NULL,
     canonical_bodypart_role TEXT,
     notes               TEXT,
-    UNIQUE(external_stream_id, native_entity_label, native_bodypart_label)
+    UNIQUE(external_stream_id, native_track_id, native_bodypart_label)
 );
 
 -- One user-facing multimodal alignment operation: "express this session's clocks

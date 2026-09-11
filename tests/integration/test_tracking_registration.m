@@ -84,23 +84,25 @@ verifyEqual(testCase, double(stored.declared_sample_count(1)), 24);
 verifyEqual(testCase, string(stored.coordinate_system_key(1)), "arena_2d");
 
 % Native labels are preserved and the canonical role stayed additive.
-series = fetch(conn, "SELECT native_entity_label, native_bodypart_label, " + ...
-    "IFNULL(canonical_bodypart_role,'') AS canonical_bodypart_role, " + ...
-    "IFNULL(entity_id,-1) AS entity_id FROM tracking_series " + ...
-    "ORDER BY native_entity_label, native_bodypart_label");
+series = fetch(conn, "SELECT native_track_id, native_bodypart_label, " + ...
+    "IFNULL(canonical_bodypart_role,'') AS canonical_bodypart_role " + ...
+    "FROM tracking_series ORDER BY native_track_id, native_bodypart_label");
 verifyEqual(testCase, string(series.native_bodypart_label)', ...
     ["snout", "tail_base", "snout", "tail_base"]);
 % presentText, not string(): the Database Toolbox returns an empty text column
-% as <missing> even through IFNULL. 2.4 must normalize this column the same way
-% when it reads series identity.
+% as <missing> even through IFNULL.
 verifyEqual(testCase, presentText(series.canonical_bodypart_role)', ...
     ["snout", "", "snout", ""]);
 
-% mouse_a is an established entity and links; mouse_b is not and stays unlinked
-% rather than being invented.
-linked = double(series.entity_id);
-verifyEqual(testCase, nnz(linked > 0), 2);
-verifyEqual(testCase, nnz(linked < 0), 2);
+% The track labels are animal-like on purpose. 'mouse_a' is also an established
+% experimental entity in this fixture, and registration STILL records no
+% association: a tracker naming a trajectory 'mouse_a' is not evidence about
+% which animal it follows, and tracking_series has no entity column to hold
+% such a guess.
+verifyEqual(testCase, presentText(series.native_track_id)', ...
+    ["mouse_a", "mouse_a", "mouse_b", "mouse_b"]);
+verifyFalse(testCase, ismember("entity_id", ...
+    string(fetch(conn, "SELECT name FROM pragma_table_info('tracking_series')").name)));
 
 % THE claim of this itinerary: no table holds a tracking sample.
 verifyEqual(testCase, height(fetch(conn, "SELECT name FROM sqlite_master " + ...

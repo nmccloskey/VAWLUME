@@ -46,10 +46,20 @@ only what tracking has:
 | `has_confidence` | whether the upstream tracker emitted any |
 | `declared_sample_count` | what the artifact held at registration |
 
-`tracking_series` names one `(entity, bodypart)` trace. Native labels are
-preserved verbatim; `canonical_bodypart_role` is optional and additive;
-`entity_id` is nullable because an unlinked series is honest and a fabricated
-link is not.
+`tracking_series` names one `(native track, bodypart)` trace. Native labels are
+preserved verbatim and `canonical_bodypart_role` is optional and additive.
+
+**`native_track_id` is a trajectory label, not an animal.** A tracker may emit a
+stable-looking name like `mouse_a` while still permitting identity swaps,
+ambiguous crossings, and uncalibrated identity evidence, so the label names a
+trajectory and is not evidence about which animal it follows.
+
+There is deliberately **no `entity_id`** on this table. Associating a native
+track with a canonical experimental entity is time-varying evidence with its own
+score semantics, calibration status, review state and provenance — a separate
+layer, not a column. A nullable column here would make an unverified guess
+indistinguishable from a verified assertion, and would force one identity per
+trace for a whole session, so an identity swap could not be represented at all.
 
 ## The mapping contract
 
@@ -65,7 +75,7 @@ validator, the mapper, or the schema knows any tool's layout.
 | Role | Required |
 | --- | --- |
 | `position_x`, `position_y` | always — the irreducible content of a tracking row |
-| `entity_label`, `bodypart_label` | always — identity, without which a sample cannot be attributed |
+| `track_label`, `bodypart_label` | always — identity, without which a sample cannot be attributed |
 | `native_time` | when the basis is `time` or `both` |
 | `native_frame` | when the basis is `frame` or `both` |
 | `position_z`, `confidence` | never |
@@ -120,8 +130,11 @@ It **invents nothing**:
 - the coordinate system must already be declared for the project — creating one
   implicitly would let an import choose its own units and dimensionality;
 - the timebase must already exist for the recording or its project;
-- an entity is linked only when `native_entity_label` matches an established
-  `experimental_entities.native_id`; otherwise the series stays unlinked.
+- **no canonical entity is resolved at all.** An earlier draft matched
+  `experimental_entities.native_id` against the track label and stored the hit.
+  That is exactly the inference the architecture forbids: a string match on an
+  animal-like trajectory name is not identity evidence, and the stored result
+  was indistinguishable from a verified assertion.
 
 Compatibility is checked through `vawlume.geometry.assertCompatible` rather than
 by comparing identifiers locally, so the identity-not-similarity rule has one
@@ -135,10 +148,70 @@ cite the stored stream.
 Everything commits in one transaction — stream, subtype, traces, coverage,
 artifact provenance and profile version — or not at all.
 
+## Window access
+
+`vawlume.tracking.readWindow(conn, streamRef, [start end], ...)` reads a bounded
+window of samples from the registered artifact into MATLAB memory. It writes
+nothing.
+
+It opens the artifact VAWLUME registered — resolved through
+`external_stream_sources` — and recomputes the registered checksum, reporting
+`verified`, `changed`, or `unregistered`. The trace inventory, sample count and
+coverage were all derived from the bytes present at registration, so a silently
+replaced export is worth knowing about.
+
+The column contract is resolved by calling **the mapper itself** on the artifact
+with the registered profile, rather than reimplementing the role-to-column
+rules. A second implementation would drift, and the drift would surface as
+samples read from the wrong column rather than as an error.
+
+### Coverage is three-state
+
+| `coverage_status` | Meaning |
+| --- | --- |
+| `covered` | one declared segment contains the whole window |
+| `partial` | the window overlaps coverage; `covered_interval` names the observed part |
+| `uncovered` | declared coverage establishes no observation here |
+
+`sample_status` is reported separately as `populated`, `empty`, or `uncovered`.
+**Covered-but-empty is a QC finding; uncovered carries no information at all.**
+Zero rows must never be read as "nothing happened".
+
+Adjacent segments are never stitched to cover a window: that would assume the
+gap between them was observed.
+
+### Identity and confidence stay separate
+
+Samples carry `native_track_id`. The result has **no entity column of any
+spelling**, and `result.identity_boundary` says so in words.
+
+`pose_confidence` is localization quality only. When the upstream tracker
+supplied none it is all-NaN and `has_pose_confidence` is false — absence is
+reported, never imputed as `1.0`.
+
+### Common time is optional and never faked
+
+With `ReferenceTimebaseKey`, the reader asks the alignment layer for a **stored**
+transform and adds `time_reference_s`. It never fits one. `reference_time_status`
+is `applied`, `no_transform`, `unusable_transform`, or `unsupported_basis`, and a
+refusal leaves native times untouched rather than degrading to a simpler model.
+
+Fit diagnostics come back under `result.transform`, deliberately apart from
+`pose_confidence`: how well two clocks agree and how well a keypoint was
+localized are different quantities, and one combined "tracking confidence" would
+destroy both.
+
+### Geometry compatibility
+
+`vawlume.tracking.assertGeometryCompatible(conn, streamRef, recordingRef)`
+confirms a tracking stream and a recording's channel placements cite the same
+declared frame, delegating to `vawlume.geometry.assertCompatible`. Nothing is
+transformed. A recording with no placed channels raises — an empty set of frames
+is absence of evidence that a comparison is legal, not compatibility.
+
 ## What is not here
 
-- Window reading. That is the tracking reader's job, and it is where bounded
-  access, coverage states and QC live.
+- Track-to-entity association of any kind. That is a separate layer.
 - Interpolation, smoothing, gap filling, or any modification of tracking values.
 - Raw video, pose estimation, or any pixel processing.
 - Spatial caller evidence of any kind.

@@ -33,7 +33,7 @@
           "source_field": "time_s",
           "native_unit": "s"
         },
-        "entity_label": {
+        "track_label": {
           "source_field": "subject"
         },
         "bodypart_label": {
@@ -71,7 +71,7 @@
           {
             "id": "identity_columns_present",
             "severity": "error",
-            "expression": "every row carries a nonempty entity_label and bodypart_label",
+            "expression": "every row carries a nonempty track_label and bodypart_label",
             "reason": "A sample with no identity cannot be attributed to a trace. Assigning it to a default series would invent identity the source did not supply."
           },
           {

@@ -149,35 +149,28 @@ for index = 1:height(series)
     row = table2struct(series(index, :));
     values = struct( ...
         external_stream_id=plan.stream.external_stream_id, ...
-        native_entity_label=row.native_entity_label, ...
+        native_track_id=row.native_track_id, ...
         native_bodypart_label=row.native_bodypart_label, ...
         canonical_bodypart_role=row.canonical_bodypart_role);
-    entityId = resolveEntity(conn, plan, row.native_entity_label);
-    if ~isnan(entityId)
-        values.entity_id = entityId;
-    end
     trackingInsertRow(conn, "tracking_series", values);
     counts.tracking_series = counts.tracking_series + 1;
 end
 end
 
-function value = resolveEntity(conn, plan, nativeLabel)
-%RESOLVEENTITY Link a trace to an established entity, or leave it unlinked.
+% NO ENTITY RESOLUTION HAPPENS HERE, DELIBERATELY.
 %
-% An unlinked series is honest: a tracking file may name subjects in terms
-% VAWLUME has never seen. Creating an entity here would let a tracking import
-% invent experimental subjects.
-value = NaN;
-if strlength(nativeLabel) == 0
-    return
-end
-rows = fetch(conn, "SELECT entity_id FROM experimental_entities " + ...
-    "WHERE project_id=" + string(plan.recording.project_id) + ...
-    " AND native_id=" + trackingSqlText(nativeLabel));
-if ~isempty(rows) && height(rows) > 0
-    value = double(rows.entity_id(1));
-end
-end
+% An earlier draft of this function looked up experimental_entities by
+% native_id = native track label and wrote the match onto the series row. That
+% is exactly the inference the architecture forbids: a tracker emitting
+% 'mouse_a' is naming a trajectory, not asserting which animal that trajectory
+% follows, and a string match on an animal-like name is not evidence. Worse, the
+% stored result was indistinguishable from a verified assertion, and it forced
+% one identity per trace for an entire session - so an identity swap mid-session
+% could not be represented at all.
+%
+% Track-to-entity association is time-varying evidence with its own score
+% semantics, calibration status, review state and provenance. It is a separate
+% layer, and registration deliberately produces none of it.
 
 function counts = applyCoverage(conn, plan, counts)
 coverage = plan.coverage;

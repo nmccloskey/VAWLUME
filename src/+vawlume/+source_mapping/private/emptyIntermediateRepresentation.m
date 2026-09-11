@@ -114,9 +114,11 @@ value = typedEmptyTable(names, types);
 end
 
 function value = emptyTrackingSeriesTable()
-names = ["series_key", "stream_key", "source_key", "native_entity_label", ...
-    "native_bodypart_label", "canonical_bodypart_role", "entity_key", ...
-    "sample_count", "status"];
+% native_track_id is the upstream trajectory label, never a canonical entity.
+% No entity key appears here: track-to-entity association is time-varying
+% evidence with its own semantics and provenance, not a property of a trace.
+names = ["series_key", "stream_key", "source_key", "native_track_id", ...
+    "native_bodypart_label", "canonical_bodypart_role", "sample_count", "status"];
 types = repmat("string", 1, numel(names));
 types(ismember(names, "sample_count")) = "double";
 value = typedEmptyTable(names, types);
