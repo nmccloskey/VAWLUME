@@ -1230,6 +1230,74 @@ CREATE TABLE tracking_series (
     UNIQUE(external_stream_id, native_track_id, native_bodypart_label)
 );
 
+-- Evidence that a native trajectory corresponds to a canonical experimental
+-- entity over some interval. This is the ONLY place the two identities are
+-- related, and every relation is an interval-scoped, provenance-bearing claim
+-- rather than a property of the trajectory.
+--
+-- Keyed on (stream, native_track_id, interval) and NOT on tracking_series_id:
+-- identity belongs to a trajectory over time, not to one (track, bodypart)
+-- trace. When two animals cross and their labels swap, every bodypart of that
+-- track is affected at once.
+--
+-- SEVERAL ROWS MAY COVER ONE INTERVAL. That is the ambiguity model, not a
+-- defect: during an uncertain crossing a track may be compatible with entity A
+-- and with entity B, and both candidates are kept. Nothing here forces one
+-- entity per track per interval, and no query may assume it.
+--
+-- entity_id IS NULL means identity is explicitly UNRESOLVED for that interval.
+-- It is not a missing foreign key: it is the recorded statement that nothing
+-- known identifies the animal. A trigger keeps that meaning honest by requiring
+-- assignment_state 'unresolved' exactly when entity_id is NULL, so an unknown
+-- identity can never be read as a candidate and a candidate can never hide as
+-- an unknown.
+--
+-- identity_value is NULL unless the source supplied a number. A manual
+-- assertion, or an upstream tool that emits only a label, records NULL - never
+-- 1.0. Converting a name into certainty is the specific failure this table
+-- exists to prevent. When a number IS present, identity_value_semantics must say
+-- what it means, because a re-identification similarity, an upstream likelihood
+-- and a calibrated probability are not comparable quantities.
+--
+-- evidence_kind and identity_value_semantics are free text. A closed vocabulary
+-- would force an unfamiliar upstream system into the wrong category or block it
+-- entirely, the same reasoning that keeps timebase_kind and reference_type open.
+--
+-- Dense framewise identity traces stay external, under the same policy as dense
+-- tracking samples. What is persisted here is interval-level association,
+-- review, and the provenance needed to reproduce it.
+CREATE TABLE tracking_identity_associations (
+    tracking_identity_association_id INTEGER PRIMARY KEY,
+    external_stream_id  INTEGER NOT NULL REFERENCES tracking_streams(external_stream_id) ON DELETE CASCADE,
+    native_track_id     TEXT NOT NULL,
+    entity_id           INTEGER REFERENCES experimental_entities(entity_id) ON DELETE RESTRICT,
+    start_time_native   REAL NOT NULL,
+    end_time_native     REAL NOT NULL,
+    assignment_state    TEXT NOT NULL CHECK (assignment_state IN (
+                            'candidate',
+                            'assigned',
+                            'ambiguous',
+                            'unresolved',
+                            'rejected'
+                        )),
+    -- What KIND of evidence this is. Always required: an association with no
+    -- stated basis is an opinion with no provenance.
+    evidence_kind       TEXT NOT NULL,
+    identity_value      REAL,
+    identity_value_semantics TEXT,
+    calibration_status  TEXT,
+    review_state        TEXT,
+    method              TEXT,
+    analysis_run_id     INTEGER REFERENCES analysis_runs(analysis_run_id) ON DELETE SET NULL,
+    source_file_id      INTEGER REFERENCES source_files(source_file_id) ON DELETE RESTRICT,
+    mapping_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,
+    source_locator      TEXT,
+    notes               TEXT,
+    CHECK (end_time_native >= start_time_native),
+    -- A number without stated semantics is not interpretable evidence.
+    CHECK (identity_value IS NULL OR identity_value_semantics IS NOT NULL)
+);
+
 -- One user-facing multimodal alignment operation: "express this session's clocks
 -- relative to the neural clock". It owns the analysis-run identity, the chosen
 -- reference timebase, and the exact manifest evidence. The pairwise transforms
@@ -1503,6 +1571,48 @@ CREATE TABLE derived_measurements (
 -- ============================================================================
 -- 13. Integrity triggers for cross-table invariants SQLite cannot express as CHECKs
 -- ============================================================================
+
+-- 'unresolved' and a named candidate are mutually exclusive statements, and the
+-- distinction is the whole point of the table: an unknown identity must never be
+-- readable as a candidate, and a candidate must never hide as an unknown. SQLite
+-- CHECK could express this within the row, but it is written as a trigger pair
+-- so insert and update are guarded identically - without the update guard a row
+-- could be inserted honestly and then have its entity cleared or set while its
+-- state stayed behind.
+CREATE TRIGGER trg_identity_association_unresolved
+BEFORE INSERT ON tracking_identity_associations
+FOR EACH ROW
+WHEN (NEW.entity_id IS NULL) <> (NEW.assignment_state = 'unresolved')
+BEGIN
+    SELECT RAISE(ABORT, 'Identity association must name a candidate entity unless its assignment_state is unresolved');
+END;
+
+CREATE TRIGGER trg_identity_association_unresolved_update
+BEFORE UPDATE ON tracking_identity_associations
+FOR EACH ROW
+WHEN (NEW.entity_id IS NULL) <> (NEW.assignment_state = 'unresolved')
+BEGIN
+    SELECT RAISE(ABORT, 'Identity association must name a candidate entity unless its assignment_state is unresolved');
+END;
+
+-- An association's candidate entity and its tracking stream must belong to one
+-- project. Without this, a track could be associated with an animal from an
+-- unrelated experiment and nothing would notice.
+CREATE TRIGGER trg_identity_association_project_scope
+BEFORE INSERT ON tracking_identity_associations
+FOR EACH ROW
+WHEN NEW.entity_id IS NOT NULL AND (
+    SELECT es.project_id
+    FROM external_streams es
+    WHERE es.external_stream_id = NEW.external_stream_id
+) <> (
+    SELECT e.project_id
+    FROM experimental_entities e
+    WHERE e.entity_id = NEW.entity_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Identity association candidate entity belongs to a different project than the tracking stream');
+END;
 
 -- A tracking stream and the coordinate system it cites must belong to one
 -- project. The stream carries project_id directly, so this is the same class of
@@ -2726,6 +2836,25 @@ CREATE INDEX idx_external_stream_sources_stream ON external_stream_sources(exter
 CREATE INDEX idx_external_stream_coverage_time ON external_stream_coverage(external_stream_id, start_time_native, end_time_native);
 CREATE INDEX idx_tracking_streams_system ON tracking_streams(coordinate_system_id);
 CREATE INDEX idx_tracking_series_stream ON tracking_series(external_stream_id);
+CREATE INDEX idx_identity_associations_track
+    ON tracking_identity_associations(external_stream_id, native_track_id,
+        start_time_native, end_time_native);
+CREATE INDEX idx_identity_associations_entity
+    ON tracking_identity_associations(entity_id);
+
+-- The exact same candidate must not be asserted twice for one interval, but
+-- SQLite treats NULLs as distinct in a UNIQUE index, so two 'unresolved' rows
+-- for one interval would slip through a plain UNIQUE. Two partial indexes close
+-- both halves: one for named candidates, one for the unresolved statement, which
+-- can only be made once per interval.
+CREATE UNIQUE INDEX idx_identity_associations_candidate
+    ON tracking_identity_associations(external_stream_id, native_track_id,
+        start_time_native, end_time_native, entity_id)
+    WHERE entity_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_identity_associations_unresolved
+    ON tracking_identity_associations(external_stream_id, native_track_id,
+        start_time_native, end_time_native)
+    WHERE entity_id IS NULL;
 CREATE INDEX idx_alignment_runs_set ON time_alignment_runs(alignment_set_id, source_timebase_id);
 CREATE INDEX idx_alignment_anchor_observations_anchor ON alignment_anchor_observations(alignment_anchor_id, timebase_id);
 CREATE INDEX idx_alignment_anchor_observations_event ON alignment_anchor_observations(external_event_id);

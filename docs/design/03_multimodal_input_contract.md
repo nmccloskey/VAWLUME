@@ -257,6 +257,21 @@ bodypart is), **visual-identity** uncertainty (which animal a trajectory
 represents), **temporal-alignment** uncertainty (which samples correspond to an
 event), and later **caller-attribution** uncertainty.
 
+### Visual identity is evidence, not a column
+
+Relating a native track to a canonical entity is an interval-scoped,
+provenance-bearing **claim**, held in `tracking_identity_associations` and keyed
+on `(stream, native_track_id, interval)`. Several claims may cover one interval —
+that is how ambiguity during a crossing is expressed — and an explicit
+`unresolved` statement is deliberately distinguishable from no evidence at all.
+
+A missing numeric confidence stays missing: a manual assertion or a label-only
+tracker records no value rather than `1.0`, and any value present must state what
+it means. Pose confidence is never used to derive identity confidence.
+
+Implementation reference:
+[`../development/25_visual_identity_association.md`](../development/25_visual_identity_association.md).
+
 ### Dense samples stay external
 
 **No table in this contract stores a tracking sample.** `tracking_series` is

@@ -72,7 +72,7 @@ To check the environment is correctly configured:
 
 ```matlab
 addpath("src")
-results = runtests("tests", IncludeSubfolders=true);   % 452 tests, ~9-25 minutes
+results = runtests("tests", IncludeSubfolders=true);   % 462 tests, ~9-25 minutes
 table(results)
 assert(~isempty(results), "No tests discovered.");
 assertSuccess(results);
