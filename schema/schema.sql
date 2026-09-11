@@ -900,9 +900,18 @@ CREATE TABLE agreement_groups (
 -- (observed outcome) are three separate dimensions, each separately queryable.
 -- A group whose members have no comparable non-timing feature at all is a real
 -- observation about the extractors, not a defective row to be filtered out.
+-- The two foreign keys carry deliberately different delete policies.
+-- agreement_group_id cascades: deleting the derivation should remove the whole
+-- derived layer and nothing else. detection_id restricts: a group_key is the
+-- sorted list of its members' selectors, so a member that disappeared would
+-- leave a stored identity naming a detection that is no longer there. A matched
+-- member is already protected indirectly, because agreement_supporting_edges
+-- restricts its candidate_pair_id. A singleton or extractor-unique member
+-- participates in no candidate pair and would otherwise have nothing protecting
+-- it, which is precisely the member the composition policy deliberately keeps.
 CREATE TABLE agreement_group_members (
     agreement_group_id  INTEGER NOT NULL REFERENCES agreement_groups(agreement_group_id) ON DELETE CASCADE,
-    detection_id        INTEGER NOT NULL REFERENCES detections(detection_id) ON DELETE CASCADE,
+    detection_id        INTEGER NOT NULL REFERENCES detections(detection_id) ON DELETE RESTRICT,
     member_role         TEXT,
     PRIMARY KEY(agreement_group_id, detection_id)
 );

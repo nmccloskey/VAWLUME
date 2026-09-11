@@ -80,7 +80,7 @@ Members reference native detections:
 ```sql
 CREATE TABLE agreement_group_members (
     agreement_group_id  INTEGER NOT NULL REFERENCES agreement_groups(agreement_group_id) ON DELETE CASCADE,
-    detection_id        INTEGER NOT NULL REFERENCES detections(detection_id) ON DELETE CASCADE,
+    detection_id        INTEGER NOT NULL REFERENCES detections(detection_id) ON DELETE RESTRICT,
     member_role         TEXT,
     PRIMARY KEY(agreement_group_id, detection_id)
 );
@@ -138,13 +138,22 @@ which is absence rather than ambiguity and does not disqualify the edge.
 
 ## Deletion policy
 
-`RESTRICT` on both `analysis_run_sources.source_analysis_run_id` and
-`agreement_supporting_edges.candidate_pair_id`. A persisted derived result must
-not silently outlive the evidence it was composed from, so deleting a source
-analysis, a cited candidate pair, or a detection under one is refused while a
-derived agreement group still cites it. Deleting the agreement run cascades the
-derived layer away and touches no pairwise or native row; the source evidence is
-then deletable again.
+`RESTRICT` on `analysis_run_sources.source_analysis_run_id`,
+`agreement_supporting_edges.candidate_pair_id`, and
+`agreement_group_members.detection_id`. A persisted derived result must not
+silently outlive the evidence it was composed from, so deleting a source
+analysis, a cited candidate pair, or any detection that a derived agreement
+group holds as a member is refused while that group still cites it. Deleting the
+agreement run cascades the derived layer away and touches no pairwise or native
+row; the source evidence is then deletable again.
+
+The member restriction is not redundant with the edge restriction. A matched
+member is protected indirectly, because the candidate pair joining it to the
+group is itself restricted. A singleton or extractor-unique member participates
+in no candidate pair, so without its own restriction it would cascade away
+silently, leaving a group whose stored `group_key` — the sorted list of its
+members' selectors — still named a detection that no longer exists. That member
+is exactly the one the composition policy deliberately keeps.
 
 ## Evidence-capacity contract
 

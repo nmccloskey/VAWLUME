@@ -375,6 +375,101 @@ verifyError(testCase, @() planAgreement(fixture, "agree-broken", fixture.pairwis
 clear cleanup
 end
 
+% --------------------------------------------- identity at the read boundary ---
+
+function testAbsentNativeEventIdIsRefusedByAgreementButToleratedByMatching(testCase)
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+conn = fixture.conn;
+
+% detections.native_event_id is nullable. Every shipped extractor profile maps
+% one and declares native_event_id_uniqueness at error severity, so the shipped
+% import path cannot produce this; a user-supplied profile that omits either can.
+execute(conn, "UPDATE detections SET native_event_id = NULL " + ...
+    "WHERE detection_id = (SELECT MIN(detection_id) FROM detections d " + ...
+    "JOIN extraction_runs er ON er.extraction_run_id = d.extraction_run_id " + ...
+    "WHERE er.run_key = 'fixture_deepsqueak_social_v1')");
+
+% Agreement refuses it, because the selector built from it is component
+% identity. The failure is a VAWLUME diagnostic naming the run, not the Database
+% Toolbox's "Unexpected NULL" raised while building a result set.
+verifyError(testCase, @() planAgreement(fixture, "agree-null-id", fixture.pairwise), ...
+    "vawlume:agreement:NativeEventIdMissing");
+
+% Matching tolerates the same row, because it keys on detection_id and carries
+% the native identifier for reporting only. Before the read was guarded this
+% raised from inside fetch rather than completing.
+result = vawlume.matching.compare(conn, socialRef(), ...
+    struct(run_a="fixture_deepsqueak_social_v1", run_b="fixture_mupet_social_v1"), ...
+    struct(run_key="m_ds_mupet_null_id"), RepoRoot=fixture.repo_root);
+verifyEqual(testCase, result.status, "planned");
+
+clear cleanup
+end
+
+function testDuplicateNativeEventIdWithinOneRunIsRefused(testCase)
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+conn = fixture.conn;
+
+% The uniqueness the importer enforces per artifact is what makes
+% extraction_run_key#native_event_id a usable identity. Break it directly and
+% composition refuses rather than emitting a group_key that cannot distinguish
+% its own members.
+ids = fetch(conn, "SELECT d.detection_id FROM detections d " + ...
+    "JOIN extraction_runs er ON er.extraction_run_id = d.extraction_run_id " + ...
+    "WHERE er.run_key = 'fixture_mupet_social_v1' " + ...
+    "ORDER BY d.detection_id LIMIT 2");
+verifyEqual(testCase, height(ids), 2);
+target = string(double(ids.detection_id(2)));
+
+% Detection identity is UNIQUE(run, recording, source_artifact_id,
+% native_event_id), so the collision has to be built the way a real one would
+% arise: through a second source artifact. SQLite treats NULLs as distinct, so
+% detaching one row from its artifact is enough to let the identifier repeat
+% within the run while the table constraint stays satisfied.
+execute(conn, "UPDATE detections SET source_artifact_id = NULL " + ...
+    "WHERE detection_id = " + target);
+execute(conn, "UPDATE detections SET native_event_id = " + ...
+    "(SELECT native_event_id FROM detections WHERE detection_id = " + ...
+    string(double(ids.detection_id(1))) + ") WHERE detection_id = " + target);
+
+verifyError(testCase, @() planAgreement(fixture, "agree-dup-id", fixture.pairwise), ...
+    "vawlume:agreement:NodeSelectorAmbiguous");
+
+clear cleanup
+end
+
+function testExtractorIdentifiersCarryingPatternDelimitersAreRefused(testCase)
+% Pair and set identifiers are built by joining these values with '--', '|' and
+% ';'. A value containing one of them makes the resulting pattern ambiguous, and
+% an ambiguous pattern does not raise downstream - it silently returns the wrong
+% population from an exact-pattern or K-of-possible query. Composition is
+% therefore refused at the point the ambiguity would be created.
+%
+% Each case gets its own database because setUpFixture's teardown removes src
+% from the path, so these cannot be nested inside an outer fixture.
+cases = { ...
+    "UPDATE extractors SET extractor_name = 'MUPET|alt' WHERE extractor_key = 'mupet'", ...
+    "UPDATE extractors SET extractor_key = 'mu--pet' WHERE extractor_key = 'mupet'", ...
+    "UPDATE extractors SET extractor_name = 'MUPET;alt' WHERE extractor_key = 'mupet'", ...
+    "UPDATE extraction_runs SET run_key = 'fixture|mupet' " + ...
+        "WHERE run_key = 'fixture_mupet_social_v1'"};
+for index = 1:numel(cases)
+    [fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+    execute(fixture.conn, cases{index});
+    verifyError(testCase, ...
+        @() planAgreement(fixture, "agree-delimiter", fixture.pairwise), ...
+        "vawlume:agreement:IdentifierDelimiterConflict", cases{index});
+    clear cleanup
+end
+
+% The shipped identifiers satisfy the rule, so the ordinary path is unaffected.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+verifyEqual(testCase, planAgreement(fixture, "agree-clean", fixture.pairwise).status, ...
+    "planned");
+
+clear cleanup
+end
+
 % ------------------------------------------------------------------ helpers ---
 
 function result = planAgreement(fixture, runKey, sources)

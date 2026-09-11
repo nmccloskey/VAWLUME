@@ -869,6 +869,8 @@ that was never assessed.
 | A source describes another recording or project | `:SourceRecordingMismatch`, `:SourceProjectMismatch` | `recordingRef` is validated against every source analysis; it is not derived, because a valid source may legitimately hold no rows |
 | Two runs by the same extractor | `:SameExtractorPair`, `:RepeatedExtractor` | Agreement is across extractors. Two runs of one extractor are not an extractor pair |
 | Agreement policy rejected | `:SpecificationDeclaresThreshold`, `:SpecificationInvalid`, `:UnexpectedSpecificationKind` | The policy declares no threshold of any kind. A variant that adds one is refused rather than allowed to re-filter evidence the pairwise layer already settled |
+| A detection carries no native event identifier | `:NativeEventIdMissing`, `:NodeSelectorAmbiguous` | Agreement uses `extraction_run_key#native_event_id` as component identity, so the identifier must be present and unique within its run. Import under a profile that maps one and declares `native_event_id_uniqueness` at error severity. Matching does not require it, because it keys on `detection_id` |
+| An extractor identifier contains a pattern delimiter | `:IdentifierDelimiterConflict` | An extractor key, extractor name, or extraction run key contains `--`, `\|` or `;`. See the limitation in §10 |
 | Apply refused, nothing written | `:PlanConflict` | Stored components or edges differ from the recomputed plan. Inspect the returned conflicts |
 | `selectPopulation` refuses | `:AnalysisNotFound`, `:AnalysisAmbiguous`, `:AnalysisTypeInvalid`, `:AnalysisNotCompleted` | The reference must resolve to exactly one completed `multi_extractor_agreement` run; add `project_key` to disambiguate |
 | Filter rejected | `:PopulationFilterInvalid`, `:PopulationFilterConflict` | Counts must be nonnegative integers, and `ExactSupportedPairCount` cannot be below `MinSupportedPairCount` |
@@ -914,7 +916,7 @@ assertSuccess(results);
 assert(~any([results.Incomplete]), "Incomplete tests.");
 ```
 
-The suite is currently **412 tests**. Runtime is machine-dependent; observed
+The suite is currently **417 tests**. Runtime is machine-dependent; observed
 wall times range from roughly nine to twenty-five minutes. Passing it
 is the strongest available check that an environment is correctly configured.
 Use the [canonical batch gate in the README](../../README.md#quick-start) for
@@ -968,9 +970,19 @@ coverage-aware regularized timelines.
   cost `N*(N-1)/2` matching analyses. Query performance is exercised at
   synthetic-fixture scale only; no index or materialization has been justified
   against a representative workload.
-- Extractor-pair patterns are delimited by `--` within a pair and `|` between
-  pairs. The schema does not constrain extractor keys from containing those
-  characters.
+- **Extractor identifiers must not contain `--`, `|` or `;`.** Pair and set
+  identifiers are built by joining identifiers with delimiters, and more than one
+  convention is in use: pair *keys* join extractor keys with `--` and separate
+  pairs with `|`, pair *labels* join extractor names with ` -- ` and separate
+  pairs with `;`, set keys join with `|`, and the MATLAB result joins the two
+  sides of one pair with `|`. The schema constrains none of the underlying
+  columns, and `extractor_name` is free text. Composition therefore refuses an
+  agreement run whose participating extractor keys, extractor names, or
+  extraction run keys contain one of those sequences
+  (`vawlume:agreement:IdentifierDelimiterConflict`), because a pattern built from
+  such a value would parse ambiguously and silently return the wrong population
+  rather than raising. The three shipped extractors satisfy this; keep your own
+  extractor keys and names free of those characters.
 - A canonical feature may have several native or operational variants, so a
   measurement join must select the intended variant rather than assume one
   feature row per native detection.

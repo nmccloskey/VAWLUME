@@ -208,6 +208,33 @@ verifyEqual(testCase, counts(fixture.conn), after);
 clear cleanup
 end
 
+function testUnsupportedCompositionPolicyIsRefusedAtLoad(testCase)
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+
+% Each of the three composition policy fields describes behaviour the
+% composition implements in exactly one way. A specification declaring any other
+% value would otherwise be loaded, stored as run provenance, and then silently
+% ignored - the run would claim a policy it did not follow. All three are
+% therefore pinned at load rather than merely recorded.
+policies = { ...
+    """ambiguity_propagation"": ""recorded_per_edge_never_used_to_exclude""", ...
+        """ambiguity_propagation"": ""used_to_exclude_ambiguous_components"""; ...
+    """clique_completeness"": ""reported_not_required""", ...
+        """clique_completeness"": ""required"""; ...
+    """singleton_inclusion"": true", ...
+        """singleton_inclusion"": false"};
+for index = 1:size(policies, 1)
+    variantPath = writeSpecVariant(fixture, "unsupported_policy_" + ...
+        string(index) + ".json", policies{index, 1}, policies{index, 2});
+    verifyError(testCase, ...
+        @() planAgreement(fixture, "agree-unsupported", fixture.pairwise, ...
+            variantPath), ...
+        "vawlume:agreement:SpecificationInvalid", policies{index, 1});
+end
+
+clear cleanup
+end
+
 function testChangedPolicyOrSourceSetConflictsRatherThanRewriting(testCase)
 [fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
 applyAgreement(fixture, "agree-v1", fixture.pairwise);
@@ -215,9 +242,16 @@ after = counts(fixture.conn);
 
 % Same profile version label, different file. The stored checksum is the
 % authority, so this is a conflict rather than a silent redefinition.
+%
+% The varied field is one of the policy's free-text reason strings rather than a
+% policy value. The three composition policy values are each pinned to the one
+% setting the implementation actually implements, so a variant that changed one
+% would be refused at load and would never reach the checksum comparison this
+% test is about. See testUnsupportedCompositionPolicyIsRefusedAtLoad.
 variantPath = writeSpecVariant(fixture, "changed_policy.json", ...
-    "recorded_per_edge_never_used_to_exclude", ...
-    "recorded_per_edge_and_used_to_exclude_ambiguous_components");
+    "An ambiguous pairwise topology never removes an edge or a member " + ...
+    "from the derived component.", ...
+    "Ambiguous pairwise topology is recorded per edge.");
 changed = planAgreement(fixture, "agree-v1", fixture.pairwise, variantPath);
 verifyEqual(testCase, changed.status, "conflict");
 verifyTrue(testCase, changed.has_conflicts);

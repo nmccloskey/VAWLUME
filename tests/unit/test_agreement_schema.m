@@ -335,6 +335,45 @@ verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
 clear cleanup
 end
 
+function testSingletonMemberDeletionIsRestrictedToo(testCase)
+[fixture, cleanup] = setUpWorld(); %#ok<ASGLU>
+conn = fixture.conn;
+
+% A matched member is protected indirectly: the candidate pair joining it to its
+% group restricts, so deleting the detection is refused by that edge. A
+% singleton or extractor-unique member participates in no candidate pair and has
+% no such indirect protection - and it is exactly the member the composition
+% policy deliberately keeps. Without its own RESTRICT it would cascade away,
+% leaving a group whose stored group_key still named it.
+% A detection no other extractor corroborated, in a declared participating run.
+% The fixture's ds_only and mupet_only overlap each other and so do carry a
+% candidate pair; this one deliberately overlaps nothing.
+unpaired = insertDetection(conn, 1, 1, "d_unpaired", 40.000, 40.040);
+singleton = insertGroup(conn, fixture.agreement_run, 1, "extractor_unique");
+execute(conn, memberInsert(singleton, unpaired));
+
+% The premise this test depends on: nothing else protects this detection.
+verifyEqual(testCase, numberOf(conn, "SELECT COUNT(*) AS n FROM candidate_pairs " + ...
+    "WHERE detection_a_id = " + string(unpaired) + ...
+    " OR detection_b_id = " + string(unpaired)), 0);
+
+before = counts(conn);
+verifySqlFails(testCase, conn, "DELETE FROM detections WHERE detection_id = " + ...
+    string(unpaired));
+verifyEqual(testCase, counts(conn), before);
+
+% Deleting the derivation still removes the derived layer and frees the
+% detection, so the restriction protects a live result rather than pinning the
+% row permanently.
+execute(conn, "DELETE FROM analysis_runs WHERE analysis_run_id = " + ...
+    string(fixture.agreement_run));
+execute(conn, "DELETE FROM detections WHERE detection_id = " + string(unpaired));
+verifyEqual(testCase, numberOf(conn, "SELECT COUNT(*) AS n FROM agreement_groups"), 0);
+verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
+
+clear cleanup
+end
+
 % ------------------------------------------------------------------ helpers ---
 
 function value = pairwiseGroupSubquery()
