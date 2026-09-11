@@ -1577,7 +1577,11 @@ CREATE TABLE derived_measurements (
     detection_id        INTEGER REFERENCES detections(detection_id) ON DELETE CASCADE,
     consensus_event_id  INTEGER REFERENCES consensus_events(consensus_event_id) ON DELETE CASCADE,
     external_event_id   INTEGER REFERENCES external_events(external_event_id) ON DELETE CASCADE,
+    acoustic_reference_id INTEGER REFERENCES acoustic_references(acoustic_reference_id) ON DELETE CASCADE,
     recording_id        INTEGER REFERENCES recordings(recording_id) ON DELETE CASCADE,
+    -- Optional qualifier, not an additional measurement target. For targets
+    -- whose recording can be resolved, triggers below enforce channel scope.
+    recording_channel_id INTEGER REFERENCES recording_channels(recording_channel_id) ON DELETE CASCADE,
     entity_id           INTEGER REFERENCES experimental_entities(entity_id) ON DELETE CASCADE,
     epoch_id            INTEGER REFERENCES recording_epochs(epoch_id) ON DELETE CASCADE,
     sequence_id         INTEGER REFERENCES sequences(sequence_id) ON DELETE CASCADE,
@@ -1593,6 +1597,7 @@ CREATE TABLE derived_measurements (
       (detection_id IS NOT NULL) +
       (consensus_event_id IS NOT NULL) +
       (external_event_id IS NOT NULL) +
+      (acoustic_reference_id IS NOT NULL) +
       (recording_id IS NOT NULL) +
       (entity_id IS NOT NULL) +
       (epoch_id IS NOT NULL) +
@@ -1708,6 +1713,83 @@ WHEN NEW.external_event_id IS NOT NULL AND (
 ) IS NOT NEW.recording_id
 BEGIN
     SELECT RAISE(ABORT, 'Acoustic reference external event belongs to a different recording');
+END;
+
+-- A recording channel qualifies derived evidence but does not count as the
+-- evidence target. Whenever the selected target has a recording identity, the
+-- qualifier must name a channel belonging to that same recording.
+CREATE TRIGGER trg_derived_measurement_channel_scope
+BEFORE INSERT ON derived_measurements
+FOR EACH ROW
+WHEN NEW.recording_channel_id IS NOT NULL
+ AND COALESCE(
+    (SELECT ar.recording_id FROM acoustic_references ar
+     WHERE ar.acoustic_reference_id=NEW.acoustic_reference_id),
+    NEW.recording_id,
+    (SELECT d.recording_id FROM detections d WHERE d.detection_id=NEW.detection_id),
+    (SELECT ce.recording_id FROM consensus_events ce WHERE ce.consensus_event_id=NEW.consensus_event_id),
+    (SELECT es.recording_id FROM external_events ee
+     JOIN external_streams es ON es.external_stream_id=ee.external_stream_id
+     WHERE ee.external_event_id=NEW.external_event_id),
+    (SELECT re.recording_id FROM recording_epochs re WHERE re.epoch_id=NEW.epoch_id),
+    (SELECT s.recording_id FROM sequences s WHERE s.sequence_id=NEW.sequence_id),
+    (SELECT s.recording_id FROM bouts b JOIN sequences s ON s.sequence_id=b.sequence_id
+     WHERE b.bout_id=NEW.bout_id)
+ ) IS NOT NULL
+ AND (SELECT rc.recording_id FROM recording_channels rc
+      WHERE rc.recording_channel_id=NEW.recording_channel_id) IS NOT COALESCE(
+    (SELECT ar.recording_id FROM acoustic_references ar
+     WHERE ar.acoustic_reference_id=NEW.acoustic_reference_id),
+    NEW.recording_id,
+    (SELECT d.recording_id FROM detections d WHERE d.detection_id=NEW.detection_id),
+    (SELECT ce.recording_id FROM consensus_events ce WHERE ce.consensus_event_id=NEW.consensus_event_id),
+    (SELECT es.recording_id FROM external_events ee
+     JOIN external_streams es ON es.external_stream_id=ee.external_stream_id
+     WHERE ee.external_event_id=NEW.external_event_id),
+    (SELECT re.recording_id FROM recording_epochs re WHERE re.epoch_id=NEW.epoch_id),
+    (SELECT s.recording_id FROM sequences s WHERE s.sequence_id=NEW.sequence_id),
+    (SELECT s.recording_id FROM bouts b JOIN sequences s ON s.sequence_id=b.sequence_id
+     WHERE b.bout_id=NEW.bout_id)
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'Derived measurement channel belongs to a different recording than its target');
+END;
+
+CREATE TRIGGER trg_derived_measurement_channel_scope_update
+BEFORE UPDATE ON derived_measurements
+FOR EACH ROW
+WHEN NEW.recording_channel_id IS NOT NULL
+ AND COALESCE(
+    (SELECT ar.recording_id FROM acoustic_references ar
+     WHERE ar.acoustic_reference_id=NEW.acoustic_reference_id),
+    NEW.recording_id,
+    (SELECT d.recording_id FROM detections d WHERE d.detection_id=NEW.detection_id),
+    (SELECT ce.recording_id FROM consensus_events ce WHERE ce.consensus_event_id=NEW.consensus_event_id),
+    (SELECT es.recording_id FROM external_events ee
+     JOIN external_streams es ON es.external_stream_id=ee.external_stream_id
+     WHERE ee.external_event_id=NEW.external_event_id),
+    (SELECT re.recording_id FROM recording_epochs re WHERE re.epoch_id=NEW.epoch_id),
+    (SELECT s.recording_id FROM sequences s WHERE s.sequence_id=NEW.sequence_id),
+    (SELECT s.recording_id FROM bouts b JOIN sequences s ON s.sequence_id=b.sequence_id
+     WHERE b.bout_id=NEW.bout_id)
+ ) IS NOT NULL
+ AND (SELECT rc.recording_id FROM recording_channels rc
+      WHERE rc.recording_channel_id=NEW.recording_channel_id) IS NOT COALESCE(
+    (SELECT ar.recording_id FROM acoustic_references ar
+     WHERE ar.acoustic_reference_id=NEW.acoustic_reference_id),
+    NEW.recording_id,
+    (SELECT d.recording_id FROM detections d WHERE d.detection_id=NEW.detection_id),
+    (SELECT ce.recording_id FROM consensus_events ce WHERE ce.consensus_event_id=NEW.consensus_event_id),
+    (SELECT es.recording_id FROM external_events ee
+     JOIN external_streams es ON es.external_stream_id=ee.external_stream_id
+     WHERE ee.external_event_id=NEW.external_event_id),
+    (SELECT re.recording_id FROM recording_epochs re WHERE re.epoch_id=NEW.epoch_id),
+    (SELECT s.recording_id FROM sequences s WHERE s.sequence_id=NEW.sequence_id),
+    (SELECT s.recording_id FROM bouts b JOIN sequences s ON s.sequence_id=b.sequence_id
+     WHERE b.bout_id=NEW.bout_id)
+ )
+BEGIN
+    SELECT RAISE(ABORT, 'Derived measurement channel belongs to a different recording than its target');
 END;
 
 -- A tracking stream and the coordinate system it cites must belong to one
@@ -2990,5 +3072,11 @@ CREATE UNIQUE INDEX idx_alignment_anchor_observation_included
 CREATE INDEX idx_sequences_recording ON sequences(recording_id, analysis_run_id);
 CREATE INDEX idx_sequence_members_sequence ON sequence_members(sequence_id, ordinal_position);
 CREATE INDEX idx_derived_measurements_metric ON derived_measurements(metric_definition_id, analysis_run_id);
+CREATE INDEX idx_derived_measurements_acoustic_reference
+    ON derived_measurements(acoustic_reference_id, recording_channel_id);
+CREATE UNIQUE INDEX idx_derived_measurements_acoustic_unique
+    ON derived_measurements(analysis_run_id, metric_definition_id,
+                            acoustic_reference_id, IFNULL(recording_channel_id, -1))
+    WHERE acoustic_reference_id IS NOT NULL;
 
 COMMIT;

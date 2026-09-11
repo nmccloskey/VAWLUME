@@ -50,6 +50,7 @@ try
     end
 
     summary = registerProfileRelationships(conn, registeredProfiles, summary);
+    summary = registerAcousticMetricDefinitions(conn, summary);
     if summary.inserted > 0
         commit(conn);
     end
@@ -62,6 +63,35 @@ catch exception
     rethrow(exception);
 end
 conn.AutoCommit = oldAutoCommit;
+end
+
+function summary = registerAcousticMetricDefinitions(conn, summary)
+definitions = {
+    struct(metric_key="acoustic_rms_amplitude", ...
+        metric_name="Acoustic RMS amplitude", value_type="real", ...
+        canonical_unit="full_scale_ratio", ...
+        definition="Root mean square of audioread-normalized samples in the covered reference window.", ...
+        allowed_scope="acoustic_reference;recording_channel", ...
+        derivation_family="acoustic_reference_response", ...
+        notes="No gain correction, calibration, normalization, or caller inference is implied.")
+    struct(metric_key="acoustic_peak_abs_amplitude", ...
+        metric_name="Acoustic peak absolute amplitude", value_type="real", ...
+        canonical_unit="full_scale_ratio", ...
+        definition="Maximum absolute audioread-normalized sample in the covered reference window.", ...
+        allowed_scope="acoustic_reference;recording_channel", ...
+        derivation_family="acoustic_reference_response", ...
+        notes="No gain correction, calibration, normalization, or caller inference is implied.")
+    struct(metric_key="acoustic_band_power", ...
+        metric_name="Acoustic band power", value_type="real", ...
+        canonical_unit="full_scale_ratio_squared", ...
+        definition="Two-sided rectangular-bin DFT power whose folded absolute frequencies lie within an explicit valid reference band.", ...
+        allowed_scope="acoustic_reference;recording_channel", ...
+        derivation_family="acoustic_reference_response", ...
+        notes="Computed only for a complete explicit band at or below Nyquist; no spectral calibration is implied.")
+};
+for index = 1:numel(definitions)
+    [~, summary] = upsertMetricDefinition(conn, definitions{index}, summary);
+end
 end
 
 function [registered, summary] = registerProfileBundle(conn, loaded, summary)
@@ -496,6 +526,28 @@ end
 summary.feature_relationships_registered = summary.feature_relationships_registered + 1;
 end
 
+function [id, summary] = upsertMetricDefinition(conn, expected, summary)
+rows = readMetricDefinitions(conn);
+if isempty(rows)
+    match = rows;
+else
+    match = rows(rows.metric_key == expected.metric_key, :);
+end
+if isempty(match)
+    id = insertRow(conn, "metric_definitions", expected, "metric_definition_id");
+    summary.metric_definitions_inserted = summary.metric_definitions_inserted + 1;
+    summary.inserted = summary.inserted + 1;
+else
+    id = double(match.metric_definition_id(1));
+    assertNoConflict(match(1, :), expected, ...
+        ["metric_name", "value_type", "canonical_unit", "definition", ...
+         "allowed_scope", "derivation_family", "notes"], ...
+        "metric_definitions:" + expected.metric_key);
+    summary.reused_existing = summary.reused_existing + 1;
+end
+summary.metric_definitions_registered = summary.metric_definitions_registered + 1;
+end
+
 function id = insertRow(conn, tableName, values, idColumn)
 insertValues = stripEmptyOptionalFields(values);
 names = fieldnames(insertValues);
@@ -648,6 +700,21 @@ rows = fetch(conn, ...
     "FROM feature_relationships");
 end
 
+function rows = readMetricDefinitions(conn)
+rows = fetch(conn, ...
+    "SELECT metric_definition_id, metric_key, metric_name, value_type, " + ...
+    "IFNULL(canonical_unit, '') AS canonical_unit, definition, " + ...
+    "IFNULL(allowed_scope, '') AS allowed_scope, " + ...
+    "IFNULL(derivation_family, '') AS derivation_family, " + ...
+    "IFNULL(notes, '') AS notes FROM metric_definitions");
+if ~isempty(rows)
+    for name = ["metric_key", "metric_name", "value_type", "canonical_unit", ...
+            "definition", "allowed_scope", "derivation_family", "notes"]
+        rows.(name) = normalizeTextColumn(rows.(name));
+    end
+end
+end
+
 function summary = emptySummary()
 summary = struct();
 summary.profiles_registered = 0;
@@ -658,6 +725,7 @@ summary.canonical_features_registered = 0;
 summary.extractor_features_registered = 0;
 summary.feature_mappings_registered = 0;
 summary.feature_relationships_registered = 0;
+summary.metric_definitions_registered = 0;
 summary.profiles_inserted = 0;
 summary.profile_versions_inserted = 0;
 summary.extractors_inserted = 0;
@@ -666,6 +734,7 @@ summary.canonical_features_inserted = 0;
 summary.extractor_features_inserted = 0;
 summary.feature_mappings_inserted = 0;
 summary.feature_relationships_inserted = 0;
+summary.metric_definitions_inserted = 0;
 summary.inserted = 0;
 summary.reused_existing = 0;
 summary.warnings = strings(0, 1);

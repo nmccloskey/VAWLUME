@@ -727,6 +727,17 @@ vawlume.acoustic.registerReference(conn, recordingRef, noise);
 
 references = vawlume.acoustic.readReferences(conn, recordingRef, ...
     ChannelIndex=1, StartTimeS=10, EndTimeS=35);
+
+% Read only this half-open native-audio window from the linked local artifact.
+window = vawlume.acoustic.readAudioWindow(conn, recordingRef, 1, 15, 17, ...
+    SourceRoot=sessionFolder);
+
+% Measure without writes, then persist under a stable analysis-run key.
+preview = vawlume.acoustic.measureReferenceResponse(conn, ...
+    struct(acoustic_reference_id=1), 1, SourceRoot=sessionFolder);
+stored = vawlume.acoustic.measureReferenceResponse(conn, ...
+    struct(acoustic_reference_id=1), 1, SourceRoot=sessionFolder, ...
+    Apply=true, RunKey="session01-low-tone-ch1");
 ```
 
 `reference_type` is open text, frequency bounds are optional, and equal start/end
@@ -735,6 +746,8 @@ the source event link but never creates an alignment anchor. User event tables
 reuse the normal `external_stream_mapping` path; see the shipped
 `acoustic_reference_event_mapping_profile.json` and
 [`../development/26_acoustic_reference_registration.md`](../development/26_acoustic_reference_registration.md).
+Bounded reads and response measurements are described in
+[`../development/27_audio_window_and_response_measurement.md`](../development/27_audio_window_and_response_measurement.md).
 
 ---
 
@@ -747,14 +760,14 @@ in the prototype; derived tables are returned to MATLAB.
 
 | Stage | Principal tables written |
 |---|---|
-| Schema + seed | `schema_info`, `extractors`, `extractor_versions`, `canonical_features`, `extractor_features`, `feature_mappings`, `feature_relationships`, `config_profiles`, `config_profile_versions` |
+| Schema + seed | `schema_info`, `extractors`, `extractor_versions`, `canonical_features`, `extractor_features`, `feature_mappings`, `feature_relationships`, `metric_definitions`, `config_profiles`, `config_profile_versions` |
 | Project intake | `projects`, `source_files`, `entity_types`, `experimental_entities`, `entity_relationships`, `recordings`, `recording_entity_links`, `*_profile_assignments`, `ingestion_runs`, `ingestion_files` |
 | Extractor import | `extraction_runs`, `extraction_run_inputs`, `extraction_run_profiles`, `artifacts`, `extraction_run_artifacts`, `detections`, `event_measurements`; `unmapped_source_values` for unclaimed source columns; and — DeepSqueak only — `curation_events`, `classification_runs`, `classification_classes`, `classification_assignments` |
 | Matching | `analysis_runs`, `analysis_run_profiles`, `analysis_run_extraction_inputs`, `candidate_pairs`, `match_groups`, `match_group_members`, `consensus_events`, `consensus_event_members` |
 | Consilience | `consilience_assessments`, `agreement_statistics`; `manual_reviews` and `manual_reference_events` hold independent human input |
 | Arbitrary-N agreement | `analysis_runs` (a `multi_extractor_agreement` run with many-parent lineage), `agreement_groups`, `agreement_group_members`, `agreement_supporting_edges` |
 | Alignment | `timebases`, `external_streams`, `external_stream_sources`, `external_stream_coverage`, `external_events`, `external_event_attributes`, `alignment_sets`, `alignment_anchors`, `alignment_anchor_observations`, `time_alignment_runs`, `alignment_segments`, `alignment_anchor_residuals` |
-| Multimodal intake | `coordinate_systems`, `channel_placements`, `tracking_streams`, `tracking_series`, `tracking_identity_associations`, `acoustic_references` |
+| Multimodal intake and response | `coordinate_systems`, `channel_placements`, `tracking_streams`, `tracking_series`, `tracking_identity_associations`, `acoustic_references`; response applies add `analysis_runs` and `derived_measurements` |
 
 Note that `agreement_statistics` belongs to *pairwise* consilience despite its
 name; the arbitrary-N layer stores no summary at all. Its counts, fractions,
@@ -1050,7 +1063,7 @@ extractor-native classes; publication artefacts.
 
 - [`../design/01_prototype_development_outline.md`](../design/01_prototype_development_outline.md) — prototype development plan and completion criteria
 - [`../design/02_temporal_alignment_contract.md`](../design/02_temporal_alignment_contract.md) — alignment design contract, exit criteria, known limitations
-- [`../design/03_multimodal_input_contract.md`](../design/03_multimodal_input_contract.md) — multimodal input design contract. Spatial geometry, tracking input/identity, and acoustic-reference registration are implemented; response measurement and estimation remain planned.
+- [`../design/03_multimodal_input_contract.md`](../design/03_multimodal_input_contract.md) — multimodal input design contract. Spatial geometry, tracking input/identity, and per-reference acoustic response measurement are implemented; cross-reference channel estimation remains planned.
 
 ### Contracts per stage
 
@@ -1074,6 +1087,7 @@ extractor-native classes; publication artefacts.
 - [`../development/24_tracking_input_contract.md`](../development/24_tracking_input_contract.md) — tracking registration and bounded reads
 - [`../development/25_visual_identity_association.md`](../development/25_visual_identity_association.md) — track-to-entity association and ambiguity
 - [`../development/26_acoustic_reference_registration.md`](../development/26_acoustic_reference_registration.md) — acoustic-reference registration, query, provenance, and mapper reuse
+- [`../development/27_audio_window_and_response_measurement.md`](../development/27_audio_window_and_response_measurement.md) — bounded local-audio reads, deterministic response metrics, QC, and persistence
 
 ### Configuration and schema
 

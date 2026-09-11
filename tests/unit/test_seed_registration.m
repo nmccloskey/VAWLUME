@@ -37,6 +37,7 @@ verifyEqual(testCase, countsAfterFirst.canonical_features, 21);
 verifyEqual(testCase, countsAfterFirst.extractor_features, 33);
 verifyEqual(testCase, countsAfterFirst.feature_mappings, 33);
 verifyEqual(testCase, countsAfterFirst.feature_relationships, 17);
+verifyEqual(testCase, countsAfterFirst.metric_definitions, 3);
 
 verifyProfileChecksums(testCase, conn, repoRoot);
 verifyExtractorIdentities(testCase, conn);
@@ -44,6 +45,7 @@ verifyRepresentativeFeatureSemantics(testCase, conn);
 verifyPairwiseRelationships(testCase, conn);
 verifyUnorderedPairGeneralization(testCase, conn);
 verifyNegativeRelationshipSemantics(testCase, conn);
+verifyAcousticMetricSemantics(testCase, conn);
 
 clear cleanupPath cleanupDb first second
 end
@@ -476,11 +478,26 @@ tables = [
     "extractor_features"
     "feature_mappings"
     "feature_relationships"
+    "metric_definitions"
 ];
 counts = struct();
 for tableName = tables'
     counts.(tableName) = scalar(conn, "SELECT COUNT(*) AS n FROM " + tableName);
 end
+end
+
+
+function verifyAcousticMetricSemantics(testCase, conn)
+rows = fetch(conn, "SELECT metric_key, canonical_unit, allowed_scope, " + ...
+    "derivation_family, notes FROM metric_definitions " + ...
+    "WHERE derivation_family='acoustic_reference_response' ORDER BY metric_key");
+verifyEqual(testCase, string(rows.metric_key), ...
+    ["acoustic_band_power"; "acoustic_peak_abs_amplitude"; "acoustic_rms_amplitude"]);
+verifyEqual(testCase, string(rows.canonical_unit), ...
+    ["full_scale_ratio_squared"; "full_scale_ratio"; "full_scale_ratio"]);
+verifyTrue(testCase, all(string(rows.allowed_scope) == ...
+    "acoustic_reference;recording_channel"));
+verifyTrue(testCase, all(contains(string(rows.notes), "no", IgnoreCase=true)));
 end
 
 function rows = profileVersionRows(conn, profileKey)

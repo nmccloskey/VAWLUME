@@ -88,6 +88,8 @@ event provenance cannot masquerade as the reference's timing authority.
 
 ## Deliberate boundary
 
-This layer reads no audio samples and computes no power, amplitude, response,
-normalization factor, or correction. Those are derived products owned by later
-Phase 2 work. No caller-attribution concept appears in the table or API.
+Registration itself reads no audio samples and computes no power, amplitude,
+normalization factor, or correction. The separate bounded reader and derived
+response-measurement boundary are documented in
+[`27_audio_window_and_response_measurement.md`](27_audio_window_and_response_measurement.md).
+No caller-attribution concept appears in either API.
