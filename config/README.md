@@ -114,6 +114,13 @@ Synthetic examples:
 config/01_mapping_profiles/external_streams/
 ```
 
+This same profile kind also maps user-supplied acoustic-reference interval
+tables. The shipped `acoustic_reference_event_mapping_profile.json` demonstrates
+tone, noise, user-defined labels, optional frequency bounds, and optional channel
+metadata. It produces ordinary external-event IR that can feed
+`vawlume.acoustic.registerReference`; there is no separate
+`acoustic_reference_mapping` kind and no vendor/controller parser.
+
 ### 4. Alignment-anchor source mapping profile
 
 Defines explicit logical anchors and their per-clock observations. Long layouts

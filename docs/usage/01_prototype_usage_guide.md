@@ -44,6 +44,10 @@ Concretely, the prototype can today:
   logical alignment anchors from one session manifest, **fit** offset or affine
   source-to-reference clock transforms with per-anchor residual evidence, project
   events onto a common clock, and build a coverage-aware regularized timeline.
+- **register** coordinate systems and per-channel microphone placements,
+  canonicalize external tracking artifacts without copying dense samples into
+  SQLite, preserve time-varying ambiguous track-to-entity evidence, and declare
+  optional acoustic-reference points/intervals with source provenance.
 
 ### Important limitations
 
@@ -70,6 +74,9 @@ Concretely, the prototype can today:
   in the schema and are used by no code.
 - **All validation to date is synthetic.** No real paired extractor session and
   no real manually reviewed reference subset has been available.
+- **Acoustic references are declarations, not measurements.** VAWLUME does not
+  yet read audio samples, measure channel response, or derive normalization or
+  correction factors from these intervals.
 
 ### VAWLUME and external extractors
 
@@ -703,6 +710,32 @@ each clock — never by nearest timestamp or pulse order. An anchor contributes 
 a fit only when exactly one *included* observation exists on the source clock and
 exactly one on the reference clock.
 
+### 7.5 Register and read acoustic references
+
+Acoustic references are optional recording-native points or intervals. A
+channel-specific tone and a recording-wide noise interval can coexist:
+
+```matlab
+tone = struct(reference_key="low-tone-01", reference_type="tone", ...
+    native_label="LOW_TONE", start_time_s=15, end_time_s=17, ...
+    channel_index=1, frequency_min_hz=18000, frequency_max_hz=22000);
+vawlume.acoustic.registerReference(conn, recordingRef, tone);
+
+noise = struct(reference_key="noise-01", reference_type="white_noise", ...
+    start_time_s=30, end_time_s=40); % no channel_index: all channels
+vawlume.acoustic.registerReference(conn, recordingRef, noise);
+
+references = vawlume.acoustic.readReferences(conn, recordingRef, ...
+    ChannelIndex=1, StartTimeS=10, EndTimeS=35);
+```
+
+`reference_type` is open text, frequency bounds are optional, and equal start/end
+times are legal point-like references. A supplied `external_event_id` preserves
+the source event link but never creates an alignment anchor. User event tables
+reuse the normal `external_stream_mapping` path; see the shipped
+`acoustic_reference_event_mapping_profile.json` and
+[`../development/26_acoustic_reference_registration.md`](../development/26_acoustic_reference_registration.md).
+
 ---
 
 ## 8. Outputs and data model
@@ -721,6 +754,7 @@ in the prototype; derived tables are returned to MATLAB.
 | Consilience | `consilience_assessments`, `agreement_statistics`; `manual_reviews` and `manual_reference_events` hold independent human input |
 | Arbitrary-N agreement | `analysis_runs` (a `multi_extractor_agreement` run with many-parent lineage), `agreement_groups`, `agreement_group_members`, `agreement_supporting_edges` |
 | Alignment | `timebases`, `external_streams`, `external_stream_sources`, `external_stream_coverage`, `external_events`, `external_event_attributes`, `alignment_sets`, `alignment_anchors`, `alignment_anchor_observations`, `time_alignment_runs`, `alignment_segments`, `alignment_anchor_residuals` |
+| Multimodal intake | `coordinate_systems`, `channel_placements`, `tracking_streams`, `tracking_series`, `tracking_identity_associations`, `acoustic_references` |
 
 Note that `agreement_statistics` belongs to *pairwise* consilience despite its
 name; the arbitrary-N layer stores no summary at all. Its counts, fractions,
@@ -916,7 +950,7 @@ assertSuccess(results);
 assert(~any([results.Incomplete]), "Incomplete tests.");
 ```
 
-The suite is currently **462 tests**. Runtime is machine-dependent; observed
+The suite is currently **469 tests**. Runtime is machine-dependent; observed
 wall times range from roughly nine to twenty-five minutes. Passing it
 is the strongest available check that an environment is correctly configured.
 Use the [canonical batch gate in the README](../../README.md#quick-start) for
@@ -1016,7 +1050,7 @@ extractor-native classes; publication artefacts.
 
 - [`../design/01_prototype_development_outline.md`](../design/01_prototype_development_outline.md) — prototype development plan and completion criteria
 - [`../design/02_temporal_alignment_contract.md`](../design/02_temporal_alignment_contract.md) — alignment design contract, exit criteria, known limitations
-- [`../design/03_multimodal_input_contract.md`](../design/03_multimodal_input_contract.md) — multimodal input design contract (tracking, microphone geometry, acoustic references). **Design only; none of it is implemented, and nothing in §1 or §10 describes it as available**
+- [`../design/03_multimodal_input_contract.md`](../design/03_multimodal_input_contract.md) — multimodal input design contract. Spatial geometry, tracking input/identity, and acoustic-reference registration are implemented; response measurement and estimation remain planned.
 
 ### Contracts per stage
 
@@ -1036,6 +1070,10 @@ extractor-native classes; publication artefacts.
 - [`../development/12_alignment_intake_and_registration.md`](../development/12_alignment_intake_and_registration.md) — manifest contract and transaction semantics
 - [`../development/13_transform_fitting_and_alignment_qc.md`](../development/13_transform_fitting_and_alignment_qc.md) — fit models, residuals, `estimated` versus `validated`
 - [`../development/14_common_time_views_and_regularized_timeline.md`](../development/14_common_time_views_and_regularized_timeline.md) — common time and bin semantics
+- [`../development/23_spatial_geometry_schema.md`](../development/23_spatial_geometry_schema.md) — coordinate systems and microphone placement
+- [`../development/24_tracking_input_contract.md`](../development/24_tracking_input_contract.md) — tracking registration and bounded reads
+- [`../development/25_visual_identity_association.md`](../development/25_visual_identity_association.md) — track-to-entity association and ambiguity
+- [`../development/26_acoustic_reference_registration.md`](../development/26_acoustic_reference_registration.md) — acoustic-reference registration, query, provenance, and mapper reuse
 
 ### Configuration and schema
 

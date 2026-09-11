@@ -20,7 +20,10 @@ with categorical consilience statuses and independent manual review, and
 anchor-based temporal alignment onto a common clock with a coverage-aware
 regularized timeline. Arbitrary-N extractor agreement can be composed from
 pairwise evidence and queried as exact or coarse analysis populations without
-collapsing native detections.
+collapsing native detections. Multimodal intake now also covers declared spatial
+frames, per-channel microphone placement, external tracking registration and
+windowed reads, time-varying track-to-entity identity evidence, and optional
+provenance-bearing acoustic-reference intervals.
 
 **Not yet implemented:** sequence, bout, motif, and hierarchy-aware analysis;
 continuous-signal ingestion; full acquisition synchronization. These are the
@@ -72,7 +75,7 @@ To check the environment is correctly configured:
 
 ```matlab
 addpath("src")
-results = runtests("tests", IncludeSubfolders=true);   % 462 tests, ~9-25 minutes
+results = runtests("tests", IncludeSubfolders=true);   % 469 tests, ~9-25 minutes
 table(results)
 assert(~isempty(results), "No tests discovered.");
 assertSuccess(results);
@@ -543,7 +546,7 @@ metric identity is never asserted.
 - [`docs/usage/01_prototype_usage_guide.md`](docs/usage/01_prototype_usage_guide.md) — **start here**: requirements, configuration, a minimal end-to-end example, using your own data, outputs, troubleshooting, and current limitations
 - [`docs/design/01_prototype_development_outline.md`](docs/design/01_prototype_development_outline.md) — current prototype development plan
 - [`docs/design/02_temporal_alignment_contract.md`](docs/design/02_temporal_alignment_contract.md) — Phase 7 temporal-alignment design contract, exit criteria, inherited-schema audit, and current implementation boundary
-- [`docs/design/03_multimodal_input_contract.md`](docs/design/03_multimodal_input_contract.md) — multimodal input design contract: coordinate systems, microphone placement, tracking inputs, acoustic references, and channel response. **Design only; not yet implemented**
+- [`docs/design/03_multimodal_input_contract.md`](docs/design/03_multimodal_input_contract.md) — multimodal input design contract: coordinate systems, microphone placement, tracking inputs, acoustic references, and channel response. Implemented through acoustic-reference registration; response measurement and estimation remain planned.
 - [`docs/development/01_repo_structure.md`](docs/development/01_repo_structure.md) — repository policy and MATLAB-specific layout
 - [`docs/development/02_development_workflow.md`](docs/development/02_development_workflow.md) — development conventions for the prototype
 - [`docs/development/03_source_mapping_intermediate_representation.md`](docs/development/03_source_mapping_intermediate_representation.md) — source-mapping IR and dry-run contract
@@ -567,6 +570,10 @@ metric identity is never asserted.
 - [`docs/development/20_agreement_population_selection.md`](docs/development/20_agreement_population_selection.md) — the read-only filtering API, its independent shape dimensions, and its group/member denominators
 - [`docs/development/21_usvseg_import.md`](docs/development/21_usvseg_import.md) — USVSEG import contract, caller-supplied version, optional weak settings evidence, and the deliberate absences
 - [`docs/development/22_phase1_correspondence_boundaries.md`](docs/development/22_phase1_correspondence_boundaries.md) — **read this to orient**: the boundary between native detections, pairwise candidate/match/consensus, arbitrary-N agreement groups, and future caller-attribution evidence
+- [`docs/development/23_spatial_geometry_schema.md`](docs/development/23_spatial_geometry_schema.md) — coordinate-system identity and recording-channel microphone placement
+- [`docs/development/24_tracking_input_contract.md`](docs/development/24_tracking_input_contract.md) — external tracking registration and bounded sample access
+- [`docs/development/25_visual_identity_association.md`](docs/development/25_visual_identity_association.md) — time-varying native-track to canonical-entity evidence and ambiguity
+- [`docs/development/26_acoustic_reference_registration.md`](docs/development/26_acoustic_reference_registration.md) — optional recording/channel reference intervals, mapper reuse, and provenance
 
 Extractor-specific design references should live under:
 

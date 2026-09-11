@@ -342,6 +342,9 @@ A reference row says *where to look and what is claimed to be there*. It stores
 no amplitude, no power, and no measured quantity. What was actually observed in
 that window is derived evidence, below.
 
+Implementation reference:
+[`../development/26_acoustic_reference_registration.md`](../development/26_acoustic_reference_registration.md).
+
 ## Measured response
 
 ### Reuse `metric_definitions` and `derived_measurements`

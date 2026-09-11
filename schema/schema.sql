@@ -1298,6 +1298,46 @@ CREATE TABLE tracking_identity_associations (
     CHECK (identity_value IS NULL OR identity_value_semantics IS NOT NULL)
 );
 
+-- A declared interval in a recording's native audio clock that is asserted to
+-- contain a useful reference signal. This is the CLAIM about where a tone,
+-- noise band, background interval, or user-defined signal occurs; later
+-- measured channel response is derived evidence and does not belong here.
+--
+-- recording_channel_id NULL means the declaration applies to every channel in
+-- the recording. A channel-specific row must name a channel owned by that same
+-- recording; trigger pairs below enforce the cross-table scope on insert and
+-- update.
+--
+-- reference_type is deliberately free text. VAWLUME does not privilege tones,
+-- noise, or any hardware-specific calibration sequence. A zero-duration row is
+-- a legitimate point-like reference, while end_time_s > start_time_s describes
+-- an interval.
+--
+-- external_event_id is optional provenance only. Existing profile-driven event
+-- import may identify the source row, but linking it never turns the reference
+-- into an alignment anchor and never makes a clock transform necessary for an
+-- audio-native measurement.
+CREATE TABLE acoustic_references (
+    acoustic_reference_id INTEGER PRIMARY KEY,
+    recording_id        INTEGER NOT NULL REFERENCES recordings(recording_id) ON DELETE CASCADE,
+    recording_channel_id INTEGER REFERENCES recording_channels(recording_channel_id) ON DELETE CASCADE,
+    external_event_id   INTEGER REFERENCES external_events(external_event_id) ON DELETE SET NULL,
+    reference_key       TEXT NOT NULL,
+    reference_type      TEXT NOT NULL,
+    native_label        TEXT,
+    start_time_s        REAL NOT NULL CHECK (start_time_s >= 0),
+    end_time_s          REAL NOT NULL CHECK (end_time_s >= start_time_s),
+    frequency_min_hz    REAL CHECK (frequency_min_hz IS NULL OR frequency_min_hz >= 0),
+    frequency_max_hz    REAL CHECK (frequency_max_hz IS NULL OR frequency_max_hz >= 0),
+    source_file_id      INTEGER REFERENCES source_files(source_file_id) ON DELETE RESTRICT,
+    source_locator      TEXT,
+    mapping_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,
+    notes               TEXT,
+    CHECK (frequency_max_hz IS NULL OR frequency_min_hz IS NULL
+           OR frequency_max_hz >= frequency_min_hz),
+    UNIQUE(recording_id, reference_key)
+);
+
 -- One user-facing multimodal alignment operation: "express this session's clocks
 -- relative to the neural clock". It owns the analysis-run identity, the chosen
 -- reference timebase, and the exact manifest evidence. The pairwise transforms
@@ -1612,6 +1652,62 @@ WHEN NEW.entity_id IS NOT NULL AND (
 )
 BEGIN
     SELECT RAISE(ABORT, 'Identity association candidate entity belongs to a different project than the tracking stream');
+END;
+
+-- Optional channel scope narrows a recording-level reference; it cannot point
+-- at a channel owned by another recording. Both insert and update are guarded so
+-- direct SQL cannot create an invalid row after registration.
+CREATE TRIGGER trg_acoustic_reference_channel_scope
+BEFORE INSERT ON acoustic_references
+FOR EACH ROW
+WHEN NEW.recording_channel_id IS NOT NULL AND (
+    SELECT rc.recording_id
+    FROM recording_channels rc
+    WHERE rc.recording_channel_id = NEW.recording_channel_id
+) IS NOT NEW.recording_id
+BEGIN
+    SELECT RAISE(ABORT, 'Acoustic reference channel belongs to a different recording');
+END;
+
+CREATE TRIGGER trg_acoustic_reference_channel_scope_update
+BEFORE UPDATE ON acoustic_references
+FOR EACH ROW
+WHEN NEW.recording_channel_id IS NOT NULL AND (
+    SELECT rc.recording_id
+    FROM recording_channels rc
+    WHERE rc.recording_channel_id = NEW.recording_channel_id
+) IS NOT NEW.recording_id
+BEGIN
+    SELECT RAISE(ABORT, 'Acoustic reference channel belongs to a different recording');
+END;
+
+-- A linked external event is source provenance for this reference and therefore
+-- must come from a stream attached to the same recording. It remains a distinct
+-- object: no anchor row is created or implied by this relationship.
+CREATE TRIGGER trg_acoustic_reference_event_scope
+BEFORE INSERT ON acoustic_references
+FOR EACH ROW
+WHEN NEW.external_event_id IS NOT NULL AND (
+    SELECT es.recording_id
+    FROM external_events ee
+    JOIN external_streams es ON es.external_stream_id = ee.external_stream_id
+    WHERE ee.external_event_id = NEW.external_event_id
+) IS NOT NEW.recording_id
+BEGIN
+    SELECT RAISE(ABORT, 'Acoustic reference external event belongs to a different recording');
+END;
+
+CREATE TRIGGER trg_acoustic_reference_event_scope_update
+BEFORE UPDATE ON acoustic_references
+FOR EACH ROW
+WHEN NEW.external_event_id IS NOT NULL AND (
+    SELECT es.recording_id
+    FROM external_events ee
+    JOIN external_streams es ON es.external_stream_id = ee.external_stream_id
+    WHERE ee.external_event_id = NEW.external_event_id
+) IS NOT NEW.recording_id
+BEGIN
+    SELECT RAISE(ABORT, 'Acoustic reference external event belongs to a different recording');
 END;
 
 -- A tracking stream and the coordinate system it cites must belong to one
@@ -2841,6 +2937,12 @@ CREATE INDEX idx_identity_associations_track
         start_time_native, end_time_native);
 CREATE INDEX idx_identity_associations_entity
     ON tracking_identity_associations(entity_id);
+CREATE INDEX idx_acoustic_references_recording_time
+    ON acoustic_references(recording_id, start_time_s, end_time_s);
+CREATE INDEX idx_acoustic_references_channel
+    ON acoustic_references(recording_channel_id, start_time_s, end_time_s);
+CREATE INDEX idx_acoustic_references_external_event
+    ON acoustic_references(external_event_id);
 
 -- The exact same candidate must not be asserted twice for one interval, but
 -- SQLite treats NULLs as distinct in a UNIQUE index, so two 'unresolved' rows

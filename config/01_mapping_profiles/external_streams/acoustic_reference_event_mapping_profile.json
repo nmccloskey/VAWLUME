@@ -1,0 +1,99 @@
+{
+  "profile": {
+    "id": "vawlume.external.acoustic_reference.synthetic.v1",
+    "name": "Synthetic acoustic-reference interval table",
+    "kind": "external_stream_mapping",
+    "profile_schema_version": "0.3-draft",
+    "profile_version": "0.1.0"
+  },
+  "source": {
+    "table_role": "acoustic_reference_events",
+    "source_key_default": "source:acoustic_reference:synthetic"
+  },
+  "context": {
+    "stream_key": "acoustic_reference_events",
+    "timebase_key": "audio_native",
+    "stream_kind": "annotation",
+    "modality": "acoustic_reference",
+    "native_time_unit": "s"
+  },
+  "columns": {
+    "native_event_id": {
+      "source_field": "reference_id",
+      "required": true
+    },
+    "native_event_label": {
+      "source_field": "reference_label",
+      "required": true
+    },
+    "start_time": {
+      "source_field": "start_time_s",
+      "required": true
+    },
+    "end_time": {
+      "source_field": "end_time_s",
+      "required": true
+    }
+  },
+  "normalized_event_mapping": {
+    "controlled_targets": ["tone", "noise"],
+    "unmapped_native_label": "preserve_native",
+    "mappings": [
+      {
+        "native_value": "LOW_TONE",
+        "normalized_value": "tone"
+      },
+      {
+        "native_value": "WHITE_NOISE",
+        "normalized_value": "noise"
+      }
+    ]
+  },
+  "attributes": [
+    {
+      "source_field": "frequency_min_hz",
+      "attribute_name": "frequency_min_hz",
+      "data_type": "float_or_missing",
+      "native_unit": "Hz",
+      "normalized_unit": "Hz",
+      "transform": "identity",
+      "required": false,
+      "missing_value_policy": {
+        "missing_tokens": ["NA", "N/A"],
+        "blank_is_missing": true,
+        "case_sensitive": false,
+        "preserve_raw_token": true
+      }
+    },
+    {
+      "source_field": "frequency_max_hz",
+      "attribute_name": "frequency_max_hz",
+      "data_type": "float_or_missing",
+      "native_unit": "Hz",
+      "normalized_unit": "Hz",
+      "transform": "identity",
+      "required": false,
+      "missing_value_policy": {
+        "missing_tokens": ["NA", "N/A"],
+        "blank_is_missing": true,
+        "case_sensitive": false,
+        "preserve_raw_token": true
+      }
+    },
+    {
+      "source_field": "channel_index",
+      "attribute_name": "channel_index",
+      "data_type": "integer",
+      "native_unit": "",
+      "normalized_unit": "",
+      "transform": "identity",
+      "required": false
+    }
+  ],
+  "mapping_policy": {
+    "unknown_fields": "preserve_and_warn"
+  },
+  "validation": {
+    "native_event_id_unique": true
+  }
+}

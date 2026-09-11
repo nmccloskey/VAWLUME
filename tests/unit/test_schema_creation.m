@@ -56,6 +56,7 @@ expectedTables = [
     "tracking_streams"
     "tracking_series"
     "tracking_identity_associations"
+    "acoustic_references"
     "external_stream_sources"
     "external_events"
     "external_event_attributes"
