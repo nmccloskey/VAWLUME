@@ -53,6 +53,8 @@ expectedTables = [
     "agreement_supporting_edges"
     "timebases"
     "external_streams"
+    "tracking_streams"
+    "tracking_series"
     "external_stream_sources"
     "external_events"
     "external_event_attributes"

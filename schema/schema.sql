@@ -78,6 +78,7 @@ CREATE TABLE config_profiles (
                             'experimental_setup',
                             'external_stream_mapping',
                             'alignment_anchor_mapping',
+                            'tracking_input_mapping',
                             'analysis_settings',
                             'consilience_policy',
                             'other'
@@ -1066,7 +1067,7 @@ CREATE TABLE external_streams (
     recording_id        INTEGER REFERENCES recordings(recording_id) ON DELETE CASCADE,
     timebase_id         INTEGER NOT NULL REFERENCES timebases(timebase_id) ON DELETE RESTRICT,
     stream_name         TEXT NOT NULL,
-    stream_kind         TEXT NOT NULL CHECK (stream_kind IN ('event','continuous','annotation','video','ttl','other')),
+    stream_kind         TEXT NOT NULL CHECK (stream_kind IN ('event','continuous','annotation','video','ttl','tracking','other')),
     modality            TEXT,
     units               TEXT,
     notes               TEXT
@@ -1165,6 +1166,59 @@ CREATE TABLE external_stream_coverage (
     notes               TEXT,
     CHECK (end_time_native >= start_time_native),
     UNIQUE(external_stream_id, segment_index)
+);
+
+-- Tracking is an external stream, not a parallel ontology. Stream identity,
+-- sources, timebase, and coverage all stay on the tables above; this 1:1
+-- subtype adds only the facts that are specific to canonicalized tracking.
+--
+-- stream_kind = 'tracking' rather than the existing 'continuous': a pose trace
+-- is not a continuous signal in the sense a photometry trace is, and conflating
+-- them would blur the distinction the coverage and window-reading semantics
+-- depend on.
+--
+-- DENSE SAMPLES ARE NEVER STORED. Positions, frames, and confidences stay in
+-- the registered artifact and are read window-wise on demand. This mirrors the
+-- policy already applied to continuous neural data and is a hard boundary: an
+-- itinerary that wants a tracking_samples table has left the multimodal input
+-- contract and needs an explicit decision, not a migration.
+CREATE TABLE tracking_streams (
+    external_stream_id  INTEGER PRIMARY KEY REFERENCES external_streams(external_stream_id) ON DELETE CASCADE,
+    coordinate_system_id INTEGER NOT NULL REFERENCES coordinate_systems(coordinate_system_id) ON DELETE RESTRICT,
+    -- Which native basis the artifact actually carries. 'frame' alone requires a
+    -- frame rate, because without one a frame index cannot be related to any
+    -- clock; 'time' and 'both' do not.
+    native_time_basis   TEXT NOT NULL CHECK (native_time_basis IN ('time','frame','both')),
+    nominal_frame_rate_hz REAL CHECK (nominal_frame_rate_hz IS NULL OR nominal_frame_rate_hz > 0),
+    -- Confidence is optional in the contract. 0 means the upstream tracker
+    -- emitted none, which readers report rather than imputing a value.
+    has_confidence      INTEGER NOT NULL DEFAULT 0 CHECK (has_confidence IN (0,1)),
+    -- Declared by the registering caller from the artifact it read, so a later
+    -- window read can sanity-check the file it opens against what was registered.
+    declared_sample_count INTEGER CHECK (declared_sample_count IS NULL OR declared_sample_count >= 0),
+    notes               TEXT,
+    CHECK (native_time_basis <> 'frame' OR nominal_frame_rate_hz IS NOT NULL)
+);
+
+-- One (entity, bodypart) trace within a tracking stream. Metadata, not data:
+-- tens of rows per stream, one per trace, never one per sample.
+--
+-- Native entity and bodypart labels are preserved verbatim and are always
+-- queryable. VAWLUME defines no bodypart ontology; canonical_bodypart_role is
+-- optional, additive, and justified per project - the same additive rule
+-- external_events.event_type follows beside native_event_label.
+--
+-- entity_id is nullable because a tracking file may name subjects in terms
+-- VAWLUME has never seen. An unlinked series is honest; a fabricated link is not.
+CREATE TABLE tracking_series (
+    tracking_series_id  INTEGER PRIMARY KEY,
+    external_stream_id  INTEGER NOT NULL REFERENCES tracking_streams(external_stream_id) ON DELETE CASCADE,
+    entity_id           INTEGER REFERENCES experimental_entities(entity_id) ON DELETE SET NULL,
+    native_entity_label TEXT NOT NULL,
+    native_bodypart_label TEXT NOT NULL,
+    canonical_bodypart_role TEXT,
+    notes               TEXT,
+    UNIQUE(external_stream_id, native_entity_label, native_bodypart_label)
 );
 
 -- One user-facing multimodal alignment operation: "express this session's clocks
@@ -1440,6 +1494,41 @@ CREATE TABLE derived_measurements (
 -- ============================================================================
 -- 13. Integrity triggers for cross-table invariants SQLite cannot express as CHECKs
 -- ============================================================================
+
+-- A tracking stream and the coordinate system it cites must belong to one
+-- project. The stream carries project_id directly, so this is the same class of
+-- guard as trg_channel_placement_project_scope: without it, a tracking stream
+-- could cite a frame declared for an unrelated project and the two would look
+-- compatible to any check that only compares identifiers.
+CREATE TRIGGER trg_tracking_stream_project_scope
+BEFORE INSERT ON tracking_streams
+FOR EACH ROW
+WHEN (
+    SELECT es.project_id
+    FROM external_streams es
+    WHERE es.external_stream_id = NEW.external_stream_id
+) <> (
+    SELECT cs.project_id
+    FROM coordinate_systems cs
+    WHERE cs.coordinate_system_id = NEW.coordinate_system_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Tracking stream coordinate system belongs to a different project than the stream');
+END;
+
+-- The subtype is only meaningful over a stream declared as tracking. Without
+-- this, an event stream could acquire tracking facts it has no samples for.
+CREATE TRIGGER trg_tracking_stream_kind
+BEFORE INSERT ON tracking_streams
+FOR EACH ROW
+WHEN (
+    SELECT es.stream_kind
+    FROM external_streams es
+    WHERE es.external_stream_id = NEW.external_stream_id
+) <> 'tracking'
+BEGIN
+    SELECT RAISE(ABORT, 'Tracking stream subtype requires its external stream to declare stream_kind tracking');
+END;
 
 -- A z coordinate is meaningful only under a 3-dimensional frame. Expressed as a
 -- trigger rather than a CHECK because the dimensionality lives on another table
@@ -2626,6 +2715,8 @@ CREATE INDEX idx_external_events_stream_time ON external_events(external_stream_
 CREATE INDEX idx_external_event_attributes_event ON external_event_attributes(external_event_id, attribute_name);
 CREATE INDEX idx_external_stream_sources_stream ON external_stream_sources(external_stream_id);
 CREATE INDEX idx_external_stream_coverage_time ON external_stream_coverage(external_stream_id, start_time_native, end_time_native);
+CREATE INDEX idx_tracking_streams_system ON tracking_streams(coordinate_system_id);
+CREATE INDEX idx_tracking_series_stream ON tracking_series(external_stream_id);
 CREATE INDEX idx_alignment_runs_set ON time_alignment_runs(alignment_set_id, source_timebase_id);
 CREATE INDEX idx_alignment_anchor_observations_anchor ON alignment_anchor_observations(alignment_anchor_id, timebase_id);
 CREATE INDEX idx_alignment_anchor_observations_event ON alignment_anchor_observations(external_event_id);

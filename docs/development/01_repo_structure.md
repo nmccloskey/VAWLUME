@@ -86,7 +86,8 @@ VAWLUME/
 │   │   │   └── mupet/
 │   │   ├── project_inputs/
 │   │   ├── external_streams/
-│   │   └── alignment_anchors/
+│   │   ├── alignment_anchors/
+│   │   └── tracking/
 │   ├── 02_device_profiles/
 │   ├── 03_setup_profiles/
 │   ├── 04_examples/
@@ -103,6 +104,7 @@ VAWLUME/
 │       ├── +sequence/
 │       ├── +alignment/
 │       ├── +geometry/
+│       ├── +tracking/
 │       └── +report/
 │
 ├── tests/

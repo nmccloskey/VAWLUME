@@ -42,6 +42,10 @@ switch string(profile.profile_kind)
         result = mapAlignmentAnchorTableToIR( ...
             tbl, result, profileEntry, profileLocation, options);
         return
+    case "tracking_input_mapping"
+        result = mapTrackingTableToIR( ...
+            tbl, result, profileEntry, profileLocation, options);
+        return
     case "extractor_output"
         % Continue through the inherited generic extractor field mapper.
     otherwise

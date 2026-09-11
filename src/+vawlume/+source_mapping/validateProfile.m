@@ -61,7 +61,8 @@ report = finalizeReport(report);
 
         if hasKind
             if ~ismember(kind, ["project_input", "extractor_output", ...
-                    "external_stream_mapping", "alignment_anchor_mapping"])
+                    "external_stream_mapping", "alignment_anchor_mapping", ...
+                    "tracking_input_mapping"])
                 addIssue("error", "PROFILE_UNSUPPORTED_KIND", location + ".profile.kind", ...
                     "Unsupported source_mapping profile kind: " + kind + ".");
             elseif strlength(options.ExpectedKind) > 0 && kind ~= options.ExpectedKind
@@ -75,11 +76,11 @@ report = finalizeReport(report);
                 location + ".profile.profile_schema_version", ...
                 "Unsupported mapping-profile schema version: " + schemaVersion + ".");
         elseif hasSchemaVersion && ismember(kind, ...
-                ["external_stream_mapping", "alignment_anchor_mapping"]) && ...
-                schemaVersion ~= "0.3-draft"
+                ["external_stream_mapping", "alignment_anchor_mapping", ...
+                "tracking_input_mapping"]) && schemaVersion ~= "0.3-draft"
             addIssue("error", "PROFILE_UNSUPPORTED_SCHEMA_VERSION", ...
                 location + ".profile.profile_schema_version", ...
-                "External-stream and anchor profiles require mapping-profile schema version 0.3-draft.");
+                "External-stream, anchor, and tracking profiles require mapping-profile schema version 0.3-draft.");
         end
 
         versionLabel = profileVersionLabel(entry, profile, kind, location);
@@ -100,6 +101,150 @@ report = finalizeReport(report);
                 validateExternalStreamProfile(entry, location);
             case "alignment_anchor_mapping"
                 validateAlignmentAnchorProfile(entry, location);
+            case "tracking_input_mapping"
+                validateTrackingInputProfile(entry, location);
+        end
+    end
+
+    function validateTrackingInputProfile(entry, location)
+        %VALIDATETRACKINGINPUTPROFILE A tool-agnostic canonicalized tracking table.
+        %
+        % The contract names roles, never vendor columns. DeepLabCut, SLEAP and
+        % MoSeq all reach VAWLUME through the same declaration; nothing here
+        % assumes any of their layouts.
+        if requireMapping(entry, "source", location + ".source")
+            requiredText(entry.source, "table_role", location + ".source.table_role");
+        end
+
+        basis = "";
+        if requireMapping(entry, "context", location + ".context")
+            requiredText(entry.context, "stream_key", location + ".context.stream_key");
+            requiredText(entry.context, "timebase_key", location + ".context.timebase_key");
+            requiredText(entry.context, "coordinate_system_key", ...
+                location + ".context.coordinate_system_key");
+            [basis, hasBasis] = requiredText(entry.context, "native_time_basis", ...
+                location + ".context.native_time_basis");
+            if hasBasis && ~ismember(basis, ["time", "frame", "both"])
+                addIssue("error", "PROFILE_INVALID_FIELD", ...
+                    location + ".context.native_time_basis", ...
+                    "native_time_basis must be time, frame, or both.");
+            end
+            if ismember(basis, ["time", "both"])
+                [unit, hasUnit] = requiredText(entry.context, "native_time_unit", ...
+                    location + ".context.native_time_unit");
+                if hasUnit
+                    validateTimeUnit(unit, location + ".context.native_time_unit");
+                end
+            end
+            % A frame index relates to no clock without a rate, so the profile
+            % must supply one when frames are the only basis available.
+            if basis == "frame" && ~hasField(entry.context, "nominal_frame_rate_hz")
+                addIssue("error", "PROFILE_MISSING_FIELD", ...
+                    location + ".context.nominal_frame_rate_hz", ...
+                    "A frame-only tracking profile must declare nominal_frame_rate_hz.");
+            end
+            if hasField(entry.context, "nominal_frame_rate_hz")
+                rate = entry.context.nominal_frame_rate_hz;
+                if ~isnumeric(rate) || ~isscalar(rate) || ~isfinite(rate) || rate <= 0
+                    addIssue("error", "PROFILE_INVALID_FIELD", ...
+                        location + ".context.nominal_frame_rate_hz", ...
+                        "nominal_frame_rate_hz must be a positive number.");
+                end
+            end
+        end
+
+        if ~requireMapping(entry, "columns", location + ".columns")
+            return
+        end
+
+        % Position is the irreducible content of a tracking row. Without x and y
+        % the artifact is not tracking data, whatever else it carries.
+        for name = ["position_x", "position_y"]
+            if requireMapping(entry.columns, name, location + ".columns." + name)
+                validateColumnRule(entry.columns.(char(name)), ...
+                    location + ".columns." + name, true);
+            end
+        end
+
+        % Identity is what makes a sample attributable to a trace. Losing it
+        % silently would merge two animals' traces into one series, so both
+        % identity columns are required even though either may be constant.
+        for name = ["entity_label", "bodypart_label"]
+            if requireMapping(entry.columns, name, location + ".columns." + name)
+                validateColumnRule(entry.columns.(char(name)), ...
+                    location + ".columns." + name, true);
+            end
+        end
+
+        if ismember(basis, ["time", "both"]) && ...
+                requireMapping(entry.columns, "native_time", location + ".columns.native_time")
+            validateColumnRule(entry.columns.native_time, ...
+                location + ".columns.native_time", true);
+        end
+        if ismember(basis, ["frame", "both"]) && ...
+                requireMapping(entry.columns, "native_frame", location + ".columns.native_frame")
+            validateColumnRule(entry.columns.native_frame, ...
+                location + ".columns.native_frame", true);
+        end
+
+        optionalColumns = ["position_z", "confidence"];
+        for columnIndex = 1:numel(optionalColumns)
+            name = optionalColumns(columnIndex);
+            if hasField(entry.columns, name)
+                if ~isstruct(entry.columns.(char(name)))
+                    addIssue("error", "PROFILE_INVALID_FIELD", ...
+                        location + ".columns." + name, ...
+                        "Column declaration must be a mapping/object.");
+                else
+                    validateColumnRule(entry.columns.(char(name)), ...
+                        location + ".columns." + name, false);
+                end
+            end
+        end
+
+        if hasField(entry, "bodypart_roles")
+            validateBodypartRoles(entry.bodypart_roles, location + ".bodypart_roles");
+        end
+        if hasField(entry, "coverage")
+            validateCoverageDeclaration(entry.coverage, location + ".coverage");
+        end
+    end
+
+    function validateBodypartRoles(value, location)
+        %VALIDATEBODYPARTROLES Optional native-label to canonical-role mapping.
+        %
+        % VAWLUME defines no bodypart ontology. This block is how a project
+        % declares that its own "nose_tip" plays the canonical role "snout",
+        % and it is always optional and always additive: the native label
+        % survives beside it.
+        items = normalizeSequence(value);
+        if isempty(items)
+            addIssue("error", "PROFILE_INVALID_FIELD", location, ...
+                "bodypart_roles must be a nonempty sequence when declared.");
+            return
+        end
+        seen = strings(0, 1);
+        for index = 1:numel(items)
+            item = items{index};
+            itemLocation = location + "(" + index + ")";
+            if ~isstruct(item)
+                addIssue("error", "PROFILE_INVALID_FIELD", itemLocation, ...
+                    "Each bodypart role declaration must be a mapping/object.");
+                continue
+            end
+            [native, hasNative] = requiredText(item, "native_bodypart_label", ...
+                itemLocation + ".native_bodypart_label");
+            requiredText(item, "canonical_bodypart_role", ...
+                itemLocation + ".canonical_bodypart_role");
+            if hasNative
+                if ismember(native, seen)
+                    addIssue("error", "PROFILE_INVALID_FIELD", ...
+                        itemLocation + ".native_bodypart_label", ...
+                        "Native bodypart label '" + native + ...
+                        "' is assigned a canonical role more than once.");
+                end
+                seen(end + 1, 1) = native; %#ok<AGROW>
+            end
         end
     end
 
@@ -948,6 +1093,9 @@ report = finalizeReport(report);
             case "alignment_anchor_mapping"
                 allowed = ["profile", "source", "layout", "context", "columns", ...
                     "mapping_policy", "validation"];
+            case "tracking_input_mapping"
+                allowed = ["profile", "source", "context", "columns", ...
+                    "bodypart_roles", "coverage", "mapping_policy", "validation"];
             otherwise
                 allowed = "profile";
         end

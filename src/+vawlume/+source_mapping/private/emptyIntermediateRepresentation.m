@@ -15,6 +15,9 @@ result.coverage = emptyCoverageTable();
 result.anchors = emptyAnchorsTable();
 result.anchor_observations = emptyAnchorObservationsTable();
 result.anchor_fit_pairs = emptyAnchorFitPairsTable();
+result.tracking_streams = emptyTrackingStreamsTable();
+result.tracking_series = emptyTrackingSeriesTable();
+result.tracking_columns = emptyTrackingColumnsTable();
 result.issues = emptyIssuesTable();
 result.summary = struct();
 result.valid_for_ingest = false;
@@ -92,6 +95,40 @@ function value = emptyAnchorFitPairsTable()
 names = ["source_timebase_key", "reference_timebase_key", ...
     "fit_eligible_anchor_count", "status"];
 value = typedEmptyTable(names, ["string", "string", "double", "string"]);
+end
+
+% Tracking is deliberately metadata-only in the IR. These three tables describe
+% the stream, the traces it contains, and the column contract that resolves its
+% artifact - never a tracking sample. A stream with a million rows produces one
+% tracking_streams row, a handful of tracking_series rows, and one
+% tracking_columns row per mapped role.
+
+function value = emptyTrackingStreamsTable()
+names = ["stream_key", "source_key", "timebase_key", "coordinate_system_key", ...
+    "native_time_basis", "nominal_frame_rate_hz", "has_confidence", ...
+    "declared_sample_count", "native_time_unit", "time_transform", "status"];
+types = repmat("string", 1, numel(names));
+types(ismember(names, ["nominal_frame_rate_hz", "has_confidence", ...
+    "declared_sample_count"])) = "double";
+value = typedEmptyTable(names, types);
+end
+
+function value = emptyTrackingSeriesTable()
+names = ["series_key", "stream_key", "source_key", "native_entity_label", ...
+    "native_bodypart_label", "canonical_bodypart_role", "entity_key", ...
+    "sample_count", "status"];
+types = repmat("string", 1, numel(names));
+types(ismember(names, "sample_count")) = "double";
+value = typedEmptyTable(names, types);
+end
+
+function value = emptyTrackingColumnsTable()
+names = ["column_key", "stream_key", "source_key", "role", "source_field", ...
+    "actual_source_field", "column_resolution", "native_unit", "is_required", ...
+    "status"];
+types = repmat("string", 1, numel(names));
+types(ismember(names, "is_required")) = "double";
+value = typedEmptyTable(names, types);
 end
 
 function value = typedEmptyTable(names, types)

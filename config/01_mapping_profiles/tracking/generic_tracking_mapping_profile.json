@@ -1,0 +1,93 @@
+{
+  "profiles": [
+    {
+      "profile": {
+        "id": "vawlume.tracking.generic_long.v0_1",
+        "name": "Generic long-form canonicalized tracking table",
+        "kind": "tracking_input_mapping",
+        "profile_schema_version": "0.3-draft",
+        "status": "built_in_template_draft",
+        "profile_version": "0.1.0"
+      },
+
+      "source": {
+        "table_role": "tracking_sample_export",
+        "source_key_default": "source:tracking_table",
+        "shape": "long",
+        "shape_note": "One row per (time, entity, bodypart). A wide export with one column per bodypart is a different shape and needs its own profile; this first implementation is deliberately narrow rather than guessing at a universal reshaper.",
+        "tool_independence": "This profile names roles, never vendor columns. DeepLabCut, SLEAP, MoSeq and hand-scored output all reach VAWLUME through the same declaration by pointing each role at whatever the exporting tool happened to call it."
+      },
+
+      "context": {
+        "stream_key": "tracking_primary",
+        "timebase_key": "video_native",
+        "coordinate_system_key": "arena_2d",
+        "native_time_basis": "time",
+        "native_time_unit": "s",
+        "modality": "pose_tracking",
+        "coordinate_note": "The coordinate system must already be declared for the project. Tracking never creates a frame implicitly, because doing so would let an import choose its own units and dimensionality."
+      },
+
+      "columns": {
+        "native_time": {
+          "source_field": "time_s",
+          "native_unit": "s"
+        },
+        "entity_label": {
+          "source_field": "subject"
+        },
+        "bodypart_label": {
+          "source_field": "bodypart"
+        },
+        "position_x": {
+          "source_field": "x",
+          "native_unit": "cm"
+        },
+        "position_y": {
+          "source_field": "y",
+          "native_unit": "cm"
+        },
+        "confidence": {
+          "source_field": "likelihood",
+          "confidence_note": "Optional. A tracker that emits none produces a stream with has_confidence = 0, and readers report the absence rather than substituting a value."
+        }
+      },
+
+      "bodypart_roles": [
+        {
+          "native_bodypart_label": "snout",
+          "canonical_bodypart_role": "snout",
+          "justification": "This project's snout label denotes the same landmark as the canonical snout role. The native label is preserved regardless; the canonical role is additive."
+        }
+      ],
+
+      "validation": {
+        "checks": [
+          {
+            "id": "required_position_columns",
+            "severity": "error",
+            "expression": "position_x and position_y resolve to real columns of the supplied table"
+          },
+          {
+            "id": "identity_columns_present",
+            "severity": "error",
+            "expression": "every row carries a nonempty entity_label and bodypart_label",
+            "reason": "A sample with no identity cannot be attributed to a trace. Assigning it to a default series would invent identity the source did not supply."
+          },
+          {
+            "id": "native_time_basis_resolvable",
+            "severity": "error",
+            "expression": "the column required by native_time_basis resolves, and a frame-only profile declares nominal_frame_rate_hz"
+          }
+        ]
+      },
+
+      "mapping_policy": {
+        "preserve_native_labels": true,
+        "canonical_roles_are_additive": true,
+        "dense_samples_remain_external": true,
+        "dense_samples_note": "Registration stores the logical stream, its traces, and its column contract. Positions, frames and confidences stay in the artifact and are read window-wise on demand."
+      }
+    }
+  ]
+}
