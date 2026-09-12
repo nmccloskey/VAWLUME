@@ -271,11 +271,11 @@ alignment robustification](#phase-3--alignment-robustification).
 | --- | --- |
 | `solveTransform` | **Implemented** (3.4). Continuous segments over declared breakpoints; every unsupportable configuration raises a named error and none falls back to affine |
 | `fit` | **Implemented** (3.5). Declared breakpoints are persisted, segments tile on write, and an unsupportable request is recorded as `failed` with a code |
-| `applyTransform` | Refuses more than one stored segment, pending 3.6 |
+| `applyTransform` | **Implemented** (3.6). Segments are selected through one shared implementation, extrapolation is flagged, and intervals transform through `applyTransformInterval` |
 
-So a piecewise transform can be solved and stored today and cannot yet be
-applied. That is a deliberate staging, not an inconsistency, and each layer says
-so at its own boundary.
+A piecewise transform can therefore be solved, stored, and applied. Every
+consumer reaching clock transforms through the shared API gained it without
+modification, which is what the shared-use requirement was for.
 
 ## Anchor-selection rule
 

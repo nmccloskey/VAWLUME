@@ -22,6 +22,7 @@ plan   = vawlume.alignment.fit(conn, alignmentRef, Breakpoints=knots, SourceTime
 result = vawlume.alignment.fit(conn, alignmentRef, Apply=true)
 value  = vawlume.alignment.report(conn, alignmentRef)
 [aligned, transform] = vawlume.alignment.applyTransform(conn, alignmentRunId, nativeTimes)
+intervals            = vawlume.alignment.applyTransformInterval(conn, alignmentRunId, starts, ends)
 outcome = vawlume.alignment.setAnchorInclusion(conn, observationId, included, Reason=why)
 ```
 
@@ -140,10 +141,16 @@ leaves a segment whose slope no observation determines — the single anchor
 sitting on its own boundary contributes nothing, since both segments already
 agree there.
 
-`vawlume:alignment:MethodNotImplemented` is **retired**: with the declared path
-implemented and estimation refused rather than deferred, no request reaches it.
-`applyTransform` still raises `PiecewiseNotImplemented` when it finds more than
-one stored segment; retiring that is the applier's pass, not this one.
+`vawlume:alignment:MethodNotImplemented` and
+`vawlume:alignment:PiecewiseNotImplemented` are both **retired**. With the
+declared path implemented in the solver, the fitter and the applier, and
+estimation refused rather than deferred, no request reaches either. Neither
+identifier appears anywhere in the source or the tests; both are recorded here
+so they do not become folklore.
+
+What replaced the applier's refusal is narrower and more useful:
+`SegmentTilingInvalid` when a stored segmentation gaps or overlaps, because a
+gap is a real defect where several segments are not.
 
 ### Segments are reported for every method
 
@@ -425,20 +432,93 @@ a run claiming a fit whose evidence was rolled back out from under it.
 
 ```matlab
 [aligned, transform] = vawlume.alignment.applyTransform(conn, runId, nativeTimes)
+[~, transform]       = vawlume.alignment.applyTransform(conn, runId)
 ```
 
 - reads stored `alignment_segments` coefficients; **never refits**;
 - accepts scalars and vectors and preserves shape;
-- returns the coefficients, clocks, method, fit summary, and status actually
-  used, so a caller can record what produced a number;
+- selects a segment per time through
+  `vawlume.alignment.internal.evaluateSegments`, the same implementation the
+  fitter predicts anchors with, so the two cannot disagree about a boundary;
+- returns the coefficients, clocks, method, fit summary, status, and per-element
+  segment index, extrapolation flag and uncertainty bound;
 - raises on a `registered` (unfitted), `rejected`, or `failed` run rather than
   returning a plausible-looking number;
-- raises on multiple segments;
+- raises `SegmentTilingInvalid` when the stored segmentation gaps or overlaps;
 - writes nothing.
+
+Called with no times it returns the transform's description with empty
+per-element arrays. Use that to inspect a transform rather than passing a dummy
+instant, which asks where an arbitrary moment lands and gets an answer.
+
+For a segmented transform the scalar `scale` and `offset_s` are **NaN**, as they
+are in a piecewise `solveTransform` result. Offset and affine keep theirs, so a
+caller written before segments existed reads exactly what it always did.
 
 Native timestamps on detections, external events, coverage, and anchor
 observations are never modified. An aligned time is derived on demand from the
 transform of record.
+
+### Extrapolation is flagged, not hidden
+
+The anchored range is the span of source times the included anchors covered, read
+back from the residuals. A time outside it is still transformed, using the
+terminal segment, and marked in `transform.extrapolated`.
+
+Refusing would break the promise of a value per input, which `commonTime` and
+`readWindow` both depend on. Returning an unmarked number would be worse.
+`ErrorOnExtrapolation=true` escalates it, mirroring `ErrorOnOutsideCoverage`.
+
+**Coverage and extrapolation are different statements.** Coverage says the stream
+was observed; extrapolation says the transform was not anchored there. A bin can
+be covered and extrapolated, or anchored and unobserved.
+
+A transform with no stored residuals leaves the range unknown.
+`anchored_range_known` is then false and nothing is flagged, because the applier
+cannot tell where the fit was anchored and does not guess.
+
+### Intervals
+
+```matlab
+intervals = vawlume.alignment.applyTransformInterval(conn, runId, starts, ends)
+```
+
+A separate function, not a mode of `applyTransform`: an interval is a different
+question with a different answer shape, and one entry point switching on its
+arguments is how two contracts start sharing a name.
+
+**Endpoints transform independently, so the aligned duration is not the native
+duration.** An interval crossing a breakpoint is stretched by one factor at its
+start and another at its end. That is what a clock that changed rate means, and
+the change is reported — `native_duration_s`, `aligned_duration_s`,
+`duration_change_s` — rather than left to be noticed.
+
+Each row also carries the segment each endpoint fell in, how many segments the
+interval crossed, whether it crossed a breakpoint at all, and each endpoint's
+extrapolation flag. An open interval stays open. An interval ending before it
+starts raises `AlignedIntervalInvalid`.
+
+`commonTime` projects through this function. Two call sites transforming
+endpoints separately is interval transformation implemented twice, and the second
+copy is the one that drifts.
+
+### Propagated uncertainty
+
+`transform.uncertainty_s` carries the segment's stored bound — the largest
+recorded anchor uncertainty among the anchors that determined it, on the
+reference clock — with `uncertainty_semantics` beside it.
+
+It is **uncalibrated**: not a confidence interval, a standard error, or a
+probability. A segment whose anchors recorded none yields NaN, never 0, because
+absence is not perfect knowledge. It is **never combined with `rmse_s`**: how
+well the model describes the anchors and how well each anchor was read are
+different quantities, and both are reported separately.
+
+`aligned_external_events.uncertainty_s` has no semantics column of its own. That
+table is an optional regenerable cache that nothing populates, and any value in
+it would inherit the semantics of the segment it came from. A column duplicating
+that string on a cache nothing writes would be storage looking for a purpose;
+add it if and when a refresh API exists.
 
 ## Limitations
 
@@ -449,8 +529,10 @@ transform of record.
   representation here.
 - Breakpoints reach `fit` only as a call argument. A session manifest cannot yet
   declare them.
-- A fitted piecewise transform cannot yet be applied: `applyTransform` still
-  refuses more than one stored segment.
+- Extrapolation is flagged only when the anchored range is known, which needs
+  stored residuals. A hand-built transform without them is never flagged.
+- An interval's uncertainty is the larger of its endpoint bounds. Nothing
+  accumulates uncertainty along an interval that crosses several segments.
 - Run and set status updates are outside the apply transaction; see Transactions.
 - Unweighted least squares; recorded uncertainty is not a weight.
 - No outlier detection, and no automatic exclusion of a badly fitting anchor.

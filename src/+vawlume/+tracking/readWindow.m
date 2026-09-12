@@ -154,7 +154,11 @@ end
 
 try
     if height(result.samples) == 0
-        [~, transform] = vawlume.alignment.applyTransform(conn, runId, 0);
+        % No samples, so nothing to place: ask the transform to describe
+        % itself rather than to transform an arbitrary instant. A dummy time
+        % would be flagged as extrapolated whenever it fell outside the
+        % anchored range, warning about a moment nobody asked about.
+        [~, transform] = vawlume.alignment.applyTransform(conn, runId);
     else
         [aligned, transform] = vawlume.alignment.applyTransform(conn, runId, ...
             result.samples.time_native_s);

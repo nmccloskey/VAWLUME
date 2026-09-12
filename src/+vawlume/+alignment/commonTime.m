@@ -280,17 +280,20 @@ else
             context.alignment_set_id, timebaseId);
     end
     runId = double(runs.alignment_run_id(1));
-    [alignedStart, transform] = vawlume.alignment.applyTransform( ...
-        conn, runId, nativeStart);
-    alignedEnd = nativeEnd;
-    finiteEnd = isfinite(nativeEnd);
-    if any(finiteEnd)
-        alignedEnd(finiteEnd) = vawlume.alignment.applyTransform( ...
-            conn, runId, nativeEnd(finiteEnd));
-    end
-    if transform.scale <= 0
+    % Intervals go through the interval API rather than two point calls. Two
+    % call sites transforming endpoints separately is interval transformation
+    % implemented twice, and the second copy is the one that drifts.
+    [projected, transform] = vawlume.alignment.applyTransformInterval( ...
+        conn, runId, nativeStart, nativeEnd);
+    alignedStart = reshape(projected.start_aligned, size(nativeStart));
+    alignedEnd = reshape(projected.end_aligned, size(nativeEnd));
+    % Every segment's scale, not just a scalar that is NaN for a segmented
+    % transform. A clock does not run backwards in any regime.
+    scales = double(transform.segments.scale);
+    if any(scales <= 0)
         error("vawlume:alignment:NonPositiveTransformScale", ...
-            "Transform run %d has non-positive scale %g.", runId, transform.scale);
+            "Transform run %d has non-positive scale %g in segment %d.", ...
+            runId, scales(find(scales <= 0, 1)), find(scales <= 0, 1));
     end
     kind = "stored_transform";
 end

@@ -1,4 +1,4 @@
-function assertSegmentsTile(segments, sourceTimebaseKey)
+function assertSegmentsTile(segments, sourceTimebaseKey, options)
 %ASSERTSEGMENTSTILE Refuse segments that gap or overlap, on write.
 %
 % `11_temporal_alignment_schema.md` lists segment tiling as an obligation the
@@ -15,6 +15,14 @@ function assertSegmentsTile(segments, sourceTimebaseKey)
 %     exactly, so there is neither a gap nor an overlap between them;
 %   * boundaries strictly increase, so no segment is empty.
 %
+% RequireOpenEnds=false relaxes the second rule only. A fit always produces
+% open outer segments and is checked strictly on write, but the schema permits
+% a bounded transform — 'this mapping applies from 0 to 100 s' — and shipped
+% fixtures use one. Refusing those on read would reject data the schema allows
+% and that predates this rule. Contiguity is the part correctness depends on,
+% and it is checked either way: a time falling in no segment is caught by
+% vawlume.alignment.internal.evaluateSegments.
+%
 % Exact equality is deliberate rather than a tolerance. Both numbers come from
 % the same declared breakpoint, so they are the same double; if they ever differ,
 % something derived one of them rather than carrying it, and that is worth
@@ -23,6 +31,7 @@ function assertSegmentsTile(segments, sourceTimebaseKey)
 arguments
     segments table
     sourceTimebaseKey (1,1) string
+    options.RequireOpenEnds (1,1) logical = true
 end
 
 count = height(segments);
@@ -40,17 +49,19 @@ end
 starts = double(segments.source_start);
 ends = double(segments.source_end);
 
-if ~isnan(starts(1))
-    error("vawlume:alignment:SegmentTilingInvalid", ...
-        ['%sbounds its first segment below at %g. The first segment is open, ' ...
-        'so every source time before the first breakpoint has a segment.'], ...
-        prefix, starts(1));
-end
-if ~isnan(ends(count))
-    error("vawlume:alignment:SegmentTilingInvalid", ...
-        ['%sbounds its last segment above at %g. The last segment is open, ' ...
-        'so every source time after the last breakpoint has a segment.'], ...
-        prefix, ends(count));
+if options.RequireOpenEnds
+    if ~isnan(starts(1))
+        error("vawlume:alignment:SegmentTilingInvalid", ...
+            ['%sbounds its first segment below at %g. The first segment is ' ...
+            'open, so every source time before the first breakpoint has a ' ...
+            'segment.'], prefix, starts(1));
+    end
+    if ~isnan(ends(count))
+        error("vawlume:alignment:SegmentTilingInvalid", ...
+            ['%sbounds its last segment above at %g. The last segment is ' ...
+            'open, so every source time after the last breakpoint has a ' ...
+            'segment.'], prefix, ends(count));
+    end
 end
 
 for index = 1:count - 1

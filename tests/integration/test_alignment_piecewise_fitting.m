@@ -17,7 +17,7 @@ tests = functiontests({ ...
     @testRunSummariesAgreeWithStoredResiduals, ...
     @testStoredBreakpointsAreReusedAndADifferentSetConflicts, ...
     @testPiecewiseWithoutBreakpointsFailsAndIsRecorded, ...
-    @testTrackingReportsAFittedPiecewiseRunAsUnusableForNow});
+    @testTrackingConsumesAPiecewiseRunThroughTheSharedApi});
 end
 
 % ------------------------------------------------------------ persistence ---
@@ -261,19 +261,29 @@ verifyError(testCase, @() vawlume.alignment.fit(fixture.conn, alignmentRef(), ..
 clear cleanup
 end
 
-function testTrackingReportsAFittedPiecewiseRunAsUnusableForNow(testCase)
+function testTrackingConsumesAPiecewiseRunThroughTheSharedApi(testCase)
 [fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
 vawlume.alignment.fit(fixture.conn, alignmentRef(), ...
     SourceTimebase="audio_native", Breakpoints=fixture.knot, Apply=true);
 
-% A fitted piecewise transform is not yet applicable: applyTransform still
-% refuses more than one stored segment, which is the applier's pass to change.
-% The refusal must stay a refusal — never a plausible-looking number.
+% The shared-API contract, stated as a test rather than as prose: a piecewise
+% transform becomes usable to every consumer the moment applyTransform learns
+% it, with no change to the consuming layer. If the tracking layer had needed
+% editing to read one, the contract would have been broken.
 runId = runIdFor(fixture.conn, "audio_native");
-verifyError(testCase, @() vawlume.alignment.applyTransform( ...
-    fixture.conn, runId, 100), "vawlume:alignment:PiecewiseNotImplemented");
 
-clear cleanup
+[aligned, transform] = vawlume.alignment.applyTransform(fixture.conn, runId, ...
+    [500; 1200]);
+verifyEqual(testCase, transform.segment_index, [1; 2]);
+verifyEqual(testCase, aligned, ...
+    [fixture.scale(1) * 500 + fixture.offset(1); ...
+    fixture.scale(2) * 1200 + fixture.offset(2)], AbsTol=1e-9);
+
+% A segmented transform has no single slope, so the scalar fields say so rather
+% than reporting the first segment's.
+verifyTrue(testCase, isnan(transform.scale));
+verifyTrue(testCase, isnan(transform.offset_s));
+verifyEqual(testCase, height(transform.segments), 2);
 end
 
 % ------------------------------------------------------------------ setup ---
