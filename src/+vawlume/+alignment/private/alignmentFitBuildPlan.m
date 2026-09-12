@@ -13,6 +13,7 @@ plan = struct();
 plan.set = resolveAlignmentSet(conn, alignmentRef);
 plan.options = options;
 plan.runs = resolveRuns(conn, plan.set, options.SourceTimebase);
+plan.anchors_without_transform = clocksWithAnchorsButNoTransform(conn, plan.set);
 plan.conflicts = strings(0, 1);
 
 for index = 1:numel(plan.runs)
@@ -121,8 +122,9 @@ end
 
 function run = resolveRunFit(conn, set, run)
 %RESOLVERUNFIT Pair anchors by identity, solve, and classify against storage.
-run.anchors = resolveAnchorPairs(conn, set, run);
+[run.anchors, run.unpaired_anchors] = resolveAnchorPairs(conn, set, run);
 run.fit_anchor_count = nnz(run.anchors.included_in_fit == 1);
+run.withheld_anchor_count = nnz(run.anchors.included_in_fit == 0);
 
 if run.method == "piecewise_affine"
     run.action = "unsupported";
@@ -134,6 +136,7 @@ end
 
 if run.fit_anchor_count == 0
     run.action = "not_fit_ready";
+    run.failure_code = "InsufficientAnchors";
     run.conflict_message = "Transform for source timebase '" + ...
         run.source_timebase_key + "' has no logical anchor with one included " + ...
         "observation on both clocks.";
@@ -146,6 +149,8 @@ try
         included.observed_source_time, included.observed_reference_time);
 catch exception
     run.action = "not_fit_ready";
+    run.failure_code = extractAfter(string(exception.identifier), ...
+        "vawlume:alignment:");
     run.conflict_message = "Transform for source timebase '" + ...
         run.source_timebase_key + "' cannot be fitted: " + string(exception.message);
     return
@@ -156,10 +161,20 @@ run.scale = run.fit.scale;
 run.offset_s = run.fit.offset_s;
 run.rmse_s = run.fit.rmse_s;
 run.max_abs_residual_s = run.fit.max_abs_residual_s;
+
+% Diagnostics are computed from the fit that was already solved above. They
+% describe it; they never feed back into it.
+run.diagnostics = anchorDiagnostics(included);
+influence = leaveOneOutInfluence(run.method, included.observed_source_time, ...
+    included.observed_reference_time, run.fit);
+includedRows = find(run.anchors.included_in_fit == 1);
+run.anchors.loo_scale_delta(includedRows) = influence.scale_delta;
+run.anchors.loo_offset_delta_s(includedRows) = influence.offset_delta_s;
+
 run = classifyAgainstStorage(conn, run);
 end
 
-function value = resolveAnchorPairs(conn, set, run)
+function [value, unpaired] = resolveAnchorPairs(conn, set, run)
 %RESOLVEANCHORPAIRS One row per logical anchor that pairs unambiguously.
 %
 % An anchor contributes to the fit only when exactly one observation on each
@@ -170,7 +185,11 @@ function value = resolveAnchorPairs(conn, set, run)
 % An anchor whose observations exist but are not included is still evaluated when
 % the pairing is unambiguous — a held-out validation anchor should be able to
 % show its residual without influencing the coefficients.
+%
+% An anchor that cannot be paired at all is returned separately rather than
+% skipped in silence, so a reader can see which evidence the fit never saw.
 value = emptyAnchorTable();
+unpaired = emptyUnpairedTable();
 anchors = fetch(conn, "SELECT alignment_anchor_id, anchor_key, " + ...
     "IFNULL(anchor_type,'') AS anchor_type " + ...
     "FROM alignment_anchors WHERE alignment_set_id=" + ...
@@ -184,6 +203,12 @@ for index = 1:height(anchors)
     [sourceRow, sourceReason] = selectObservation(source, "source");
     [referenceRow, referenceReason] = selectObservation(reference, "reference");
     if isempty(sourceRow) || isempty(referenceRow)
+        reason = strtrim(sourceReason + " " + referenceReason);
+        if strlength(reason) == 0
+            reason = "anchor is not observed on both clocks";
+        end
+        unpaired(end + 1, :) = {anchorKey, anchorId, height(source), ...
+            height(reference), reason}; %#ok<AGROW>
         continue
     end
 
@@ -195,13 +220,18 @@ for index = 1:height(anchors)
             reason = "observation excluded from fit";
         end
     end
+    sourceSpread = dispersionOf(source, sourceRow.anchor_observation_id);
+    referenceSpread = dispersionOf(reference, referenceRow.anchor_observation_id);
     value(end + 1, :) = {anchorKey, anchorId, ...
         sourceRow.anchor_observation_id, referenceRow.anchor_observation_id, ...
         sourceRow.observed_time_native, referenceRow.observed_time_native, ...
         NaN, NaN, included, sourceRow.observation_role, ...
         referenceRow.observation_role, reason, ...
         sourceRow.uncertainty_s, referenceRow.uncertainty_s, ...
-        height(source), height(reference)}; %#ok<AGROW>
+        height(source), height(reference), ...
+        sourceSpread.spread_s, referenceSpread.spread_s, ...
+        sourceSpread.max_deviation_s, referenceSpread.max_deviation_s, ...
+        NaN, NaN}; %#ok<AGROW>
 end
 end
 
@@ -263,6 +293,149 @@ value.predicted_reference_time = predicted;
 value.residual_s = value.observed_reference_time - predicted;
 end
 
+% ------------------------------------------------------------- anchor QC ---
+
+function value = dispersionOf(observations, selectedId)
+%DISPERSIONOF Spread across redundant readings of one anchor on one clock.
+%
+% Derived, never stored. Spread is a pure function of
+% alignment_anchor_observations, which is the authority for those rows;
+% persisting it would create a second place to look for the same number and a
+% second thing to keep current when an observation is added or re-included.
+%
+% An anchor read once has no dispersion. That is an absence, not a zero, so it
+% is reported as NaN rather than as agreement between one reading and itself.
+%
+% None of this reaches the design matrix. A replicate is evidence about how
+% consistently a marker was read, never an extra statistical anchor.
+value = struct(spread_s=NaN, max_deviation_s=NaN);
+if height(observations) < 2
+    return
+end
+times = double(observations.observed_time_native);
+value.spread_s = max(times) - min(times);
+if isnan(selectedId)
+    return
+end
+selected = times(double(observations.anchor_observation_id) == selectedId);
+if isempty(selected)
+    return
+end
+value.max_deviation_s = max(abs(times - selected(1)));
+end
+
+function value = leaveOneOutInfluence(method, sourceTimes, referenceTimes, fit)
+%LEAVEONEOUTINFLUENCE How far the coefficients move when one anchor is dropped.
+%
+% Reported, never acted on. This says how much a fit leans on one reading; it
+% does not decide that an anchor is bad, and nothing here excludes anything.
+% Exclusion stays a declared decision recorded on the observation.
+%
+% It mixes two things a reader must not conflate: how far a reading sits from
+% the model, and how much leverage its position gives it. An anchor at the end
+% of a session moves a slope more than one in the middle does, however well it
+% was read. A large delta therefore means this reading matters to the answer,
+% not that it is wrong.
+%
+% An anchor whose removal leaves too few readings to determine the model has no
+% influence number, because the counterfactual fit does not exist.
+count = numel(sourceTimes);
+value = struct(scale_delta=nan(count, 1), offset_delta_s=nan(count, 1));
+if count < 2
+    return
+end
+for index = 1:count
+    keep = true(count, 1);
+    keep(index) = false;
+    try
+        reduced = vawlume.alignment.solveTransform(method, ...
+            sourceTimes(keep), referenceTimes(keep));
+    catch
+        continue
+    end
+    value.scale_delta(index) = reduced.scale - fit.scale;
+    value.offset_delta_s(index) = reduced.offset_s - fit.offset_s;
+end
+end
+
+function value = anchorDiagnostics(included)
+%ANCHORDIAGNOSTICS Whether the anchors could support the model asked of them.
+%
+% Every number here is reported for a reader to judge. None is a threshold, a
+% grade, or a verdict: this prototype ships no calibrated acceptance criterion,
+% and residual size is reported, never judged.
+%
+% The distribution measures matter because anchors clustered at one end of a
+% session support an offset far better than a slope, and a fit summary alone
+% cannot show that.
+value = emptyDiagnostics();
+times = sort(double(included.observed_source_time));
+value.included_anchor_count = numel(times);
+if isempty(times)
+    return
+end
+value.source_range_start = times(1);
+value.source_range_end = times(end);
+value.source_span_s = times(end) - times(1);
+if numel(times) < 2 || value.source_span_s <= 0
+    return
+end
+% Largest gap between consecutive anchors, as a fraction of the span. A value
+% near 1 means the anchors sit in two clumps with nothing between them.
+value.largest_gap_fraction = max(diff(times)) / value.source_span_s;
+% Where the anchors sit within their own span: 0 is balanced, +/-0.5 means every
+% anchor is bunched at one end.
+midpoint = (times(1) + times(end)) / 2;
+value.centroid_offset_fraction = (mean(times) - midpoint) / value.source_span_s;
+end
+
+function value = emptyDiagnostics()
+value = struct(included_anchor_count=0, source_range_start=NaN, ...
+    source_range_end=NaN, source_span_s=NaN, largest_gap_fraction=NaN, ...
+    centroid_offset_fraction=NaN);
+end
+
+function value = emptyUnpairedTable()
+%EMPTYUNPAIREDTABLE Anchors the fitter could not pair, and why.
+%
+% Previously these were skipped silently. An anchor read on only one clock, or
+% read several times with none included, is a real gap in the evidence, and a
+% reader who cannot see it happened cannot act on it.
+value = table(strings(0, 1), zeros(0, 1), zeros(0, 1), zeros(0, 1), ...
+    strings(0, 1), ...
+    VariableNames=["anchor_key", "alignment_anchor_id", ...
+    "source_observation_count", "reference_observation_count", "reason"]);
+end
+
+function value = clocksWithAnchorsButNoTransform(conn, set)
+%CLOCKSWITHANCHORSBUTNOTRANSFORM Observations nothing in this set can use.
+%
+% Reported rather than raised. It is legal for a set to carry readings on a
+% clock it does not align - a clock may be registered before its transform is -
+% but it is equally often a manifest that named a stream and forgot its
+% transform, and the two look identical from the database.
+%
+% The set's reference clock is excluded: every anchor is read on it by
+% definition, and it is the one clock that needs no transform of its own.
+value = table(zeros(0, 1), strings(0, 1), zeros(0, 1), ...
+    VariableNames=["timebase_id", "timebase_key", "observation_count"]);
+rows = fetch(conn, "SELECT o.timebase_id, tb.timebase_name AS timebase_key, " + ...
+    "COUNT(*) AS observation_count " + ...
+    "FROM alignment_anchor_observations o " + ...
+    "JOIN alignment_anchors a ON a.alignment_anchor_id=o.alignment_anchor_id " + ...
+    "JOIN timebases tb ON tb.timebase_id=o.timebase_id " + ...
+    "WHERE a.alignment_set_id=" + string(set.alignment_set_id) + ...
+    " AND o.timebase_id <> " + string(set.reference_timebase_id) + ...
+    " AND o.timebase_id NOT IN (SELECT source_timebase_id FROM time_alignment_runs " + ...
+    "WHERE alignment_set_id=" + string(set.alignment_set_id) + ") " + ...
+    "GROUP BY o.timebase_id, tb.timebase_name ORDER BY tb.timebase_name");
+for index = 1:height(rows)
+    value(end + 1, :) = {double(rows.timebase_id(index)), ...
+        presentText(rows.timebase_key(index)), ...
+        double(rows.observation_count(index))}; %#ok<AGROW>
+end
+end
+
 % ------------------------------------------------------- storage comparison ---
 
 function run = classifyAgainstStorage(conn, run)
@@ -314,22 +487,28 @@ function value = emptyRun()
 value = struct(alignment_run_id=NaN, source_timebase_id=NaN, ...
     source_timebase_key="", target_timebase_id=NaN, reference_timebase_key="", ...
     method="", stored_status="", anchors=emptyAnchorTable(), ...
-    fit=struct(), fit_anchor_count=0, scale=NaN, offset_s=NaN, rmse_s=NaN, ...
-    max_abs_residual_s=NaN, action="create", conflict_message="");
+    unpaired_anchors=emptyUnpairedTable(), diagnostics=emptyDiagnostics(), ...
+    fit=struct(), fit_anchor_count=0, withheld_anchor_count=0, scale=NaN, ...
+    offset_s=NaN, rmse_s=NaN, max_abs_residual_s=NaN, action="create", ...
+    failure_code="", conflict_message="");
 end
 
 function value = emptyAnchorTable()
 value = table(strings(0, 1), zeros(0, 1), zeros(0, 1), zeros(0, 1), ...
     zeros(0, 1), zeros(0, 1), zeros(0, 1), zeros(0, 1), zeros(0, 1), ...
     strings(0, 1), strings(0, 1), strings(0, 1), zeros(0, 1), zeros(0, 1), ...
-    zeros(0, 1), zeros(0, 1), ...
+    zeros(0, 1), zeros(0, 1), zeros(0, 1), zeros(0, 1), zeros(0, 1), ...
+    zeros(0, 1), zeros(0, 1), zeros(0, 1), ...
     VariableNames=["anchor_key", "alignment_anchor_id", ...
     "source_observation_id", "reference_observation_id", ...
     "observed_source_time", "observed_reference_time", ...
     "predicted_reference_time", "residual_s", "included_in_fit", ...
     "source_role", "reference_role", "exclusion_reason", ...
     "source_uncertainty_s", "reference_uncertainty_s", ...
-    "source_observation_count", "reference_observation_count"]);
+    "source_observation_count", "reference_observation_count", ...
+    "source_spread_s", "reference_spread_s", ...
+    "source_max_deviation_s", "reference_max_deviation_s", ...
+    "loo_scale_delta", "loo_offset_delta_s"]);
 end
 
 function value = scalarPositiveInteger(value, name)
