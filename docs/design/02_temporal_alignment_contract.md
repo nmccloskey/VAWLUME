@@ -259,14 +259,23 @@ time warping, nonlinear warping, learned synchronization.
 The schema retains representability for piecewise-affine segments.
 
 **Fitting piecewise transforms was deferred in Phase 7**, and the implementation
-fails clearly rather than silently degrading to a single affine fit. That refusal
-is still the shipped behaviour and is still correct: degrading silently would
-answer a different question than the caller asked.
+failed clearly rather than silently degrading to a single affine fit. Degrading
+silently would answer a different question than the caller asked, and that
+refusal stays wherever the model is still unimplemented.
 
-**Phase 3 implements the model.** Its breakpoint, continuity, tiling, and
-extrapolation decisions are D1 to D3 in [Phase 3 — alignment
-robustification](#phase-3--alignment-robustification). The clear failure stays;
-what changes is that a declared, supportable piecewise request stops reaching it.
+**Phase 3 implements the model**, in the layers named below. Its breakpoint,
+continuity, tiling, and extrapolation decisions are D1 to D3 in [Phase 3 —
+alignment robustification](#phase-3--alignment-robustification).
+
+| Layer | State |
+| --- | --- |
+| `solveTransform` | **Implemented** (3.4). Continuous segments over declared breakpoints; every unsupportable configuration raises a named error and none falls back to affine |
+| `fit` | Refuses, pending 3.5. A piecewise run is planned as unsupported |
+| `applyTransform` | Refuses more than one stored segment, pending 3.6 |
+
+So a piecewise transform can be solved today and cannot yet be persisted or
+applied. That is a deliberate staging, not an inconsistency, and each layer says
+so at its own boundary.
 
 ## Anchor-selection rule
 

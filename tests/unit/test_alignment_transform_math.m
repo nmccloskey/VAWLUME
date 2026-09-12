@@ -1,5 +1,5 @@
 function tests = test_alignment_transform_math
-%TEST_ALIGNMENT_TRANSFORM_MATH Transparent offset and affine fitting.
+%TEST_ALIGNMENT_TRANSFORM_MATH Transparent offset, affine, and piecewise fitting.
 %
 % Pure mathematics, no database. Every expectation is a deterministic transform
 % the test itself constructs, so a recovered coefficient is checked against known
@@ -13,7 +13,14 @@ tests = functiontests({ ...
     @testCoefficientsDoNotDependOnAnchorOrder, ...
     @testAffineRejectsInsufficientOrDegenerateAnchors, ...
     @testNonFiniteAndMismatchedAnchorsAreRejected, ...
-    @testPiecewiseAffineFailsClearly, ...
+    @testPiecewiseRecoversATwoSegmentDriftChange, ...
+    @testPiecewiseRecoversThreeSegmentsAndAttributesAnchors, ...
+    @testBreakpointOnAnAnchorBelongsToTheLaterSegment, ...
+    @testPiecewiseSegmentsAreContinuousAtTheirBreakpoints, ...
+    @testPiecewiseOverAStraightLineAgreesWithAffine, ...
+    @testPiecewiseRejectsUndeclaredAndImpossibleBreakpoints, ...
+    @testPiecewiseRejectsAnchorSetsThatCannotDetermineIt, ...
+    @testEverySolvedTransformReportsSegments, ...
     @testResidualSummariesMatchTheirDefinitions});
 end
 
@@ -169,15 +176,207 @@ verifyError(testCase, ...
     "vawlume:alignment:MethodUnsupported");
 end
 
-function testPiecewiseAffineFailsClearly(testCase)
+% --------------------------------------------------------- piecewise affine ---
+
+function testPiecewiseRecoversATwoSegmentDriftChange(testCase)
 sourcePath = useSource(); %#ok<NASGU>
-% The schema can represent piecewise segments. Fitting them is not implemented,
-% and quietly returning one affine fit would answer a different question.
-verifyError(testCase, ...
-    @() vawlume.alignment.solveTransform("piecewise_affine", ...
-    [10; 400; 900], [127; 518; 1019]), ...
-    "vawlume:alignment:MethodNotImplemented");
+knot = 600;
+[source, reference, scale, offset] = piecewiseFixture([1.0015; 0.9990], 117.25, knot);
+
+result = vawlume.alignment.solveTransform("piecewise_affine", source, ...
+    reference, Breakpoints=knot);
+
+verifyEqual(testCase, result.method, "piecewise_affine");
+verifyEqual(testCase, height(result.segments), 2);
+verifyEqual(testCase, result.segments.scale, scale, RelTol=1e-9);
+verifyEqual(testCase, result.segments.offset_s, offset, AbsTol=1e-9);
+verifyLessThan(testCase, result.max_abs_residual_s, 1e-9);
+
+% A piecewise transform has no single slope. Returning the first segment's would
+% answer a question the caller did not ask.
+verifyTrue(testCase, isnan(result.scale));
+verifyTrue(testCase, isnan(result.offset_s));
+
+% The first segment is open below and the last open above, so every finite
+% source time falls in exactly one of them.
+verifyTrue(testCase, isnan(result.segments.source_start(1)));
+verifyEqual(testCase, result.segments.source_end(1), knot);
+verifyEqual(testCase, result.segments.source_start(2), knot);
+verifyTrue(testCase, isnan(result.segments.source_end(2)));
+
+verifyEqual(testCase, result.breakpoints, knot);
 end
+
+function testPiecewiseRecoversThreeSegmentsAndAttributesAnchors(testCase)
+sourcePath = useSource(); %#ok<NASGU>
+knots = [400; 1000];
+[source, reference, scale, offset] = piecewiseFixture( ...
+    [1.0020; 0.9985; 1.0007], 50, knots);
+
+result = vawlume.alignment.solveTransform("piecewise_affine", source, ...
+    reference, Breakpoints=knots);
+
+verifyEqual(testCase, height(result.segments), 3);
+verifyEqual(testCase, result.segments.scale, scale, RelTol=1e-9);
+verifyEqual(testCase, result.segments.offset_s, offset, AbsTol=1e-9);
+verifyLessThan(testCase, result.max_abs_residual_s, 1e-9);
+
+% Every anchor is attributed to exactly one segment, and the counts add up.
+verifyEqual(testCase, sum(result.segments.anchor_count), numel(source));
+expected = 1 + double(source >= knots(1)) + double(source >= knots(2));
+verifyEqual(testCase, result.segment_index, expected);
+
+% Coefficients are a property of the anchor set, not of row order.
+permutation = [7; 3; 11; 1; 14; 5; 9; 2; 16; 6; 12; 4; 10; 8; 15; 13];
+shuffled = vawlume.alignment.solveTransform("piecewise_affine", ...
+    source(permutation), reference(permutation), Breakpoints=knots);
+verifyEqual(testCase, shuffled.segments.scale, result.segments.scale);
+verifyEqual(testCase, shuffled.segments.offset_s, result.segments.offset_s);
+
+% Shape is preserved, so a caller keeps its own anchor association.
+row = vawlume.alignment.solveTransform("piecewise_affine", source', ...
+    reference', Breakpoints=knots);
+verifyEqual(testCase, size(row.residual_s), size(source'));
+verifyEqual(testCase, size(row.segment_index), size(source'));
+end
+
+function testBreakpointOnAnAnchorBelongsToTheLaterSegment(testCase)
+sourcePath = useSource(); %#ok<NASGU>
+knot = 600;
+[source, reference] = piecewiseFixture([1.0015; 0.9990], 117.25, knot);
+
+% The fixture places an anchor exactly on the breakpoint. A segment covers
+% [source_start, source_end), so that anchor belongs to the segment beginning
+% there — the rule the applier must agree with, and the off-by-one most likely
+% to survive review.
+verifyEqual(testCase, nnz(source == knot), 1);
+result = vawlume.alignment.solveTransform("piecewise_affine", source, ...
+    reference, Breakpoints=knot);
+verifyEqual(testCase, result.segment_index(source == knot), 2);
+verifyEqual(testCase, result.segments.anchor_count(1), nnz(source < knot));
+verifyEqual(testCase, result.segments.anchor_count(2), nnz(source >= knot));
+end
+
+function testPiecewiseSegmentsAreContinuousAtTheirBreakpoints(testCase)
+sourcePath = useSource(); %#ok<NASGU>
+knots = [400; 1000];
+[source, reference] = piecewiseFixture([1.0020; 0.9985; 1.0007], 50, knots);
+
+result = vawlume.alignment.solveTransform("piecewise_affine", source, ...
+    reference, Breakpoints=knots);
+
+% Both segments meeting at a breakpoint must give the same reference time there.
+% A discontinuity would map one source instant to two reference times.
+for index = 1:numel(knots)
+    left = result.segments.scale(index) * knots(index) + ...
+        result.segments.offset_s(index);
+    right = result.segments.scale(index + 1) * knots(index) + ...
+        result.segments.offset_s(index + 1);
+    verifyEqual(testCase, left, right, AbsTol=1e-9);
+end
+end
+
+function testPiecewiseOverAStraightLineAgreesWithAffine(testCase)
+sourcePath = useSource(); %#ok<NASGU>
+source = [10; 400; 900; 1500];
+reference = 1.0015 * source + 117.25;
+
+% Anchors that really do lie on one line: every segment should recover that one
+% line. This is the cheapest available check that the hinge-basis path did not
+% quietly change the arithmetic the affine path already had.
+affine = vawlume.alignment.solveTransform("affine", source, reference);
+piecewise = vawlume.alignment.solveTransform("piecewise_affine", source, ...
+    reference, Breakpoints=700);
+
+verifyEqual(testCase, piecewise.segments.scale, ...
+    repmat(affine.scale, 2, 1), AbsTol=1e-12);
+verifyEqual(testCase, piecewise.segments.offset_s, ...
+    repmat(affine.offset_s, 2, 1), AbsTol=1e-9);
+verifyEqual(testCase, piecewise.predicted_reference_times, ...
+    affine.predicted_reference_times, AbsTol=1e-9);
+end
+
+function testPiecewiseRejectsUndeclaredAndImpossibleBreakpoints(testCase)
+sourcePath = useSource(); %#ok<NASGU>
+[source, reference] = piecewiseFixture([1.0015; 0.9990], 117.25, 600);
+solve = @(knots) vawlume.alignment.solveTransform("piecewise_affine", ...
+    source, reference, Breakpoints=knots);
+
+% VAWLUME does not search for a breakpoint, so a piecewise request without one
+% has nothing to fit. It says so rather than falling back to affine.
+verifyError(testCase, @() vawlume.alignment.solveTransform( ...
+    "piecewise_affine", source, reference), ...
+    "vawlume:alignment:BreakpointsRequired");
+
+verifyError(testCase, @() solve([700; 300]), "vawlume:alignment:BreakpointsInvalid");
+verifyError(testCase, @() solve([300; 300]), "vawlume:alignment:BreakpointsInvalid");
+verifyError(testCase, @() solve(NaN), "vawlume:alignment:BreakpointsInvalid");
+verifyError(testCase, @() solve(Inf), "vawlume:alignment:BreakpointsInvalid");
+
+% At or beyond an end of the anchored span leaves a segment nothing to determine
+% it with.
+verifyError(testCase, @() solve(min(source)), "vawlume:alignment:BreakpointsInvalid");
+verifyError(testCase, @() solve(max(source)), "vawlume:alignment:BreakpointsInvalid");
+verifyError(testCase, @() solve(max(source) + 1), "vawlume:alignment:BreakpointsInvalid");
+
+% Declaring where segments meet is meaningless for a method that has one.
+verifyError(testCase, @() vawlume.alignment.solveTransform("affine", ...
+    source, reference, Breakpoints=600), "vawlume:alignment:BreakpointsInvalid");
+verifyError(testCase, @() vawlume.alignment.solveTransform("offset", ...
+    source, reference, Breakpoints=600), "vawlume:alignment:BreakpointsInvalid");
+end
+
+function testPiecewiseRejectsAnchorSetsThatCannotDetermineIt(testCase)
+sourcePath = useSource(); %#ok<NASGU>
+
+% A segment holding no anchor has a slope no observation determines.
+verifyError(testCase, @() vawlume.alignment.solveTransform("piecewise_affine", ...
+    [0; 1; 2; 40], [0; 1; 2; 40], Breakpoints=[5; 35]), ...
+    "vawlume:alignment:SegmentUnderdetermined");
+
+% Two segments carry three parameters, so three anchors are the minimum.
+verifyError(testCase, @() vawlume.alignment.solveTransform("piecewise_affine", ...
+    [0; 10; 20], [0; 10; 20], Breakpoints=[5; 15]), ...
+    "vawlume:alignment:InsufficientAnchors");
+
+% Anchors that repeat two source times cannot determine two slopes.
+verifyError(testCase, @() vawlume.alignment.solveTransform("piecewise_affine", ...
+    [0; 0; 20; 20], [1; 1; 21; 21], Breakpoints=10), ...
+    "vawlume:alignment:DegenerateAnchors");
+
+% A clock does not run backwards, so a segmentation that implies it is refused
+% rather than persisted as a transform nothing could apply meaningfully.
+verifyError(testCase, @() vawlume.alignment.solveTransform("piecewise_affine", ...
+    [0; 10; 20; 30], [0; 10; 5; 0], Breakpoints=15), ...
+    "vawlume:alignment:NonPositiveTransformScale");
+
+% And the existing guards still apply to the new method.
+verifyError(testCase, @() vawlume.alignment.solveTransform("piecewise_affine", ...
+    [5; 5; 5; 5], [1; 2; 3; 4], Breakpoints=5), ...
+    "vawlume:alignment:DegenerateAnchors");
+end
+
+function testEverySolvedTransformReportsSegments(testCase)
+sourcePath = useSource(); %#ok<NASGU>
+source = [10; 400; 900; 1500];
+reference = 1.0015 * source + 117.25;
+
+% Offset and affine return one open-ended segment, so a caller reads one shape
+% regardless of method and the database sees one row per segment either way.
+for method = ["offset", "affine"]
+    result = vawlume.alignment.solveTransform(method, source, reference);
+    verifyEqual(testCase, height(result.segments), 1);
+    verifyEqual(testCase, result.segments.segment_index, 1);
+    verifyTrue(testCase, isnan(result.segments.source_start));
+    verifyTrue(testCase, isnan(result.segments.source_end));
+    verifyEqual(testCase, result.segments.scale, result.scale);
+    verifyEqual(testCase, result.segments.offset_s, result.offset_s);
+    verifyEqual(testCase, result.segments.anchor_count, numel(source));
+    verifyEqual(testCase, result.segment_index, ones(size(source)));
+    verifyEmpty(testCase, result.breakpoints);
+end
+end
+
 
 % --------------------------------------------------------------- summaries ---
 
@@ -205,6 +404,30 @@ verifyEqual(testCase, size(row.residual_s), size(source'));
 end
 
 % ----------------------------------------------------------------- helpers ---
+
+function [source, reference, scale, offset] = piecewiseFixture(scale, firstOffset, knots)
+%PIECEWISEFIXTURE Anchors generated from a known continuous piecewise transform.
+%
+% The segment offsets are derived from continuity rather than chosen, so the
+% fixture cannot accidentally describe a transform with a step in it. These are
+% test ground truth; they are not a claim that real device clocks drift this way.
+scale = scale(:);
+knots = knots(:);
+offset = zeros(numel(scale), 1);
+offset(1) = firstOffset;
+for index = 2:numel(scale)
+    offset(index) = (scale(index - 1) - scale(index)) * knots(index - 1) + ...
+        offset(index - 1);
+end
+
+% Anchors every 100 s, which places one exactly on each breakpoint used here.
+source = (0:100:1500)';
+segment = ones(numel(source), 1);
+for index = 1:numel(knots)
+    segment = segment + double(source >= knots(index));
+end
+reference = scale(segment) .* source + offset(segment);
+end
 
 function cleanup = useSource()
 %USESOURCE Put src on the path for the duration of one test.

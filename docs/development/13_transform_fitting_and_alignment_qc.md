@@ -17,7 +17,7 @@ no timeline is regularized here; a caller asks for aligned times explicitly.
 ## Public API
 
 ```matlab
-result = vawlume.alignment.solveTransform(method, sourceTimes, referenceTimes)
+result = vawlume.alignment.solveTransform(method, sourceTimes, referenceTimes, Breakpoints=knots)
 plan   = vawlume.alignment.fit(conn, alignmentRef)
 result = vawlume.alignment.fit(conn, alignmentRef, Apply=true)
 value  = vawlume.alignment.report(conn, alignmentRef)
@@ -81,11 +81,80 @@ property of the transform, not something inferred from the data.
 
 ### Piecewise affine
 
-Raises `vawlume:alignment:MethodNotImplemented`. The schema can represent
-piecewise segments, but no breakpoint estimation or segment selection exists, and
-returning a single affine fit would silently answer a different question than the
-caller asked. `applyTransform` raises `PiecewiseNotImplemented` if it ever finds
-more than one stored segment.
+```text
+reference = scale_j * source + offset_s_j        for source in segment j
+```
+
+One affine segment per declared interval, **continuous at the breakpoints**.
+
+**Breakpoints are declared, never estimated.** VAWLUME does not search for them,
+and there is no option that asks it to. A breakpoint is a claim that something
+happened to a clock — a restart, a dropped buffer, a drift regime change — and
+choosing one from the residuals would be model selection this prototype has no
+basis for performing. A piecewise request with no breakpoints raises
+`BreakpointsRequired` rather than falling back to affine.
+
+**Continuity is a constraint on the fit, not a hope.** A discontinuity would map
+one source instant to two reference times, leaving both application and interval
+transformation undefined at exactly the point of interest. A clock that genuinely
+jumps is a gap in coverage, or two alignment identities, not one transform with a
+step in it.
+
+Continuity costs nothing mathematically. With the knots declared, a continuous
+piecewise-linear fit is one ordinary least-squares problem in a hinge basis:
+
+```text
+reference = a0 + a1 * source + SUM_k b_k * max(0, source - knot_k)
+```
+
+Per-segment coefficients follow by accumulation —
+`scale_j = scale_{j-1} + b_{j-1}` and
+`offset_j = offset_{j-1} - b_{j-1} * knot_{j-1}` — so `alignment_segments` stores
+exactly what it stored before and the solve stays `X \ y`. No optimizer, no
+toolbox, no robust regression, no iterative refinement.
+
+**A segment covers `[source_start, source_end)`.** An anchor exactly at a
+breakpoint belongs to the segment that begins there. The first segment is open
+below and the last open above, reported as `NaN` bounds and stored as SQL NULL,
+so every finite source time falls in exactly one segment. This rule is stated
+once because the fitter and the applier must not disagree about it.
+
+The scalar `scale` and `offset_s` are **NaN** for a piecewise result. A piecewise
+transform has no single slope, and returning the first segment's would be a
+plausible-looking number for a question nobody asked.
+
+Requirements, each with a named error rather than a quiet pseudo-inverse:
+
+| Requirement | Error when unmet |
+| --- | --- |
+| breakpoints declared | `BreakpointsRequired` |
+| strictly increasing, finite, and strictly inside the anchored span | `BreakpointsInvalid` |
+| no breakpoints on a method that has one segment | `BreakpointsInvalid` |
+| every segment holds at least one anchor | `SegmentUnderdetermined` |
+| at least as many anchors as parameters (segments + 1) | `InsufficientAnchors` |
+| at least two distinct source times, and a full-rank design | `DegenerateAnchors` |
+| every derived segment scale above zero | `NonPositiveTransformScale` |
+
+A breakpoint at or beyond an end of the anchored span is refused because it
+leaves a segment whose slope no observation determines — the single anchor
+sitting on its own boundary contributes nothing, since both segments already
+agree there.
+
+`vawlume:alignment:MethodNotImplemented` is **retired**: with the declared path
+implemented and estimation refused rather than deferred, no request reaches it.
+`applyTransform` still raises `PiecewiseNotImplemented` when it finds more than
+one stored segment; retiring that is the applier's pass, not this one.
+
+### Segments are reported for every method
+
+`solveTransform` returns a `segments` table — `segment_index`, `source_start`,
+`source_end`, `scale`, `offset_s`, `anchor_count` — plus a per-anchor
+`segment_index`, for **every** method. Offset and affine return one open-ended
+segment.
+
+A caller therefore reads one shape regardless of method, and the database sees
+one row per segment either way. The alternative — special-casing the single
+segment at every call site — is how two code paths for one concept begin.
 
 ### Determinism
 
@@ -301,7 +370,11 @@ transform of record.
 
 ## Limitations
 
-- Offset and affine only; piecewise affine is representable but unfitted.
+- Offset, affine, and continuous piecewise affine over **declared** breakpoints.
+  Breakpoint estimation is refused rather than deferred; nonlinear warping is not
+  implemented at all.
+- Piecewise segments are continuous by construction. A clock discontinuity has no
+  representation here.
 - Unweighted least squares; recorded uncertainty is not a weight.
 - No outlier detection, and no automatic exclusion of a badly fitting anchor.
   Exclusion is a human decision, recorded on the observation and declared
