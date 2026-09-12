@@ -47,7 +47,16 @@ Concretely, the prototype can today:
 - **register** coordinate systems and per-channel microphone placements,
   canonicalize external tracking artifacts without copying dense samples into
   SQLite, preserve time-varying ambiguous track-to-entity evidence, and declare
-  optional acoustic-reference points/intervals with source provenance.
+  optional acoustic-reference points/intervals with source provenance;
+- **measure** those references on explicit channels from bounded reads of the
+  linked local audio, and aggregate an exact set of those measurements into
+  per-family, per-channel response/QC estimates whose every supporting
+  measurement and source run is cited.
+
+[`../../examples/multimodal_integration_demo.m`](../../examples/multimodal_integration_demo.m)
+runs the whole multimodal layer as one synthetic workflow, including an
+ambiguous visual crossing. It assigns no caller, and neither does anything else
+in the prototype.
 
 ### Important limitations
 
@@ -74,9 +83,25 @@ Concretely, the prototype can today:
   in the schema and are used by no code.
 - **All validation to date is synthetic.** No real paired extractor session and
   no real manually reviewed reference subset has been available.
-- **Acoustic references are declarations, not measurements.** VAWLUME does not
-  yet read audio samples, measure channel response, or derive normalization or
-  correction factors from these intervals.
+- **Channel-response estimates are not caller evidence.** VAWLUME now reads
+  bounded audio windows and measures declared references on explicit channels,
+  but the result is uncalibrated response/QC evidence about the channels. It is
+  not a gain correction, not a normalized call amplitude, not a preferred
+  channel, and not a probability that any animal called.
+- **No caller attribution.** Nothing combines pose, visual-identity, alignment,
+  and acoustic evidence into a claim about who vocalized. Those components are
+  kept separately queryable precisely so that later work can combine them
+  deliberately.
+- **No image-based re-identification.** VAWLUME consumes whatever identity
+  evidence an upstream tool supplies and performs no pixel processing of its
+  own. A native track label is never treated as canonical animal identity.
+- **Tracking samples stay external, and raw video is never processed.** Only the
+  stream, its traces, its clock, its frame, and its coverage are stored;
+  positions and confidences are read from the artifact window-wise on demand.
+- **Coordinate compatibility is declaration and validation, not
+  transformation.** VAWLUME confirms that two spatial facts cite the same
+  declared frame, and refuses to relate them otherwise. It never transforms
+  between frames, and it computes no distances.
 
 ### VAWLUME and external extractors
 
@@ -346,7 +371,7 @@ verdict without touching the database.
 
 ### 6.1 The shortest path: run a shipped demonstration
 
-Eight runnable demonstrations create every input they need under the system
+Nine runnable demonstrations create every input they need under the system
 temporary directory and remove it before returning. From the repository root:
 
 ```matlab
@@ -361,18 +386,30 @@ matching_consensus_demo        % + matching, consensus, agreement, consilience, 
 multi_extractor_agreement_demo % + three extractors, arbitrary-N agreement, exact vs coarse
 agreement_filter_demo          % + agreement populations joined to context and features
 temporal_alignment_demo        % + manifest registration, transform fitting, common time
+multimodal_integration_demo    % geometry, tracking, visual identity, acoustic response
 ```
 
 Each returns a struct and prints a compact report; pass `Print=false` to
 suppress the printing. Every one is covered by an integration test, so the
 numbers they print are asserted rather than merely observed.
 
-Two are worth reading first. `matching_consensus_demo` is the complete
+Three are worth reading first. `matching_consensus_demo` is the complete
 **pairwise** path, including consilience and threshold sensitivity.
 `multi_extractor_agreement_demo` is the complete **three-extractor** path:
 it imports all three extractors onto one recording, runs all three pairwise
 comparisons, composes them into agreement groups, and then queries the same run
 by exact edge pattern and by coarse K-of-possible support.
+
+`multimodal_integration_demo` is the complete **multimodal input** path, and it
+shares no surface with the extractor ones. It declares an arena frame and two
+microphone placements, registers an external tracking artifact holding three
+native trajectories, reads bounded tracking windows in all three coverage
+states, records identity evidence across a crossing where two trajectories swap
+animals, declares four acoustic references, measures them on both channels from
+bounded audio reads, and aggregates one response/QC profile with exact lineage.
+It keeps pose confidence, visual-identity evidence, clock residual, and acoustic
+response as four separate numbers and combines none of them. See
+[`../development/29_integrated_multimodal_demonstration.md`](../development/29_integrated_multimodal_demonstration.md).
 
 To explore the relational model without running a workflow at all, build the
 deterministic Phase 1 synthetic fixture — one study, several subjects, a dyadic
@@ -710,7 +747,106 @@ each clock — never by nearest timestamp or pulse order. An anchor contributes 
 a fit only when exactly one *included* observation exists on the source clock and
 exactly one on the reference clock.
 
-### 7.5 Register and read acoustic references
+### 7.5 Declare geometry, register tracking, and record identity evidence
+
+**Prerequisite: channel rows.** Microphone placement, bounded audio reads, and
+response measurement all address an established `recording_channels` row, and
+**no public function creates one.** Project intake establishes the recording but
+not its channels, so for a multi-channel recording you must insert them yourself
+alongside the recording's `channel_count`:
+
+```matlab
+execute(conn, "UPDATE recordings SET channel_count=2 WHERE recording_id=1");
+execute(conn, "INSERT INTO recording_channels(recording_id,channel_index," + ...
+    "channel_label) VALUES(1,1,'left'),(1,2,'right')");
+```
+
+`channel_index` is one-based and must match the channel order in the audio file;
+`readAudioWindow` refuses a recording whose declared `channel_count` or
+`sample_rate_hz` disagrees with the artifact. A recording-native video clock in
+`timebases` is likewise a prerequisite for tracking registration and is
+established by the alignment intake path or by hand.
+
+Spatial facts must name the frame they are stated in. Declare one coordinate
+system for the project, locate each microphone channel in it, and point the
+tracking profile's `context.coordinate_system_key` at the same frame:
+
+```matlab
+vawlume.geometry.registerCoordinateSystem(conn, projectRef, struct( ...
+    coordinate_system_key="arena_2d", ...
+    coordinate_system_name="Courtship arena floor plane", ...
+    dimensionality=2, unit="cm", ...
+    origin_description="front-left inner corner of the arena floor"));
+vawlume.geometry.registerChannelPlacement(conn, recordingRef, struct( ...
+    channel_index=1, coordinate_system_key="arena_2d", ...
+    position_x=0, position_y=18.5, placement_role="microphone"));
+
+% Tracking is an external stream. This registers the stream, its clock, its
+% frame, its traces, and its coverage - and no samples at all.
+vawlume.tracking.register(conn, recordingRef, struct( ...
+    artifact_path="session01_tracking.csv", profile_path=profilePath, ...
+    timebase_key="video_native"), Apply=true, SourceRoot=sessionFolder);
+
+% Relating tracking coordinates to microphone coordinates is legal only when
+% both cite the same declared frame. This checks; it never transforms.
+vawlume.tracking.assertGeometryCompatible(conn, streamRef, recordingRef);
+
+% Dense samples are read window-wise from the artifact on demand.
+window = vawlume.tracking.readWindow(conn, streamRef, [4 6], ...
+    SourceRoot=sessionFolder);
+```
+
+`profilePath` points at your copy of
+`config/01_mapping_profiles/tracking/generic_tracking_mapping_profile.json` with
+each column role aimed at whatever your tracker called it, and `streamRef` is
+`struct(project_key="my_project", stream_name="tracking_primary")` — the
+`stream_name` defaults to the profile's `context.stream_key`.
+
+`window.coverage_status` is `covered`, `partial`, or `uncovered`, and
+`window.sample_status` distinguishes a covered-but-empty window from an
+uncovered one. Zero rows in an uncovered window means nothing established that
+anyone was observing — not that the tracker saw nothing.
+`window.samples.pose_confidence` is the upstream localization quality and is
+missing, never `1.0`, when the tracker emits none.
+
+A native track label is a trajectory label, never an animal. Record the
+relationship as interval-scoped evidence, which is what makes a crossing
+representable:
+
+```matlab
+% Before the crossing: a manual assertion, with no invented number.
+vawlume.tracking.registerIdentityAssociation(conn, streamRef, struct( ...
+    native_track_id="track0", entity_native_id="mouse_a", ...
+    start_time_native=0, end_time_native=4, ...
+    assignment_state="assigned", evidence_kind="manual_assertion"));
+
+% During it: two candidates over one interval. That is the ambiguity model.
+vawlume.tracking.registerIdentityAssociation(conn, streamRef, struct( ...
+    native_track_id="track0", entity_native_id="mouse_b", ...
+    start_time_native=4, end_time_native=6, ...
+    assignment_state="ambiguous", evidence_kind="reidentification_score", ...
+    identity_value=0.52, ...
+    identity_value_semantics="cosine_similarity_of_appearance_embeddings", ...
+    calibration_status="uncalibrated"));
+
+candidates = vawlume.tracking.identityCandidates(conn, streamRef, [4 6]);
+```
+
+A number must state what it means: `identity_value` without
+`identity_value_semantics` is refused by both the API and a schema `CHECK`,
+because a re-identification cosine similarity, an upstream likelihood, and a
+calibrated posterior are different quantities. `candidates.tracks.resolution`
+is `resolved`, `ambiguous`, `unresolved`, or `none`, and the last two are
+deliberately distinct: an explicit unresolved statement means somebody looked
+and could not tell, while `none` means nobody looked.
+
+VAWLUME performs no image-based re-identification and no crossing detection. See
+[`../development/23_spatial_geometry_schema.md`](../development/23_spatial_geometry_schema.md),
+[`../development/24_tracking_input_contract.md`](../development/24_tracking_input_contract.md),
+and
+[`../development/25_visual_identity_association.md`](../development/25_visual_identity_association.md).
+
+### 7.6 Register and read acoustic references
 
 Acoustic references are optional recording-native points or intervals. A
 channel-specific tone and a recording-wide noise interval can coexist:
@@ -760,6 +896,16 @@ Bounded reads and response measurements are described in
 Cross-reference response/QC aggregation and its exact supporting lineage are
 described in
 [`../development/28_channel_response_estimates.md`](../development/28_channel_response_estimates.md).
+
+Reference families are aggregated separately and never blended, a required
+family with no evidence produces an explicit QC row rather than disappearing,
+and the caller supplies exact measurement identifiers so the population of a
+profile is visible in the call. The result is uncalibrated response/QC evidence
+about the channels: not a gain correction, not a normalized call value, not a
+preferred channel, and not a caller probability.
+
+[`../../examples/multimodal_integration_demo.m`](../../examples/multimodal_integration_demo.m)
+runs sections 7.5 and 7.6 together on a synthetic session.
 
 ---
 
@@ -975,7 +1121,7 @@ assertSuccess(results);
 assert(~any([results.Incomplete]), "Incomplete tests.");
 ```
 
-The suite is currently **469 tests**. Runtime is machine-dependent; observed
+The suite is currently **492 tests in 68 files**. Runtime is machine-dependent; observed
 wall times range from roughly nine to twenty-five minutes. Passing it
 is the strongest available check that an environment is correctly configured.
 Use the [canonical batch gate in the README](../../README.md#quick-start) for
@@ -997,7 +1143,14 @@ manual-reference evaluation; threshold sensitivity; arbitrary-N extractor
 agreement composed from compatible pairwise analyses with exact supporting
 edges retained and exact/coarse population selection; alignment registration,
 offset/affine transform fitting with residual QC, common-time projection, and
-coverage-aware regularized timelines.
+coverage-aware regularized timelines; coordinate-system and microphone-placement
+declaration with identity-based compatibility checking; external tracking
+registration and bounded, coverage-aware window reads that store no sample;
+interval-scoped native-track to canonical-entity identity evidence with explicit
+ambiguity, unresolved statements, and declared value semantics; acoustic-
+reference registration and query; bounded local-audio reads; deterministic
+per-reference, per-channel response measurements with QC; and per-family,
+per-channel response/QC estimates with restrictive supporting lineage.
 
 ### Implemented but explicitly uncalibrated or narrow
 
@@ -1049,14 +1202,34 @@ coverage-aware regularized timelines.
   language; generalized profile composition and full device/setup domain
   validation are not implemented.
 - `aligned_external_events` is an optional cache with no public refresh API.
+- **No public function creates `recording_channels`.** Placement, bounded audio
+  reads, and response measurement all require channel rows, and project intake
+  does not create them; see the prerequisite in section 7.5.
+- Only long-form delimited-text tracking exports are supported, one source file
+  per stream, and `readWindow` reads the whole artifact and filters in memory. A
+  frame-basis window cannot be projected onto a reference clock.
+- Channel placement has no intra-recording history, so a microphone moved
+  mid-session is unrepresentable, and only audio channels are placed — cameras
+  and arena landmarks are not.
+- A pixel coordinate system supports no real-distance computation, and VAWLUME
+  computes no distances at all.
+- Identity association intervals for one track may overlap, and nothing defines
+  which claim wins. `identityCandidates` returns every overlapping claim rather
+  than choosing; a caller that needs one answer must decide precedence itself.
+- Median is the only channel-response aggregation method, a response profile is
+  scoped to one recording, and the caller supplies exact measurement identifiers
+  because no discovery or selection helper exists.
 
 ### Representable in the schema but unimplemented
 
 `piecewise_affine` transforms raise rather than approximating. `sequences`,
-`sequence_members`, `bouts`, `bout_members`, `metric_definitions`, and
-`derived_measurements` are written by no code path at all. `recording_epochs` is
-written only by the Phase 1 synthetic fixture builder — no ingest or analysis
-path populates it.
+`sequence_members`, `bouts`, and `bout_members` are written by no code path at
+all. `recording_epochs` is written only by the Phase 1 synthetic fixture builder
+— no ingest or analysis path populates it. `metric_definitions` and
+`derived_measurements` are now written, but only by the acoustic
+reference-response path: the shipped metric definitions are the three acoustic
+ones registered by `vawlume.db.registerBuiltinSemantics`, and no other analysis
+writes a derived measurement.
 
 ### Deliberately deferred
 
@@ -1101,6 +1274,7 @@ extractor-native classes; publication artefacts.
 - [`../development/26_acoustic_reference_registration.md`](../development/26_acoustic_reference_registration.md) — acoustic-reference registration, query, provenance, and mapper reuse
 - [`../development/27_audio_window_and_response_measurement.md`](../development/27_audio_window_and_response_measurement.md) — bounded local-audio reads, deterministic response metrics, QC, and persistence
 - [`../development/28_channel_response_estimates.md`](../development/28_channel_response_estimates.md) — per-family/channel aggregation, divergence policy, settings provenance, and exact source lineage
+- [`../development/29_integrated_multimodal_demonstration.md`](../development/29_integrated_multimodal_demonstration.md) — the integrated multimodal example, its synthetic session, the ambiguous crossing, and the four uncertainty components it keeps apart
 
 ### Configuration and schema
 

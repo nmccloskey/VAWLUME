@@ -25,7 +25,10 @@ frames, per-channel microphone placement, external tracking registration and
 windowed reads, time-varying track-to-entity identity evidence, and optional
 provenance-bearing acoustic-reference intervals with bounded per-channel audio
 reads, deterministic response measurements, and lineage-preserving
-per-reference-family channel-response/QC estimates.
+per-reference-family channel-response/QC estimates. One synthetic example
+exercises that whole multimodal layer together, including an ambiguous visual
+crossing, while keeping pose, identity, clock, and acoustic uncertainty as four
+separate quantities and combining none of them.
 
 **Not yet implemented:** sequence, bout, motif, and hierarchy-aware analysis;
 continuous-signal ingestion; full acquisition synchronization. These are the
@@ -65,9 +68,10 @@ addpath("examples")
 
 matching_consensus_demo          % the full pairwise cross-extractor path
 multi_extractor_agreement_demo   % all three extractors, end to end
+multimodal_integration_demo      % geometry, tracking, identity, acoustic response
 ```
 
-The eight demonstrations under [`examples/`](examples/) create every input they
+The nine demonstrations under [`examples/`](examples/) create every input they
 need under the system temporary directory and remove it before returning, so
 they need no data of your own. To run them all, and to build your own database
 from your own recordings, follow the
@@ -77,7 +81,7 @@ To check the environment is correctly configured:
 
 ```matlab
 addpath("src")
-results = runtests("tests", IncludeSubfolders=true);   % 480 tests, ~9-25 minutes
+results = runtests("tests", IncludeSubfolders=true);   % 492 tests, ~9-25 minutes
 table(results)
 assert(~isempty(results), "No tests discovered.");
 assertSuccess(results);
@@ -372,6 +376,22 @@ components separate, and joins native members to synthetic time-bounded
 hierarchy context and long-form duration measurements. Its summaries are
 descriptive only.
 
+The multimodal demonstration at
+[`examples/multimodal_integration_demo.m`](examples/multimodal_integration_demo.m)
+is the cross-module proof for the multimodal input layer, and it shares no
+surface with the extractor ones. It declares a 2D arena frame and two
+microphone placements, registers an external tracking artifact holding three
+native trajectories, reads bounded tracking windows in all three coverage
+states, records interval-scoped identity evidence across a crossing where two
+trajectories swap animals, declares four acoustic references, measures them on
+both channels from bounded audio reads, and aggregates one response/QC profile
+whose every supporting measurement and source run is cited. Its two reference
+families are estimated separately and the average of the two appears nowhere.
+Pose confidence, visual-identity evidence, clock residual, and acoustic response
+stay four separate numbers; none is derived from another and no caller is
+assigned. See
+[`docs/development/29_integrated_multimodal_demonstration.md`](docs/development/29_integrated_multimodal_demonstration.md).
+
 From the repository root:
 
 ```matlab
@@ -384,9 +404,10 @@ matching_consensus_demo
 multi_extractor_agreement_demo
 agreement_filter_demo
 temporal_alignment_demo
+multimodal_integration_demo
 ```
 
-All eight create every input they need under the system temporary directory and
+All nine create every input they need under the system temporary directory and
 remove it before returning, and each is covered by an integration test under
 [`tests/integration/`](tests/integration/).
 
@@ -526,6 +547,41 @@ and
 and
 [`docs/development/14_common_time_views_and_regularized_timeline.md`](docs/development/14_common_time_views_and_regularized_timeline.md).
 
+**A further round added the multimodal input layer**, which is where the inputs
+a later caller-attribution estimator would need acquire a provenance-bearing
+representation. Coordinate systems are declared per project and compatibility is
+frame **identity**, never structural similarity: two frames that both say "2D,
+cm" are not interchangeable, and VAWLUME transforms between frames not at all.
+Microphone placement locates an established recording channel in a declared
+frame. Tracking arrives as an external stream through the same mapping-profile
+machinery everything else uses, and registration stores the stream, its clock,
+its frame, its traces, and its coverage while storing **no sample**: positions
+and confidences are read window-wise from the artifact on demand, with coverage
+reported as covered, partial, or uncovered. Visual identity is interval-scoped
+evidence rather than a column on a trajectory, so a mid-session crossing,
+several simultaneous candidates, and an explicit "nobody could tell" are all
+representable — and distinguishable from "nobody looked". A missing identity
+confidence stays missing, and a present one must declare what it means. Acoustic
+references are optional recording-native intervals of open type; bounded reads
+of the linked local audio yield deterministic per-channel response metrics with
+explicit QC, and an exact set of those measurements aggregates into
+per-reference-family, per-channel response/QC estimates that cite every
+supporting measurement and source run.
+
+The boundaries here are the point of the layer. VAWLUME remains **downstream of
+video**: no raw-video ingestion, no pose estimation, no image-based
+re-identification, and no correction of upstream tracker output. A native track
+label is never canonical animal identity. Pose/localization uncertainty,
+visual-identity uncertainty, temporal-alignment uncertainty, and acoustic
+channel evidence are kept separately queryable and are **never combined into a
+caller confidence**; no caller is assigned, no channel is ranked, and no
+animal-to-microphone distance is computed anywhere.
+[`examples/multimodal_integration_demo.m`](examples/multimodal_integration_demo.m)
+exercises all of it on one synthetic session. See
+[`docs/design/03_multimodal_input_contract.md`](docs/design/03_multimodal_input_contract.md)
+and
+[`docs/development/29_integrated_multimodal_demonstration.md`](docs/development/29_integrated_multimodal_demonstration.md).
+
 **Every matching, tolerance, and manual-reference threshold shipped with the
 prototype is provisional.** They are deterministic demonstration values chosen
 to exercise algorithm behaviour on synthetic fixtures. Calibration requires a
@@ -578,6 +634,7 @@ metric identity is never asserted.
 - [`docs/development/26_acoustic_reference_registration.md`](docs/development/26_acoustic_reference_registration.md) — optional recording/channel reference intervals, mapper reuse, and provenance
 - [`docs/development/27_audio_window_and_response_measurement.md`](docs/development/27_audio_window_and_response_measurement.md) — bounded audio access, deterministic per-reference/channel metrics, QC, and derived-evidence provenance
 - [`docs/development/28_channel_response_estimates.md`](docs/development/28_channel_response_estimates.md) — reproducible cross-reference aggregation, divergence/QC policy, settings provenance, and restrictive measurement lineage
+- [`docs/development/29_integrated_multimodal_demonstration.md`](docs/development/29_integrated_multimodal_demonstration.md) — the integrated multimodal example: its synthetic session, the ambiguous visual crossing, the four uncertainty components kept apart, and the boundaries it does not cross
 
 Extractor-specific design references should live under:
 

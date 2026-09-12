@@ -2,7 +2,16 @@
 
 ## Status
 
-**Design contract. Nothing in this document is implemented yet.**
+**Design contract, now implemented.** Coordinate systems, channel placement,
+tracking registration and bounded reads, visual-identity association, acoustic
+references, bounded audio access, reference-response measurement, and
+channel-response/QC estimates are all built and tested.
+[`examples/multimodal_integration_demo.m`](../../examples/multimodal_integration_demo.m)
+exercises them as one synthetic workflow; see
+[`../development/29_integrated_multimodal_demonstration.md`](../development/29_integrated_multimodal_demonstration.md).
+
+Where this document and the tracked source disagree, the source is the authority
+for implemented behaviour and this document states the architectural intent.
 
 This is the governing contract for VAWLUME's multimodal input layer: spatial
 coordinate systems, microphone geometry, canonicalized tracking inputs,
