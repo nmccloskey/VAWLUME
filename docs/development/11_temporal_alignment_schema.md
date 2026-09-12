@@ -13,8 +13,8 @@ construction do not yet exist. The
 governing design contract is
 [`../design/02_temporal_alignment_contract.md`](../design/02_temporal_alignment_contract.md).
 
-Schema version `0.5-draft`, `PRAGMA user_version = 5`. The `0.3` to `0.4` DDL
-change added `alignment_anchor_mapping` to the closed
+Introduced at schema version `0.5-draft` (`PRAGMA user_version = 5`). The
+`0.3` to `0.4` DDL change added `alignment_anchor_mapping` to the closed
 `config_profiles.profile_kind` vocabulary, so anchor mapping profiles can be
 registered without misclassifying them as event-stream profiles. The `0.4` to
 `0.5` change added `registered` to `time_alignment_runs.status` and made it the

@@ -284,6 +284,32 @@ Add integration tests when multiple layers are connected.
 
 Each bug that changes a semantic or relational invariant should ideally produce a regression test.
 
+### Validation tiers
+
+Checks run at the level the change surface justifies, not reflexively.
+
+| Tier | What runs | When |
+|---|---|---|
+| Focused | The nearest unit tests, plus the integration tests exercising the changed workflow | During and before the end of every itinerary |
+| Self-description | `tests/unit/test_repository_self_description.m`, or `check_repository_self_description` directly | **Every itinerary.** Non-executing; finishes in seconds |
+| Full gate | `runtests("tests", IncludeSubfolders=true)` | Cross-cutting change, integration or phase boundary, release or closure verification |
+
+The self-description tier exists because the full gate is the wrong instrument
+for documentation drift. A hand-maintained test count was edited by hand in five
+consecutive itineraries and verified by nothing. Discovery is checked here too,
+so a suite that silently stopped finding tests would not first become visible at
+the next phase gate.
+
+It runs no test and says nothing about whether the suite passes. Targeted
+behavioural testing remains the itinerary's real safety net, and the full gate
+remains the repository-wide acceptance check, reserved for the checkpoints in
+the table above.
+
+What it verifies, and the claim semantics behind it, are in
+[`30_repository_self_description.md`](30_repository_self_description.md). The
+short version: the software state is authoritative, and a published literal
+about the repository is either machine-verified or written qualitatively.
+
 The current checkpoint has completed source mapping, transactional project
 intake, and all three extractor importers, each through atomic apply and each
 with a runnable demonstration under `examples/`:

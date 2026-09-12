@@ -113,6 +113,8 @@ VAWLUME/
 │
 ├── examples/
 │
+├── tools/
+│
 ├── docs/
 │   ├── design/
 │   ├── development/
@@ -411,7 +413,33 @@ could eventually contain a scripted, synthetic end-to-end demonstration that cre
 
 Configuration snippets that merely demonstrate profile syntax should remain under `config/`.
 
-## 12. Files to defer
+## 12. Repository tooling
+
+`tools/` holds developer-facing checks that are not part of the `vawlume.*`
+API. A VAWLUME user should not find repository introspection in the product
+namespace, and these are not tests of behaviour, so they belong in neither
+`src/` nor `tests/`.
+
+```text
+tools/
+├── repository_inventory.m
+└── check_repository_self_description.m
+```
+
+`repository_inventory` discovers what the repository currently holds — the
+schema version, the size of the suite, the shipped demonstrations, the
+configuration tree. `check_repository_self_description` verifies that the
+README and the usage guide still describe that accurately.
+
+Both are non-executing: they discover tests without running them, open no
+database, and write nothing. `tests/unit/test_repository_self_description.m`
+wraps the check so it also runs inside the full gate.
+
+Keep this directory small. A file here must be a check or an inventory over the
+repository itself; anything that operates on user data belongs under `src/`.
+See [`30_repository_self_description.md`](30_repository_self_description.md).
+
+## 13. Files to defer
 
 `LICENSE` is no longer deferred. It was added for the prototype public release
 (MIT), and the README's license statement must continue to agree with it.
@@ -431,10 +459,10 @@ prototype:
 
 Avoid creating Python analogues merely because they exist in other repositories.
 
-## 13. Root cleanliness rule
+## 14. Root cleanliness rule
 
 A simple test for new root-level files:
 
 > Does this file describe, configure, or launch the repository as a whole?
 
-If not, it probably belongs under `src/`, `schema/`, `config/`, `tests/`, `examples/`, or `docs/`.
+If not, it probably belongs under `src/`, `schema/`, `config/`, `tests/`, `examples/`, `tools/`, or `docs/`.

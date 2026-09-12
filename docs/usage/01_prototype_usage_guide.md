@@ -371,8 +371,8 @@ verdict without touching the database.
 
 ### 6.1 The shortest path: run a shipped demonstration
 
-Nine runnable demonstrations create every input they need under the system
-temporary directory and remove it before returning. From the repository root:
+Every shipped demonstration creates every input it needs under the system
+temporary directory and removes it before returning. From the repository root:
 
 ```matlab
 addpath("src")
@@ -1138,9 +1138,11 @@ assertSuccess(results);
 assert(~any([results.Incomplete]), "Incomplete tests.");
 ```
 
-The suite is currently **497 tests in 68 files**. Runtime is machine-dependent; observed
-wall times range from roughly nine to twenty-five minutes. Passing it
-is the strongest available check that an environment is correctly configured.
+Runtime is machine-dependent; observed wall times range from roughly nine to
+twenty-five minutes. Passing the suite is the strongest available check that an
+environment is correctly configured. For the current size of the suite, and the
+rest of the repository inventory, run `repository_inventory` from
+[`../../tools/`](../../tools/) rather than trusting a count quoted here.
 Use the [canonical batch gate in the README](../../README.md#quick-start) for
 non-interactive verification with a nonzero exit code on failure or incomplete
 tests. Synthetic regression coverage does not establish scientific calibration.

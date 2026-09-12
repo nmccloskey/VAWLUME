@@ -71,7 +71,7 @@ multi_extractor_agreement_demo   % all three extractors, end to end
 multimodal_integration_demo      % geometry, tracking, identity, acoustic response
 ```
 
-The nine demonstrations under [`examples/`](examples/) create every input they
+The demonstrations under [`examples/`](examples/) create every input they
 need under the system temporary directory and remove it before returning, so
 they need no data of your own. To run them all, and to build your own database
 from your own recordings, follow the
@@ -81,7 +81,7 @@ To check the environment is correctly configured:
 
 ```matlab
 addpath("src")
-results = runtests("tests", IncludeSubfolders=true);   % 497 tests, ~9-25 minutes
+results = runtests("tests", IncludeSubfolders=true);   % full suite, ~9-25 minutes
 table(results)
 assert(~isempty(results), "No tests discovered.");
 assertSuccess(results);
@@ -100,6 +100,15 @@ tests, an empty suite, or an execution error. It runs both unit and integration
 tests, including schema integrity and synthetic-fixture checks. A passing gate
 establishes software regression health; it does not calibrate thresholds or
 provide empirical scientific validation.
+
+Two cheaper checks under [`tools/`](tools/) run in seconds and execute no test.
+[`repository_inventory`](tools/repository_inventory.m) reports what the
+repository currently holds — the schema version, the size of the suite, the
+shipped demonstrations, the configuration tree — and
+[`check_repository_self_description`](tools/check_repository_self_description.m)
+verifies that this README and the usage guide still describe it accurately.
+Counts belong in the first of those, not in prose: the software state is
+authoritative and the documentation describes it.
 
 ## Prototype goals
 
@@ -407,8 +416,8 @@ temporal_alignment_demo
 multimodal_integration_demo
 ```
 
-All nine create every input they need under the system temporary directory and
-remove it before returning, and each is covered by an integration test under
+Each creates every input it needs under the system temporary directory and
+removes it before returning, and each is covered by an integration test under
 [`tests/integration/`](tests/integration/).
 
 ## Configuration policy
@@ -635,6 +644,7 @@ metric identity is never asserted.
 - [`docs/development/27_audio_window_and_response_measurement.md`](docs/development/27_audio_window_and_response_measurement.md) — bounded audio access, deterministic per-reference/channel metrics, QC, and derived-evidence provenance
 - [`docs/development/28_channel_response_estimates.md`](docs/development/28_channel_response_estimates.md) — reproducible cross-reference aggregation, divergence/QC policy, settings provenance, and restrictive measurement lineage
 - [`docs/development/29_integrated_multimodal_demonstration.md`](docs/development/29_integrated_multimodal_demonstration.md) — the integrated multimodal example: its synthetic session, the ambiguous visual crossing, the four uncertainty components kept apart, and the boundaries it does not cross
+- [`docs/development/30_repository_self_description.md`](docs/development/30_repository_self_description.md) — how the repository's claims about itself are kept true: derived facts, current-state versus historical claims, and what the inventory check verifies
 
 Extractor-specific design references should live under:
 

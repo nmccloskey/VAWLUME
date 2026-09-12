@@ -138,7 +138,32 @@ config/01_mapping_profiles/alignment_anchors/
 This profile is reusable. A session-specific alignment manifest remains a source
 artifact handled by the alignment intake layer, not a mapping-profile kind.
 
-### 5. Recording-device profile
+### 5. Tracking-input source mapping profile
+
+Defines how an upstream tracker's canonicalized export is read: which columns
+carry native time, track label, bodypart label, position, and optional
+confidence; which declared coordinate system those positions are in; and which
+logical stream and timebase the trace belongs to.
+
+Synthetic example:
+
+```text
+config/01_mapping_profiles/tracking/
+```
+
+The contract names **roles, never vendor columns**. DeepLabCut, SLEAP, MoSeq,
+and hand-scored output all reach VAWLUME through the same declaration by
+pointing each role at whatever the exporting tool happened to call it. VAWLUME
+does not wrap a tracker and does not process raw video.
+
+The profile resolves an artifact; it never absorbs one. No tracking sample is
+written to the database, so a million-row export produces stream, trace, and
+coverage metadata and nothing else. The coordinate system must already be
+declared, because letting an import create a frame implicitly would let it
+choose its own units and dimensionality. See
+[`24_tracking_input_contract.md`](../docs/development/24_tracking_input_contract.md).
+
+### 6. Recording-device profile
 
 Describes acquisition hardware/context, for example:
 
@@ -157,7 +182,7 @@ Recommended location:
 config/02_device_profiles/
 ```
 
-### 6. Experimental-setup profile
+### 7. Experimental-setup profile
 
 Describes the physical/behavioral recording context, for example:
 
@@ -179,7 +204,7 @@ Recommended location:
 config/03_setup_profiles/
 ```
 
-### 7. Extractor settings profile
+### 8. Extractor settings profile
 
 Captures the detailed settings used for one extraction context.
 
@@ -187,7 +212,7 @@ Unlike the built-in output mapping profile, an extractor settings profile descri
 
 Settings artifacts may remain external to the repository for real projects, with file identity/checksum recorded in provenance.
 
-### 8. Matching and consilience specification
+### 9. Matching and consilience specification
 
 Governs one cross-extractor matching analysis: which run pair is legal, what
 makes a detection pair a temporally plausible candidate, how ambiguity is
@@ -218,7 +243,7 @@ threshold in it is a deterministic demonstration value chosen to exercise
 algorithm behaviour on synthetic fixtures. None is empirically calibrated, and
 none should be reported as optimal or recommended.
 
-### 9. Session alignment manifests
+### 10. Session alignment manifests
 
 Location:
 
@@ -242,7 +267,7 @@ The tracked
 is illustrative. Its clocks, rates, and file names are synthetic, and it is an
 example of the manifest grammar rather than a template of validated settings.
 
-### 10. Arbitrary-N extractor-agreement policies
+### 11. Arbitrary-N extractor-agreement policies
 
 Location:
 
@@ -270,7 +295,7 @@ cannot make feature support an admission criterion: potential support, realized
 availability, and observed outcome stay separately queryable rather than
 becoming a membership test.
 
-### 11. Cross-profile examples
+### 12. Cross-profile examples
 
 Examples that demonstrate how multiple profile kinds are associated can live in:
 
