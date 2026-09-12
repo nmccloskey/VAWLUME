@@ -41,6 +41,34 @@ is written by any code today; the other two are present because Phases 5 and 6 l
 in this same table and a vocabulary admitting one value would force a version bump
 to add a string.
 
+`vawlume.attribution.createRun` creates the `analysis_runs` parent, its
+`attribution_settings` profile link, the event-set input lineage, this row, and
+all targets in one transaction. Detection target sets cite their extraction run
+through `analysis_run_extraction_inputs`; consensus and agreement target sets cite
+their source analysis through `analysis_run_sources`. The attribution row remains
+`planned` and the analysis parent remains `started` until the later candidate and
+decision layers finish the run.
+
+Schema `0.9-draft` has no run-to-source-file, run-to-artifact,
+run-to-external-stream, or run-to-participating-entity junction table. The public
+writer therefore retains those exact identifiers in `notes` as a canonical
+`vawlume.attribution.run_provenance.v1` JSON envelope, alongside the target-set
+kind/source and any user note. It snapshots:
+
+- direct source file, artifact, external-stream, and source-analysis-run IDs;
+- participating entity IDs and the `recording_entity_links` rows that admitted
+  them;
+- target kind, source extraction/analysis run, selected target IDs, and any
+  agreement extent method.
+
+This is structured provenance, not narrative text, when the row comes from the
+public API. Its limitation is equally explicit: JSON identifiers have no foreign
+keys. The writer validates their scope and an identical rerun compares the whole
+envelope, but direct SQL can delete a cited row without a relational RESTRICT edge.
+Adding four speculative junction tables after Phase 4's schema bump would be a
+larger and less reviewable correction; the closure gate should decide whether the
+first imported workflow justifies normalizing any of them.
+
 ### `attribution_targets`
 
 The vocal event attribution applies to. Exactly one of `detection_id`,

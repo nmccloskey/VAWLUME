@@ -52,7 +52,10 @@ Concretely, the prototype can today:
 - **measure** those references on explicit channels from bounded reads of the
   linked local audio, and aggregate an exact set of those measurements into
   per-family, per-channel response/QC estimates whose every supporting
-  measurement and source run is cited.
+  measurement and source run is cited;
+- **create** a provenance-bearing caller-attribution run over one explicit
+  detection, consensus-event, or agreement-group event set, snapshotting its
+  direct inputs and participating entities before any caller is scored.
 
 [`../../examples/multimodal_integration_demo.m`](../../examples/multimodal_integration_demo.m)
 runs the whole multimodal layer as one synthetic workflow, including an
@@ -89,10 +92,11 @@ in the prototype.
   but the result is uncalibrated response/QC evidence about the channels. It is
   not a gain correction, not a normalized call amplitude, not a preferred
   channel, and not a probability that any animal called.
-- **No caller attribution.** Nothing combines pose, visual-identity, alignment,
-  and acoustic evidence into a claim about who vocalized. Those components are
-  kept separately queryable precisely so that later work can combine them
-  deliberately.
+- **No caller attribution result yet.** A run and its explicit target event set
+  can now be created, but no public path writes candidate callers, evidence, or
+  a decision. Nothing combines pose, visual-identity, alignment, and acoustic
+  evidence into a claim about who vocalized. Those components are kept
+  separately queryable precisely so later work can combine them deliberately.
 - **No image-based re-identification.** VAWLUME consumes whatever identity
   evidence an upstream tool supplies and performs no pixel processing of its
   own. A native track label is never treated as canonical animal identity.
@@ -976,6 +980,55 @@ preferred channel, and not a caller probability.
 [`../../examples/multimodal_integration_demo.m`](../../examples/multimodal_integration_demo.m)
 runs sections 7.5 and 7.6 together on a synthetic session.
 
+### 7.7 Create an attribution run and explicit target set
+
+Caller attribution begins by fixing the run's provenance and denominator, not
+by choosing a caller. Register the settings profile version and direct sources
+first, then identify exactly one event set. This example targets two native
+detections from one extraction run:
+
+```matlab
+targetSet = struct(detection_ids=[101 102]);
+sources = struct(source_file_ids=44, artifact_ids=19, ...
+    external_stream_ids=7);
+runSpec = struct( ...
+    run_key="session01-imported-caller-v1", ...
+    attribution_path="imported", ...
+    method="External caller system 2.0", ...
+    settings_profile_version_id=12, ... % registered, checksum-bearing snapshot
+    target_set=targetSet, ...
+    participating_entity_ids=[3 4], ...
+    sources=sources);
+
+preview = vawlume.attribution.createRun(conn, recordingRef, runSpec);
+created = vawlume.attribution.createRun(conn, recordingRef, runSpec, Apply=true);
+
+% Read-only verification against the stored event-set identity.
+resolved = vawlume.attribution.resolveTargets(conn, ...
+    struct(project_key="my_project", ...
+           run_key="session01-imported-caller-v1"), targetSet);
+```
+
+Use `consensus_event_ids` instead to target one matching analysis's consensus
+events. Use `agreement_group_ids` plus one of the five documented
+`agreement_extent_method` values to target an arbitrary-N agreement population.
+A single run cannot mix those event-set kinds or combine events from different
+source extraction/analysis runs; make a separate attribution run when the
+denominator changes.
+
+Planning is the default and writes nothing. `Apply=true` atomically creates the
+`analysis_runs` parent, settings-profile link, source lineage, `attribution_runs`
+row, and every `attribution_targets` row. The direct source IDs and the exact
+participating entity/link IDs are retained in the run's versioned provenance
+snapshot. An entity not linked to the recording and an empty or cross-recording
+target set are named errors, not silent omissions.
+
+**This workflow is intentionally incomplete.** The new run remains `planned`
+and its analysis parent remains `started`. Phase 4.5 adds several candidate
+callers and separately readable evidence; Phase 4.6 applies a declared policy
+and records a decision. At this stage no candidate, score, probability, evidence,
+or decision exists, and nothing has attributed the event to anyone.
+
 ---
 
 ## 8. Outputs and data model
@@ -995,6 +1048,7 @@ in the prototype; derived tables are returned to MATLAB.
 | Arbitrary-N agreement | `analysis_runs` (a `multi_extractor_agreement` run with many-parent lineage), `agreement_groups`, `agreement_group_members`, `agreement_supporting_edges` |
 | Alignment | `timebases`, `external_streams`, `external_stream_sources`, `external_stream_coverage`, `external_events`, `external_event_attributes`, `alignment_sets`, `alignment_anchors`, `alignment_anchor_observations`, `time_alignment_runs`, `alignment_segments`, `alignment_anchor_residuals` |
 | Multimodal intake and response | `coordinate_systems`, `channel_placements`, `tracking_streams`, `tracking_series`, `tracking_identity_associations`, `acoustic_references`; response applies add `analysis_runs`, `analysis_run_sources`, `derived_measurements`, `channel_response_estimates`, and `channel_response_estimate_sources` |
+| Attribution run setup | `analysis_runs`, `analysis_run_profiles`, `analysis_run_extraction_inputs` or `analysis_run_sources`, `attribution_runs`, `attribution_targets`; candidate/evidence/decision tables remain empty |
 
 Note that `agreement_statistics` belongs to *pairwise* consilience despite its
 name; the arbitrary-N layer stores no summary at all. Its counts, fractions,
@@ -1233,7 +1287,9 @@ interval-scoped native-track to canonical-entity identity evidence with explicit
 ambiguity, unresolved statements, and declared value semantics; acoustic-
 reference registration and query; bounded local-audio reads; deterministic
 per-reference, per-channel response measurements with QC; and per-family,
-per-channel response/QC estimates with restrictive supporting lineage.
+per-channel response/QC estimates with restrictive supporting lineage; and
+plan-then-apply creation of attribution runs over explicit, single-kind target
+sets with settings, direct-source, participant, and event-set provenance.
 
 ### Implemented but explicitly uncalibrated or narrow
 
@@ -1320,8 +1376,11 @@ per-channel response/QC estimates with restrictive supporting lineage.
 
 ### Representable in the schema but unimplemented
 
-`sequences`, `sequence_members`, `bouts`, and `bout_members` are written by no code path at
-all. `recording_epochs` is written only by the Phase 1 synthetic fixture builder
+`attribution_candidates`, `attribution_evidence`, `attribution_decisions`,
+`attribution_decision_candidates`, `imported_attribution_windows`, and
+`attribution_window_correspondences` are written by no public code path yet.
+Likewise, `sequences`, `sequence_members`, `bouts`, and `bout_members` are written
+by no code path at all. `recording_epochs` is written only by the Phase 1 synthetic fixture builder
 — no ingest or analysis path populates it. `metric_definitions` and
 `derived_measurements` are now written, but only by the acoustic
 reference-response path: the shipped metric definitions are the three acoustic
@@ -1346,7 +1405,7 @@ extractor-native classes; publication artefacts.
 - [`../design/01_prototype_development_outline.md`](../design/01_prototype_development_outline.md) — prototype development plan and completion criteria
 - [`../design/02_temporal_alignment_contract.md`](../design/02_temporal_alignment_contract.md) — alignment design contract, exit criteria, known limitations
 - [`../design/03_multimodal_input_contract.md`](../design/03_multimodal_input_contract.md) — multimodal input design contract. Spatial geometry, tracking input/identity, and acoustic response/QC estimation are implemented without caller attribution.
-- [`../design/04_caller_attribution_contract.md`](../design/04_caller_attribution_contract.md) — caller-attribution design contract: what a candidate, a decision, and an imported claim each mean, and why a detection is not an attribution claim. **Design only — no caller attribution is implemented.**
+- [`../design/04_caller_attribution_contract.md`](../design/04_caller_attribution_contract.md) — caller-attribution design contract: what a candidate, a decision, and an imported claim each mean, and why a detection is not an attribution claim. Run and target creation are implemented; candidate, evidence, decision, and import paths are not yet.
 
 ### Contracts per stage
 
