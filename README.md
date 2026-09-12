@@ -385,6 +385,17 @@ components separate, and joins native members to synthetic time-bounded
 hierarchy context and long-form duration measurements. Its summaries are
 descriptive only.
 
+The temporal-alignment demonstration at
+[`examples/temporal_alignment_demo.m`](examples/temporal_alignment_demo.m) is
+the integrated Phase 3 proof. It recovers known continuous piecewise-affine
+clock changes, keeps a named failure on one source clock from erasing two
+successful transforms, reports replicate and held-out-anchor evidence,
+transforms an interval across a breakpoint, distinguishes coverage from
+extrapolation, propagates explicitly uncalibrated uncertainty, and lets
+`tracking.readWindow` consume the stored transform through the shared API. It
+also displays temporal, pose, visual-identity, and acoustic evidence separately
+and names no caller.
+
 The multimodal demonstration at
 [`examples/multimodal_integration_demo.m`](examples/multimodal_integration_demo.m)
 is the cross-module proof for the multimodal input layer, and it shares no
@@ -530,9 +541,10 @@ clock all commit in a single transaction.
 
 `vawlume.alignment.fit` then estimates those transforms from the registered
 anchors. Anchors are paired by logical identity — never by nearest timestamp or
-pulse order — and the models are transparent: offset-only, or affine by plain
-least squares, with piecewise-affine representable but explicitly unimplemented
-rather than quietly approximated. Every evaluated anchor gets a residual row
+pulse order — and the models are transparent: offset-only, affine, or continuous
+piecewise-affine over caller-declared breakpoints, all by plain least squares.
+Breakpoints are never estimated and an unsupported model never falls back to a
+simpler one. Every evaluated anchor gets a residual row
 naming both observations it came from, so a fit can be recomputed by hand.
 `vawlume.alignment.applyTransform` places native times on the reference clock
 from the stored coefficients without refitting and without touching a native
@@ -541,7 +553,10 @@ plain vectors so it can be audited with no database at all.
 
 **A solved fit is recorded as `estimated`, never `validated`.** Solving is not
 validating, no calibrated acceptance threshold exists, and anchor uncertainty is
-preserved but deliberately not used as a fit weight.
+preserved and propagated as a stated uncalibrated bound but deliberately not used
+as a fit weight. Replicate dispersion, withheld-anchor residuals, source-span and
+largest-gap diagnostics, leave-one-out influence, and named per-clock failures
+are reported without automatically rejecting or judging any anchor.
 `vawlume.alignment.commonTime` now derives caller-selected detections or consensus
 events plus external events on the reference clock while retaining native time,
 transform identity, and projected coverage. Reference-clock events are explicit

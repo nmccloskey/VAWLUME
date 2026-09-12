@@ -1,9 +1,20 @@
-function result = setAnchorInclusion(conn, anchorObservationId, included, options)
+function result = setAnchorInclusion(conn, anchorObservationRef, included, options)
 %SETANCHORINCLUSION Withhold an anchor observation from fits, or restore it.
 %
 % RESULT = vawlume.alignment.setAnchorInclusion(CONN, OBSERVATIONID, INCLUDED,
 % Reason=WHY) records a decision about whether one anchor reading may influence
 % a transform's coefficients, and returns what changed.
+%
+% OBSERVATIONID may be a positive `anchor_observation_id`. Prefer a structured
+% selector in user code so the decision remains readable without a preliminary
+% SQL query:
+%
+%   struct(run_key="session-alignment", anchor_key="sync04", ...
+%          timebase_key="audio_native", observation_role="primary")
+%
+% Use `alignment_set_id` instead of `run_key` when convenient, and add
+% `project_key` when a run key is not globally unique. `observation_role` is
+% optional only when the remaining selector resolves one row.
 %
 % Exclusion is a **declared human decision**, and this function is how it is
 % declared. VAWLUME performs no automatic outlier rejection: there is no robust
@@ -37,6 +48,7 @@ function result = setAnchorInclusion(conn, anchorObservationId, included, option
 % influenced the coefficients.
 %
 % Errors:
+%   :AnchorObservationRefInvalid    malformed structured selector
 %   :AnchorObservationNotFound     no such observation
 %   :ExclusionReasonRequired       a decision was made without stating why
 %   :ObservationRoleUnsupported    role outside the schema's vocabulary
@@ -48,11 +60,13 @@ function result = setAnchorInclusion(conn, anchorObservationId, included, option
 
 arguments
     conn
-    anchorObservationId (1,1) double {mustBeInteger, mustBePositive}
+    anchorObservationRef
     included (1,1) logical
     options.Reason (1,1) string = ""
     options.Role (1,1) string = ""
 end
+
+anchorObservationId = resolveObservationId(conn, anchorObservationRef);
 
 reason = strtrim(options.Reason);
 if strlength(reason) == 0
@@ -102,6 +116,79 @@ result.note_appended = stamp;
 end
 
 % ---------------------------------------------------------------- reading ---
+
+function value = resolveObservationId(conn, ref)
+if isnumeric(ref)
+    validateattributes(ref, {'double'}, {'scalar', 'finite', 'positive', ...
+        'integer'}, mfilename, 'anchorObservationRef');
+    value = double(ref);
+    return
+end
+if ~isstruct(ref) || ~isscalar(ref)
+    error("vawlume:alignment:AnchorObservationRefInvalid", ...
+        "anchorObservationRef must be a positive id or a scalar selector struct.");
+end
+
+hasSetId = isfield(ref, "alignment_set_id");
+hasRunKey = isfield(ref, "run_key");
+if hasSetId == hasRunKey || ~isfield(ref, "anchor_key") || ...
+        ~isfield(ref, "timebase_key")
+    error("vawlume:alignment:AnchorObservationRefInvalid", ...
+        ['A selector must contain anchor_key, timebase_key, and exactly one ' ...
+        'of alignment_set_id or run_key.']);
+end
+predicate = "a.anchor_key=" + sqlText(requiredText(ref.anchor_key, "anchor_key")) + ...
+    " AND t.timebase_name=" + ...
+    sqlText(requiredText(ref.timebase_key, "timebase_key"));
+if hasSetId
+    validateattributes(ref.alignment_set_id, {'double'}, {'scalar', 'finite', ...
+        'positive', 'integer'}, mfilename, 'alignment_set_id');
+    predicate = predicate + " AND s.alignment_set_id=" + ...
+        string(double(ref.alignment_set_id));
+else
+    predicate = predicate + " AND ar.run_key=" + ...
+        sqlText(requiredText(ref.run_key, "run_key"));
+    if isfield(ref, "project_key")
+        predicate = predicate + " AND p.project_key=" + ...
+            sqlText(requiredText(ref.project_key, "project_key"));
+    end
+end
+if isfield(ref, "observation_role")
+    predicate = predicate + " AND o.observation_role=" + ...
+        sqlText(requiredText(ref.observation_role, "observation_role"));
+end
+rows = fetch(conn, "SELECT o.anchor_observation_id FROM " + ...
+    "alignment_anchor_observations o JOIN alignment_anchors a " + ...
+    "ON a.alignment_anchor_id=o.alignment_anchor_id JOIN timebases t " + ...
+    "ON t.timebase_id=o.timebase_id JOIN alignment_sets s " + ...
+    "ON s.alignment_set_id=a.alignment_set_id JOIN analysis_runs ar " + ...
+    "ON ar.analysis_run_id=s.analysis_run_id JOIN projects p " + ...
+    "ON p.project_id=ar.project_id WHERE " + predicate + ...
+    " ORDER BY o.anchor_observation_id");
+if isempty(rows) || height(rows) == 0
+    error("vawlume:alignment:AnchorObservationNotFound", ...
+        "No anchor observation matches the structured selector.");
+end
+if height(rows) ~= 1
+    error("vawlume:alignment:AnchorObservationAmbiguous", ...
+        ['The structured selector matched %d observations. Add ' ...
+        'observation_role or use anchor_observation_id to name one reading.'], ...
+        height(rows));
+end
+value = double(rows.anchor_observation_id(1));
+end
+
+function value = requiredText(raw, name)
+try
+    value = strtrim(string(raw));
+catch
+    value = "";
+end
+if ~isscalar(value) || ismissing(value) || strlength(value) == 0
+    error("vawlume:alignment:AnchorObservationRefInvalid", ...
+        "Selector field %s must be nonempty scalar text.", name);
+end
+end
 
 function value = readObservation(conn, anchorObservationId)
 rows = fetch(conn, "SELECT alignment_anchor_id, timebase_id, included_in_fit, " + ...

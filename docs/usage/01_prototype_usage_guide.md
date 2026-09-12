@@ -41,9 +41,10 @@ Concretely, the prototype can today:
   extractor agreement over native detections, and select exact or coarse
   agreement populations without collapsing split/merge components;
 - **register** timestamped external event streams (behavioural, neural/TTL) and
-  logical alignment anchors from one session manifest, **fit** offset or affine
-  source-to-reference clock transforms with per-anchor residual evidence, project
-  events onto a common clock, and build a coverage-aware regularized timeline.
+  logical alignment anchors from one session manifest, **fit** offset, affine,
+  or continuous piecewise-affine source-to-reference clock transforms with
+  per-anchor residual evidence, project points, intervals, events, and coverage
+  onto a common clock, and build a coverage-aware regularized timeline;
 - **register** coordinate systems and per-channel microphone placements,
   canonicalize external tracking artifacts without copying dense samples into
   SQLite, preserve time-varying ambiguous track-to-entity evidence, and declare
@@ -727,7 +728,7 @@ rather than fixed at three.
 Write one session manifest per session, following
 `config/06_alignment_manifests/synthetic_session_alignment_manifest.json`. It
 names the participating clocks, which one is the reference, the `method`
-(`offset` or `affine`), and — for each stream and for the anchors — a source
+(`offset`, `affine`, or `piecewise_affine`), and — for each stream and for the anchors — a source
 table plus its mapping profile. It **points at** data and never embeds event
 rows.
 
@@ -736,7 +737,13 @@ bundle = vawlume.ingest.alignmentManifest(manifestPath, RepoRoot=repoRoot, ...
     SourceRoot=sessionFolder);                       % no database access
 intake = vawlume.ingest.alignment(conn, manifestPath, RepoRoot=repoRoot, ...
     SourceRoot=sessionFolder, Apply=true);
+% Offset or affine: fit every registered source clock.
 fitted = vawlume.alignment.fit(conn, struct(run_key="my-alignment"), Apply=true);
+
+% Piecewise affine: breakpoints belong to one source clock and are declared,
+% never estimated. Fit each piecewise source independently.
+fitted = vawlume.alignment.fit(conn, struct(run_key="my-alignment"), ...
+    SourceTimebase="video_native", Breakpoints=[900 1800], Apply=true);
 qc     = vawlume.alignment.report(conn, struct(run_key="my-alignment"));
 view   = vawlume.alignment.commonTime(conn, struct(run_key="my-alignment"), ...
     VocalizationSource="detections", VocalizationRunId=1);
@@ -746,6 +753,51 @@ Anchors are paired by **logical anchor identity** — an anchor key you supply o
 each clock — never by nearest timestamp or pulse order. An anchor contributes to
 a fit only when exactly one *included* observation exists on the source clock and
 exactly one on the reference clock.
+
+`piecewise_affine` is continuous across the declared breakpoints. A breakpoint
+is a claim about one source clock, so `SourceTimebase` is required whenever
+`Breakpoints` is supplied. The declaration is persisted; later identical calls
+reuse it, while a different breakpoint set is a different alignment identity.
+VAWLUME does not search residuals for change points and never falls back to an
+affine fit.
+
+Use `vawlume.alignment.setAnchorInclusion` to withhold or restore a specific
+observation, always with a `Reason`. A withheld anchor still receives a residual
+it did not influence. Replicate observations likewise remain QC evidence: their
+dispersion is reported, never averaged into another statistical anchor.
+
+`qc.anchor_diagnostics` reports paired, included, withheld, and unpaired counts,
+the included source-time span, and the largest gap as a fraction of that span.
+These are descriptions, not acceptance tests. `qc.failures` names a failure code
+and reason for every attempted source clock that could not support its declared
+model. One clock can fail while the others remain `estimated`; the containing
+set then remains `draft`, which tells you to inspect that clock's anchors,
+declared method, and breakpoints before creating a corrected alignment identity.
+
+Points and intervals both use stored coefficients:
+
+```matlab
+[aligned, transform] = vawlume.alignment.applyTransform(conn, runId, times);
+intervals = vawlume.alignment.applyTransformInterval(conn, runId, starts, ends);
+```
+
+`transform.extrapolated` distinguishes a time outside the included-anchor span
+from a supported time. Interval endpoints transform independently, so a duration
+can change across a breakpoint; `segments_crossed` and `duration_change_s` make
+that visible. `transform.uncertainty_s` is the largest recorded uncertainty of
+the anchors determining the selected segment, expressed on the reference clock.
+It is explicitly uncalibrated — not a confidence interval, standard error, or
+probability — and is never combined with residual size. `NaN` means no
+contributing anchor recorded uncertainty, not zero uncertainty.
+
+Coverage and transform support remain separate. `observation_status` says the
+stream was observed; `projection_status` says whether the transform was anchored
+or extrapolated there. Consequently a regularized bin can be covered-empty and
+extrapolated at the same time.
+
+[`../../examples/temporal_alignment_demo.m`](../../examples/temporal_alignment_demo.m)
+runs the complete synthetic Phase 3 workflow, including a piecewise tracking
+read through the same `applyTransform` API used by every other consumer.
 
 ### 7.5 Declare geometry, register tracking, and record identity evidence
 
@@ -1110,8 +1162,9 @@ that was never assessed.
 | Sensitivity raises | — | The compared analyses must share one recording, one ordered run pair, and one algorithm version, or the rows would not be comparable |
 | Alignment set not found or ambiguous | `vawlume:alignment:AlignmentSetNotFound`, `:AlignmentSetAmbiguous`, `:AlignmentRefInvalid` | Select exactly one set by `alignment_set_id`, `run_key`, or `project_key` + `run_key` |
 | Manifest rejected | `vawlume:ingest:AlignmentManifestInvalid` | Check the clocks, the reference timebase, and each stream's source plus mapping profile |
-| `applyTransform` raises | `vawlume:alignment:TransformRunNotFound` | The run was never fitted, or its fit was rejected. It will not return a plausible-looking number instead |
-| `piecewise_affine` raises | — | Deliberate. Piecewise is representable in the schema but unimplemented, and silently returning an affine fit would answer a different question |
+| `applyTransform` raises | `vawlume:alignment:TransformRunNotFound`, `:TransformNotFitted`, `:TransformNotUsable` | The run does not exist, was never fitted, or its fit was rejected/failed. It will not return a plausible-looking number instead |
+| Piecewise fit fails | `vawlume:alignment:BreakpointsRequired`, `:BreakpointsInvalid`, `:InsufficientAnchors`, `:DegenerateAnchors` | Declare source-clock breakpoints with `SourceTimebase`, and supply enough distinct included anchors to determine every segment. VAWLUME neither estimates breakpoints nor falls back to affine |
+| Transformed time is flagged or raises | `vawlume:alignment:ExtrapolatedTime` | The time lies outside the included-anchor span. Inspect `transform.extrapolated`, or use `ErrorOnExtrapolation=true` to refuse it |
 | Event outside declared coverage | `vawlume:alignment:EventOutsideCoverage` | Fix the declared coverage, or pass `ErrorOnOutsideCoverage=false` knowingly |
 | Bin or window rejected | `vawlume:sequence:WindowInvalid`, `:WindowNotDivisible`, `:BinOriginMisaligned`, `:AggregationUnsupported` | Supported aggregations are `onset_count`, `presence`, and `any_overlap` |
 
@@ -1161,8 +1214,11 @@ consensus; detection- and feature-level agreement; consilience statuses;
 manual-reference evaluation; threshold sensitivity; arbitrary-N extractor
 agreement composed from compatible pairwise analyses with exact supporting
 edges retained and exact/coarse population selection; alignment registration,
-offset/affine transform fitting with residual QC, common-time projection, and
-coverage-aware regularized timelines; coordinate-system and microphone-placement
+offset, affine, and declared continuous piecewise-affine transform fitting with
+residual, replicate-dispersion, anchor-configuration, influence, and failure QC;
+point/interval and common-time projection with explicit extrapolation and
+uncalibrated uncertainty propagation; coverage-aware regularized timelines;
+coordinate-system and microphone-placement
 declaration with identity-based compatibility checking; external tracking
 registration and bounded, coverage-aware window reads that store no sample;
 interval-scoped native-track to canonical-entity identity evidence with explicit
@@ -1180,8 +1236,15 @@ per-channel response/QC estimates with restrictive supporting lineage.
   validated, or recommended.
 - A solved alignment fit is `estimated`, never `validated`. There is no
   calibrated acceptance threshold.
-- Anchor uncertainty is preserved but **not** used as a fit weight; replicate
-  observations are preserved but not pooled.
+- Anchor uncertainty is preserved, propagated as a stated uncalibrated bound,
+  and **not** used as a fit weight. Replicate observations contribute dispersion
+  evidence but are not pooled or counted as independent anchors.
+- Piecewise breakpoints are caller-declared through `fit`, never estimated, and
+  a session manifest cannot yet declare them. Piecewise segments are continuous;
+  clock discontinuities and nonlinear warping are not represented.
+- Alignment diagnostics and residuals are reported, never judged. No automatic
+  anchor exclusion, calibrated acceptance threshold, confidence interval,
+  standard error, or p-value is produced.
 - Coverage comes only from profile-declared constant segments; recording coverage
   is duration-derived with no multi-segment dropout model, and an event spanning
   two adjacent coverage segments is rejected.
@@ -1249,8 +1312,7 @@ per-channel response/QC estimates with restrictive supporting lineage.
 
 ### Representable in the schema but unimplemented
 
-`piecewise_affine` transforms raise rather than approximating. `sequences`,
-`sequence_members`, `bouts`, and `bout_members` are written by no code path at
+`sequences`, `sequence_members`, `bouts`, and `bout_members` are written by no code path at
 all. `recording_epochs` is written only by the Phase 1 synthetic fixture builder
 — no ingest or analysis path populates it. `metric_definitions` and
 `derived_measurements` are now written, but only by the acoustic

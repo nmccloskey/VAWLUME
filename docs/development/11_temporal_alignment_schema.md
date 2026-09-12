@@ -329,8 +329,6 @@ Enforced by the database, each with a probe in
 - that `n_anchors_used`, `fit_rmse_s`, and `max_error_s` agree with the stored
   residuals — the schema stores both but cannot compute one from the other.
   **Covered by regression test** in `test_alignment_piecewise_fitting.m`;
-- that `alignment_segments` for a `piecewise_affine` run tile the source range
-  without gaps or overlaps;
 - that an anchor observed on a clock with no transform in the set is either
   intentional or an error;
 - that a cached `aligned_external_events` row still matches its transform;
@@ -342,11 +340,13 @@ Enforced by the database, each with a probe in
   `vawlume.alignment.internal.evaluateSegments`. Still not database-enforced,
   because SQLite cannot express it across rows;
 - that declared breakpoints are strictly increasing and lie inside the anchored
-  source span — SQLite cannot see sibling rows from a CHECK;
+  source span — SQLite cannot see sibling rows from a CHECK. **Discharged** by
+  `solveTransform` and the persistence planner before any segment is written;
 - that a segment's uncertainty is derived only from the anchors that determined
-  that segment;
+  that segment. **Discharged** by the fit planner and its regression tests;
 - that the fitting layer reads no identity column. The separation is structural,
-  since SQLite cannot forbid a join, and is held by test.
+  since SQLite cannot forbid a join. **Discharged** by the coefficient-invariance
+  suite and repeated in the integrated demonstration.
 
 Each of these gets a regression test in the pass that implements the behaviour
 concerned, not a speculative trigger now.

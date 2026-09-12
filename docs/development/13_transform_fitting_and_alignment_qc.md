@@ -341,7 +341,7 @@ A completed transform is never rewritten in place.
 | Run is fitted, refit gives the same coefficients | `reused`, nothing written |
 | Run is fitted, refit gives different coefficients | conflict; needs a new alignment identity |
 | Run has a non-`registered` status but no segment | conflict; refitting would invent a history |
-| Run stores several segments | conflict; piecewise is not fitted or refitted |
+| Run stores several segments | reuse when the declared breakpoints and every coefficient agree; otherwise conflict |
 
 Changing which anchors are included changes the answer, and that is a different
 alignment rather than a correction to this one. The fit result is reconstructable
@@ -685,6 +685,37 @@ contamination this design prevents.
 `report` surfaces `anchor_evidence_classes` and `anchor_identity_evidence`
 **beside** the residuals, never combined with them. An anchor can carry both an
 alignment residual and an identity score; no field anywhere mixes them.
+
+## Integrated synthetic demonstration
+
+`examples/temporal_alignment_demo.m` is the cross-module Phase 3 proof. The
+existing temporal-alignment example was extended rather than adding another
+alignment example: it already owned manifest registration, fitting, common-time
+projection, and cleanup, while a second file would duplicate that setup and
+leave readers choosing between two apparent entry points.
+
+The demonstration creates every input below under the system temporary
+directory, returns a struct, supports `Print=false`, and removes every generated
+file before returning. Its integration test asserts the returned values rather
+than relying on printed inspection.
+
+- a known continuous piecewise-affine audio clock and a second video clock,
+  each recovered through `fit` against one neural reference clock;
+- a controller clock that persists `BreakpointsRequired` while the other two
+  transforms remain `estimated`;
+- one redundant reading reported as dispersion for one logical anchor, and one
+  declared held-out anchor with a residual it did not influence;
+- a deliberately clustered anchor layout whose span and largest gap remain raw
+  diagnostics rather than a verdict;
+- a breakpoint-crossing interval, an extrapolated point beside an anchored one,
+  and one segment with propagated uncertainty beside a clock with none recorded;
+- covered-empty, unavailable, and covered-but-extrapolated timeline evidence;
+- an identity-dependent anchor whose evidence is visible while coefficient
+  fingerprints before and after linkage are identical;
+- `tracking.readWindow` consuming the stored piecewise transform through the
+  existing alignment API; and
+- temporal residual, pose confidence, visual identity, and acoustic response as
+  four separately sourced values, with no combined confidence and no caller.
 
 ## Limitations
 

@@ -29,12 +29,11 @@ noise. Fits are recorded as `estimated`, never `validated`.
 `vawlume.sequence.regularizeTimeline` builds a MATLAB-only dense working table;
 neither API creates a second canonical timestamp or persists empty bins.
 
-**Phase 3 is underway.** It robustifies this layer rather than redesigning it:
+**Phase 3 is implemented.** It robustifies this layer rather than redesigning it:
 piecewise-affine fitting, anchor QC and declared exclusion, interval
 transformation, uncertainty propagation, and identity-dependent anchor evidence.
-Its decisions are recorded in [Phase 3 — alignment
-robustification](#phase-3--alignment-robustification) below, and none of them is
-implemented at the time that section was written.
+Its decisions and delivered implementation boundary are recorded in [Phase 3 —
+alignment robustification](#phase-3--alignment-robustification) below.
 
 Read this document before changing anything under the alignment tables. Read
 `07_matching_and_consensus.md` in `docs/development/` for what the correspondence
@@ -338,10 +337,9 @@ uncovered bins.
 
 ## Phase 3 — alignment robustification
 
-**Status: decisions recorded by Phase 3.1; implementation spans 3.2 to 3.9.**
-Nothing in this section is implemented at the time it is written. Where a
-statement describes behaviour, it describes what the phase commits to building,
-and the owning itinerary is named.
+**Status: implemented and integrated across Phase 3.2 to 3.9.** The owning
+itinerary remains named on each decision so the implementation history stays
+auditable.
 
 Phase 3 implements what this contract already represents. It adds no table to
 express a concept the schema can already hold, it introduces no second path from
