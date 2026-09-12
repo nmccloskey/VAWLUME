@@ -188,6 +188,70 @@ verifyEqual(testCase, height(vawlume.geometry.readChannelPlacements( ...
 clear cleanup
 end
 
+% -------------------------------------------------------------- provenance ---
+
+function testPlacementProvenanceIsValidatedNotMerelyStored(testCase)
+[fixture, cleanup] = setUpWorld(); %#ok<ASGLU>
+conn = fixture.conn;
+declareArena(conn);
+declareProfiles(conn);
+
+% The ordinary case: a device profile from this project supplied the numbers,
+% and the citation survives a read-back.
+cited = leftSpec();
+cited.source_profile_version_id = 10;
+result = vawlume.geometry.registerChannelPlacement(conn, recordingRef(), cited);
+verifyEqual(testCase, result.action, "created");
+placements = vawlume.geometry.readChannelPlacements(conn, recordingRef());
+verifyEqual(testCase, placements.source_profile_version_id, 10);
+
+% A built-in profile carries project_id NULL and stays citable from any project.
+builtin = leftSpec();
+builtin.channel_index = 2;
+builtin.source_profile_version_id = 12;
+vawlume.geometry.registerChannelPlacement(conn, recordingRef(), builtin);
+placements = vawlume.geometry.readChannelPlacements(conn, recordingRef());
+verifyEqual(testCase, sort(placements.source_profile_version_id)', [10 12]);
+
+clear cleanup
+end
+
+function testPlacementRefusesProvenanceItCouldNotHaveComeFrom(testCase)
+[fixture, cleanup] = setUpWorld(); %#ok<ASGLU>
+conn = fixture.conn;
+declareArena(conn);
+declareProfiles(conn);
+
+% An extractor's output profile carries no geometry, so citing it would record
+% provenance that does not describe where a microphone was.
+wrongKind = leftSpec();
+wrongKind.source_profile_version_id = 11;
+verifyError(testCase, ...
+    @() vawlume.geometry.registerChannelPlacement(conn, recordingRef(), wrongKind), ...
+    "vawlume:geometry:PlacementProfileKindInvalid");
+
+% A device profile belonging to another project describes another rig.
+foreign = leftSpec();
+foreign.source_profile_version_id = 13;
+verifyError(testCase, ...
+    @() vawlume.geometry.registerChannelPlacement(conn, recordingRef(), foreign), ...
+    "vawlume:geometry:PlacementProfileScopeMismatch");
+
+absent = leftSpec();
+absent.source_profile_version_id = 999;
+verifyError(testCase, ...
+    @() vawlume.geometry.registerChannelPlacement(conn, recordingRef(), absent), ...
+    "vawlume:geometry:PlacementProfileNotFound");
+
+% A foreign key alone would have accepted all three: the rows exist, they are
+% simply not provenance for this placement. Nothing was written.
+verifyEqual(testCase, height(vawlume.geometry.readChannelPlacements( ...
+    conn, recordingRef())), 0);
+verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
+
+clear cleanup
+end
+
 % ------------------------------------------------------------ compatibility ---
 
 function testCompatibilityIsFrameIdentityNotStructuralSimilarity(testCase)
@@ -245,6 +309,30 @@ end
 
 function declareArena(conn)
 vawlume.geometry.registerCoordinateSystem(conn, projectRef(), arenaSpec());
+end
+
+function declareProfiles(conn)
+%DECLAREPROFILES Four config profiles: one usable, three that must be refused.
+%
+% 10 is this project's recording-device profile; 11 is this project's extractor
+% output profile, which carries no geometry; 12 is a built-in setup profile with
+% project_id NULL; 13 is another project's device profile.
+execute(conn, "INSERT INTO projects(project_id,project_key,project_name) " + ...
+    "VALUES(2,'other_project','Other project')");
+execute(conn, "INSERT INTO config_profiles(profile_id,project_id,profile_key," + ...
+    "profile_name,profile_kind) VALUES" + ...
+    "(10,1,'rig-mics','Rig microphones','recording_device')," + ...
+    "(11,1,'ds-out','DeepSqueak output','extractor_output')," + ...
+    "(13,2,'other-rig','Other rig','recording_device')");
+execute(conn, "INSERT INTO config_profiles(profile_id,profile_key,profile_name," + ...
+    "profile_kind,is_builtin) VALUES" + ...
+    "(12,'builtin-setup','Built-in setup','experimental_setup',1)");
+execute(conn, "INSERT INTO config_profile_versions(profile_version_id,profile_id," + ...
+    "version_label,content_format,content_uri) VALUES" + ...
+    "(10,10,'1.0.0','json','rig-mics.json')," + ...
+    "(11,11,'1.0.0','json','ds-out.json')," + ...
+    "(12,12,'1.0.0','json','builtin-setup.json')," + ...
+    "(13,13,'1.0.0','json','other-rig.json')");
 end
 
 function [fixture, cleanup] = setUpWorld()

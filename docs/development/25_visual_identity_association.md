@@ -103,6 +103,28 @@ Windowed access to a dense identity trace is **not implemented**. When a real
 upstream tool produces one, it should reuse the tracking reader's shape rather
 than growing a second access path.
 
+### Provenance is validated, not merely stored
+
+Every reference a claim can cite — `entity_id`, `analysis_run_id`,
+`source_file_id`, `mapping_profile_version_id` — must exist **and belong to the
+stream's project**, and a cited mapping profile must be of kind
+`tracking_input_mapping` or `external_stream_mapping`. Those are the two kinds
+identity evidence actually arrives through: the tracking artifact itself, or a
+separate reviewed table read through the event-mapping path.
+
+| Refusal | Raised when |
+| --- | --- |
+| `vawlume:tracking:EntityScopeMismatch` | the entity belongs to another project |
+| `vawlume:tracking:SourceFileNotFound` / `SourceFileScopeMismatch` | the artifact does not exist, or is another project's |
+| `vawlume:tracking:AnalysisRunNotFound` / `AnalysisRunScopeMismatch` | the run does not exist, or is another project's |
+| `vawlume:tracking:MappingProfileNotFound` / `MappingProfileKindInvalid` / `MappingProfileScopeMismatch` | the profile version does not exist, is the wrong kind, or is another project's |
+
+A foreign key would prove only that some row exists somewhere. Since
+`evidence_kind` is required precisely so that every claim has a stated basis, a
+stated basis pointing at an unrelated experiment is worse than none: it reads as
+auditable. Built-in profiles carry `project_id` NULL and remain citable from any
+project, matching the allowance `vawlume.acoustic.registerReference` makes.
+
 ## Query API
 
 ```matlab
@@ -144,6 +166,49 @@ Device-level synchronization evidence is unaffected by identity uncertainty. If
 an identity-dependent biological event were ever used as an alignment anchor, its
 identity uncertainty would belong in that anchor's own QC — not implemented, and
 not needed by the current alignment contract.
+
+## Not the same thing as `external_events.entity_id`
+
+`external_events` also carries a nullable `entity_id`, and alignment intake
+populates it by matching a source table's subject column against
+`experimental_entities.native_id` — a direct lookup, silently skipped when no
+entity matches. That link carries **no** `evidence_kind`, no value semantics, no
+calibration status, no review state, and no interval of its own beyond the
+event's.
+
+It is a **user-declared attribution**: the person who scored the behaviour said
+this event was about this animal, and VAWLUME recorded the name they used. For a
+behaviour scoring sheet that is reasonable. It is not the same kind of object as a
+row in this table, which is a claim with a stated basis that may be ambiguous,
+unresolved, or numerically qualified.
+
+The two must not be unioned as though they were one kind of claim. A later
+consumer asking "which entity was this observation about" will find both, and the
+weaker one looks deceptively like the stronger one because both reduce to an
+`entity_id`. When caller attribution consumes identity evidence it has to decide
+explicitly how much a declared event link is worth relative to a reviewed
+interval-scoped association — that decision belongs there, not here, and neither
+representation should be changed to look like the other in the meantime.
+
+## Identity evidence can outlive the trace it names
+
+Associations are keyed on `native_track_id`, not on a `tracking_series_id` — see
+[Keyed on the track, not the trace](#keyed-on-the-track-not-the-trace). There is
+therefore no foreign key from an association to the trace rows that declare the
+track.
+
+`vawlume.tracking.registerIdentityAssociation` checks that the stream actually
+contains the track (`vawlume:tracking:NativeTrackNotFound`), but nothing
+maintains that afterwards. Deleting the last `tracking_series` row for a track by
+hand leaves its associations in place, and `PRAGMA foreign_key_check` reports
+nothing because no key is violated. `identityCandidates` will then return that
+claim in `associations` while the track is absent from `tracks`, since the track
+summary is built from `tracking_series`.
+
+No public function deletes a series row, and deleting a stream cascades both
+tables, so this state is only reachable through direct SQL. It is recorded here
+because the asymmetry is a consequence of a deliberate keying decision rather
+than an accident, and because a future deletion API would need to address it.
 
 ## What is not here
 

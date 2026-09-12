@@ -840,6 +840,23 @@ is `resolved`, `ambiguous`, `unresolved`, or `none`, and the last two are
 deliberately distinct: an explicit unresolved statement means somebody looked
 and could not tell, while `none` means nobody looked.
 
+Optional provenance — `analysis_run_id`, `source_file_id`,
+`mapping_profile_version_id`, `source_locator` — is validated, not just stored.
+Each reference must belong to the same project as the stream, and a cited mapping
+profile must be of kind `tracking_input_mapping` or `external_stream_mapping`. A
+placement's `source_profile_version_id` must likewise be a `recording_device` or
+`experimental_setup` profile from this project. Built-in profiles, which carry no
+project, remain citable everywhere. Citing another experiment's file or an
+extractor's output profile is refused rather than recorded as though it were
+auditable.
+
+**`external_events.entity_id` is not the same thing.** When alignment intake
+reads a behaviour table, it links an event to an entity by matching your subject
+column against the entity's native id — a declared attribution with no evidence
+kind, semantics, or review state. That is reasonable for a scoring sheet, but it
+is much weaker than an identity association, and the two should not be pooled as
+if they were one kind of claim just because both end in an `entity_id`.
+
 VAWLUME performs no image-based re-identification and no crossing detection. See
 [`../development/23_spatial_geometry_schema.md`](../development/23_spatial_geometry_schema.md),
 [`../development/24_tracking_input_contract.md`](../development/24_tracking_input_contract.md),
@@ -1121,7 +1138,7 @@ assertSuccess(results);
 assert(~any([results.Incomplete]), "Incomplete tests.");
 ```
 
-The suite is currently **492 tests in 68 files**. Runtime is machine-dependent; observed
+The suite is currently **497 tests in 68 files**. Runtime is machine-dependent; observed
 wall times range from roughly nine to twenty-five minutes. Passing it
 is the strongest available check that an environment is correctly configured.
 Use the [canonical batch gate in the README](../../README.md#quick-start) for
@@ -1216,6 +1233,14 @@ per-channel response/QC estimates with restrictive supporting lineage.
 - Identity association intervals for one track may overlap, and nothing defines
   which claim wins. `identityCandidates` returns every overlapping claim rather
   than choosing; a caller that needs one answer must decide precedence itself.
+- Identity evidence is keyed on the track label rather than on a trace row, so
+  deleting a stream's `tracking_series` rows by hand leaves its associations
+  behind. `PRAGMA foreign_key_check` cannot see this. No public function deletes
+  a series row, so normal use does not reach it.
+- Cross-table scope is enforced when rows are inserted, which is how the public
+  functions write them. A direct `UPDATE` in SQL can still move a placement,
+  tracking stream, or identity association across a project boundary. Change
+  these tables through the API rather than by hand.
 - Median is the only channel-response aggregation method, a response profile is
   scoped to one recording, and the caller supplies exact measurement identifiers
   because no discovery or selection helper exists.

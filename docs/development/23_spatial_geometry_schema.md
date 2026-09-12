@@ -125,6 +125,15 @@ already exist and a channel that must already exist; inventing either would let 
 placement choose its own units or assert geometry for audio that was never
 recorded.
 
+A cited `source_profile_version_id` is validated for the same reason. It must
+name an existing profile version of kind `recording_device` or
+`experimental_setup` — the two kinds that carry a geometry block — belonging to
+this recording's project or built-in with `project_id` NULL. Otherwise the
+refusals are `vawlume:geometry:PlacementProfileNotFound`,
+`PlacementProfileKindInvalid`, and `PlacementProfileScopeMismatch`. A foreign key
+alone would have accepted an extractor's output profile from an unrelated
+experiment and read it back as though it were the origin of these coordinates.
+
 Selectors follow the existing convention — `recording_id`, or `project_key` plus
 `source_relative_path`, never both — so a caller who can address a recording for
 matching or agreement can address it here unchanged.

@@ -195,8 +195,17 @@ verifyEqual(testCase, height(value.uncertainty), 4);
 verifyEqual(testCase, value.uncertainty.dimension', ...
     ["pose_localization", "visual_identity", "temporal_alignment", ...
     "acoustic_channel_response"]);
-verifyNotEqual(testCase, value.uncertainty.value(1), value.uncertainty.value(2));
-verifyNotEqual(testCase, value.uncertainty.value(2), value.uncertainty.value(3));
+
+% Each row names a different source, a different semantics and a different unit.
+% Comparing the displayed values would be weaker: two quantities can print
+% differently while one is still computed from the other. What rules that out
+% here is that the four are read from four independent places, and that the
+% summary offers no fifth row combining them.
+verifyEqual(testCase, numel(unique(value.uncertainty.queried_from)), 4);
+verifyEqual(testCase, numel(unique(value.uncertainty.semantics)), 4);
+verifyEqual(testCase, numel(unique(value.uncertainty.units)), 4);
+verifyFalse(testCase, any(contains(lower(value.uncertainty.dimension), ...
+    ["combined", "overall", "caller"])));
 end
 
 % ------------------------------------------------------- acoustic evidence ---

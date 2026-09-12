@@ -36,6 +36,14 @@ function result = registerChannelPlacement(conn, recordingRef, placementSpec)
 % recording. Pass the originating config_profile_versions row as
 % source_profile_version_id to record where the numbers came from.
 %
+% That citation is validated rather than merely stored. It must name an existing
+% profile version of kind recording_device or experimental_setup - the two kinds
+% that carry geometry - and that profile must belong to this recording's project
+% or be a built-in whose project_id is NULL. A foreign key alone would prove only
+% that some row exists, so a placement could cite an extractor's output profile
+% from an unrelated experiment and read back as though it were auditable
+% provenance.
+%
 % One placement per channel. A microphone moved mid-recording is not
 % representable and needs an explicit time-bounded model rather than a second
 % row. Re-registering a channel whose stored placement is identical reuses it;
@@ -58,6 +66,7 @@ channel = geometryResolveChannel(conn, recording, placementSpec);
 declared = normalizeSpec(placementSpec);
 system = resolveCoordinateSystem(conn, recording, declared.coordinate_system_key);
 assertDimensionality(system, declared);
+assertSourceProfile(conn, recording, declared.source_profile_version_id);
 
 existing = fetch(conn, "SELECT channel_placement_id, coordinate_system_id, " + ...
     "position_x, position_y, IFNULL(position_z, 1e308) AS position_z, " + ...
@@ -132,6 +141,45 @@ if ~isnan(declared.position_z) && system.dimensionality ~= 3
         "Coordinate system '%s' declares %d dimensions, so a placement in it " + ...
         "carries no z coordinate. Declare a 3-dimensional frame, or omit " + ...
         "position_z.", system.coordinate_system_key, system.dimensionality);
+end
+end
+
+function assertSourceProfile(conn, recording, profileVersionId)
+%ASSERTSOURCEPROFILE A placement's provenance citation must be citable.
+%
+% Geometry reaches a placement from a recording-device or experimental-setup
+% profile; those are the two kinds that carry a geometry block. Any other kind
+% cited here would be provenance that does not describe geometry at all.
+%
+% A built-in profile carries project_id NULL and is legitimately citable from any
+% project, which is the same allowance vawlume.acoustic.registerReference makes.
+if isnan(profileVersionId)
+    return
+end
+rows = fetch(conn, "SELECT cp.profile_kind, IFNULL(cp.project_id,-1) AS project_id " + ...
+    "FROM config_profile_versions cpv JOIN config_profiles cp " + ...
+    "ON cp.profile_id=cpv.profile_id WHERE cpv.profile_version_id=" + ...
+    string(profileVersionId));
+if isempty(rows) || height(rows) == 0
+    error("vawlume:geometry:PlacementProfileNotFound", ...
+        "No config profile version %d exists, so a placement cannot cite it " + ...
+        "as the source of its coordinates.", profileVersionId);
+end
+kind = geometryPresentText(rows.profile_kind(1));
+allowed = ["recording_device", "experimental_setup"];
+if ~ismember(kind, allowed)
+    error("vawlume:geometry:PlacementProfileKindInvalid", ...
+        "Placement provenance cites profile version %d of kind '%s'. " + ...
+        "Geometry comes from a recording_device or experimental_setup profile; " + ...
+        "citing another kind would record provenance that describes no " + ...
+        "geometry.", profileVersionId, kind);
+end
+projectId = double(rows.project_id(1));
+if projectId >= 0 && projectId ~= recording.project_id
+    error("vawlume:geometry:PlacementProfileScopeMismatch", ...
+        "Profile version %d belongs to a different project than recording " + ...
+        "%d. A placement's provenance must come from this project or from a " + ...
+        "built-in profile.", profileVersionId, recording.recording_id);
 end
 end
 

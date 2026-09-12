@@ -248,6 +248,110 @@ verifyError(testCase, @() vawlume.tracking.registerIdentityAssociation(conn, ...
 clear cleanup
 end
 
+% -------------------------------------------------------------- provenance ---
+
+function testProvenanceIsRecordedAndReadBack(testCase)
+[fixture, cleanup] = setUpCrossing(); %#ok<ASGLU>
+conn = fixture.conn;
+declareProvenanceRows(conn);
+
+% A claim that names where it came from: the reviewed artifact, the analysis run
+% that produced the review, the profile that interpreted the table, and the row
+% within it.
+vawlume.tracking.registerIdentityAssociation(conn, streamRef(), struct( ...
+    native_track_id="track2", entity_native_id="mouse_a", ...
+    start_time_native=0, end_time_native=5, ...
+    assignment_state="candidate", evidence_kind="reidentification_score", ...
+    identity_value=0.71, ...
+    identity_value_semantics="cosine_similarity_of_appearance_embeddings", ...
+    calibration_status="uncalibrated", review_state="reviewed", ...
+    method="upstream_reid_v2", analysis_run_id=20, source_file_id=20, ...
+    mapping_profile_version_id=20, source_locator="identity.csv:row:7"));
+
+result = vawlume.tracking.identityCandidates(conn, streamRef(), [0 5]);
+claim = result.associations(result.associations.native_track_id == "track2", :);
+verifyEqual(testCase, height(claim), 1);
+verifyEqual(testCase, claim.source_file_id, 20);
+verifyEqual(testCase, claim.analysis_run_id, 20);
+verifyEqual(testCase, claim.method, "upstream_reid_v2");
+verifyEqual(testCase, claim.review_state, "reviewed");
+
+% The mapping profile and locator are not in the query result, so read them from
+% the row: they are provenance a later audit needs, not query output.
+stored = fetch(conn, "SELECT mapping_profile_version_id, source_locator " + ...
+    "FROM tracking_identity_associations WHERE native_track_id='track2'");
+verifyEqual(testCase, double(stored.mapping_profile_version_id(1)), 20);
+verifyEqual(testCase, string(stored.source_locator(1)), "identity.csv:row:7");
+
+% Provenance is per claim, not per stream: the crossing's manual rows carry none
+% while this upstream row carries all of it.
+manual = result.associations(result.associations.evidence_kind == ...
+    "manual_assertion", :);
+verifyTrue(testCase, all(isnan(manual.source_file_id)));
+
+clear cleanup
+end
+
+function testProvenanceFromAnotherExperimentIsRefused(testCase)
+[fixture, cleanup] = setUpCrossing(); %#ok<ASGLU>
+conn = fixture.conn;
+declareProvenanceRows(conn);
+
+base = struct(native_track_id="track2", entity_native_id="mouse_a", ...
+    start_time_native=0, end_time_native=5, ...
+    assignment_state="candidate", evidence_kind="manual_review");
+
+% Every one of these rows exists, so a foreign key would accept all of them.
+% They are simply not provenance for this stream's project, and a stated basis
+% pointing at another experiment is worse than no stated basis at all.
+verifyRefused(testCase, conn, base, "source_file_id", 21, ...
+    "vawlume:tracking:SourceFileScopeMismatch");
+verifyRefused(testCase, conn, base, "analysis_run_id", 21, ...
+    "vawlume:tracking:AnalysisRunScopeMismatch");
+verifyRefused(testCase, conn, base, "mapping_profile_version_id", 21, ...
+    "vawlume:tracking:MappingProfileScopeMismatch");
+
+% An extractor's output profile describes a different contract entirely.
+verifyRefused(testCase, conn, base, "mapping_profile_version_id", 22, ...
+    "vawlume:tracking:MappingProfileKindInvalid");
+
+% And a reference to nothing at all.
+verifyRefused(testCase, conn, base, "source_file_id", 999, ...
+    "vawlume:tracking:SourceFileNotFound");
+verifyRefused(testCase, conn, base, "analysis_run_id", 999, ...
+    "vawlume:tracking:AnalysisRunNotFound");
+verifyRefused(testCase, conn, base, "mapping_profile_version_id", 999, ...
+    "vawlume:tracking:MappingProfileNotFound");
+
+% A built-in profile has project_id NULL and remains citable.
+accepted = base;
+accepted.mapping_profile_version_id = 23;
+vawlume.tracking.registerIdentityAssociation(conn, streamRef(), accepted);
+
+verifyEqual(testCase, numberOf(conn, "SELECT COUNT(*) AS n FROM " + ...
+    "tracking_identity_associations WHERE native_track_id='track2'"), 1);
+verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
+
+clear cleanup
+end
+
+function testAnEntityFromAnotherProjectIsNamedNotLeakedAsAConstraintError(testCase)
+[fixture, cleanup] = setUpCrossing(); %#ok<ASGLU>
+conn = fixture.conn;
+declareProvenanceRows(conn);
+
+% The schema trigger refuses this too, but a raw constraint error would name
+% neither project nor why a track cannot be evidence about another experiment's
+% animal.
+verifyError(testCase, @() vawlume.tracking.registerIdentityAssociation(conn, ...
+    streamRef(), struct(native_track_id="track2", entity_id=99, ...
+        start_time_native=0, end_time_native=1, ...
+        assignment_state="candidate", evidence_kind="manual_assertion")), ...
+    "vawlume:tracking:EntityScopeMismatch");
+
+clear cleanup
+end
+
 % ------------------------------------------------- independence of dimensions ---
 
 function testPoseConfidenceAndIdentityVaryIndependently(testCase)
@@ -410,6 +514,50 @@ end
 function value = numberOf(conn, sql)
 rows = fetch(conn, sql);
 value = double(rows.(rows.Properties.VariableNames{1})(1));
+end
+
+function declareProvenanceRows(conn)
+%DECLAREPROVENANCEROWS Citable provenance, and provenance that must be refused.
+%
+% The 20-series belongs to this project and is legitimate. The 21-series belongs
+% to a second project, 22 is this project's extractor-output profile, 23 is a
+% built-in with project_id NULL, and entity 99 is the other project's animal.
+execute(conn, "INSERT INTO projects(project_id,project_key,project_name) " + ...
+    "VALUES(2,'other_project','Other project')");
+execute(conn, "INSERT INTO source_files(source_file_id,project_id,file_role," + ...
+    "path_or_uri,relative_path,filename) VALUES" + ...
+    "(20,1,'tracking_export','identity.csv','identity.csv','identity.csv')," + ...
+    "(21,2,'tracking_export','foreign.csv','foreign.csv','foreign.csv')");
+execute(conn, "INSERT INTO analysis_runs(analysis_run_id,project_id,run_type," + ...
+    "run_key,status) VALUES" + ...
+    "(20,1,'visual_identity_review','identity-review','completed')," + ...
+    "(21,2,'visual_identity_review','foreign-review','completed')");
+execute(conn, "INSERT INTO config_profiles(profile_id,project_id,profile_key," + ...
+    "profile_name,profile_kind) VALUES" + ...
+    "(20,1,'identity-map','Identity table','external_stream_mapping')," + ...
+    "(21,2,'foreign-map','Foreign identity table','external_stream_mapping')," + ...
+    "(22,1,'ds-out','DeepSqueak output','extractor_output')");
+execute(conn, "INSERT INTO config_profiles(profile_id,profile_key,profile_name," + ...
+    "profile_kind,is_builtin) VALUES" + ...
+    "(23,'builtin-track','Built-in tracking map','tracking_input_mapping',1)");
+execute(conn, "INSERT INTO config_profile_versions(profile_version_id,profile_id," + ...
+    "version_label,content_format,content_uri) VALUES" + ...
+    "(20,20,'1.0.0','json','identity-map.json')," + ...
+    "(21,21,'1.0.0','json','foreign-map.json')," + ...
+    "(22,22,'1.0.0','json','ds-out.json')," + ...
+    "(23,23,'1.0.0','json','builtin-track.json')");
+execute(conn, "INSERT INTO entity_types(entity_type_id,project_id,native_name) " + ...
+    "VALUES(99,2,'subject')");
+execute(conn, "INSERT INTO experimental_entities(entity_id,project_id," + ...
+    "entity_type_id,native_id) VALUES(99,2,99,'mouse_other')");
+end
+
+function verifyRefused(testCase, conn, base, field, value, identifier)
+spec = base;
+spec.(field) = value;
+verifyError(testCase, ...
+    @() vawlume.tracking.registerIdentityAssociation(conn, streamRef(), spec), ...
+    identifier);
 end
 
 function verifySqlFails(testCase, conn, sql)

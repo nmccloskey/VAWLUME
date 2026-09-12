@@ -69,6 +69,28 @@ Prefer explicit namespaced function calls over adding many implementation direct
 
 Function naming can remain idiomatic MATLAB while filenames and function names match exactly.
 
+### Known cost: `private/` helpers are duplicated per package
+
+MATLAB `private/` folders are visible only to their own package, so a helper two
+packages both need is written twice. `+geometry/`, `+tracking/` and `+acoustic/`
+each carry their own `…SqlText`, `…PresentText`, `…InsertRow`, `…OptionalText`,
+`…RequiredText` and `…ResolveRecording`.
+
+This is accepted rather than solved. `…SqlText` and `…PresentText` are identical
+in all three; `…InsertRow` has mildly diverged — the geometry and tracking copies
+support an optional id column and carry the comment explaining why empty optional
+text is omitted rather than written as `''`, and the acoustic copy has neither.
+`…ResolveRecording` differs in all three, largely legitimately: each raises its
+own package's error identifiers and resolves what its own callers need.
+
+The SQL-generating helpers are the ones worth watching, because divergence in
+quoting or NULL handling would be a correctness problem rather than an
+inconvenience. As of the Phase 2 close they have not diverged. Consolidating would
+mean a shared `+internal/` package, which the repository-structure policy permits
+only when visibility genuinely requires it — a judgement that has not yet been
+made. If a fourth package needs the same primitives, make it then rather than
+adding a fourth copy.
+
 ## 4. Do not force a CLI architecture yet
 
 The author's Python repositories often use:

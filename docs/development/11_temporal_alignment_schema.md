@@ -276,6 +276,27 @@ Enforced by the database, each with a probe in
 Each of these gets a regression test in the pass that implements the behaviour
 concerned, not a speculative trigger now.
 
+## `external_events.entity_id` is a declared link, not identity evidence
+
+Alignment intake populates the nullable `external_events.entity_id` by matching a
+source table's subject column against `experimental_entities.native_id`. An
+unmatched name is left unlinked rather than creating an entity, which is correct —
+experimental hierarchy belongs to project intake.
+
+What the column records is therefore a **user-declared attribution**: whoever
+scored the behaviour said this event was about this animal. It carries no evidence
+kind, no value semantics, no calibration status, and no review state.
+
+This is deliberately weaker than
+[`tracking_identity_associations`](25_visual_identity_association.md), which
+relates a native trajectory to a canonical entity through an interval-scoped claim
+that can be ambiguous, explicitly unresolved, or numerically qualified with stated
+semantics. **The two are not interchangeable and must not be unioned**, even
+though both reduce to an `entity_id` and the weaker one therefore looks like the
+stronger one. A consumer that needs to know how much each is worth — caller
+attribution is the first — has to weigh them explicitly rather than treat an
+`entity_id` as an `entity_id`.
+
 ## Sequence tables
 
 `sequences`, `sequence_members`, `bouts`, and `bout_members` are **untouched** by

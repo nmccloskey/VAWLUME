@@ -38,6 +38,16 @@ function result = registerIdentityAssociation(conn, streamRef, associationSpec)
 % over the same crossing is the supported way to express ambiguity. What cannot
 % be registered twice is the identical candidate for the identical interval.
 %
+% PROVENANCE IS VALIDATED, NOT MERELY STORED. Every reference the spec accepts -
+% entity_id, analysis_run_id, source_file_id, mapping_profile_version_id - must
+% exist and must belong to this stream's project, and a cited mapping profile
+% must be of kind tracking_input_mapping or external_stream_mapping. A foreign
+% key would prove only that some row exists somewhere, so a claim could cite a
+% file or an analysis from an unrelated experiment and read back as though it
+% were auditable. Since evidence_kind is required precisely so that every claim
+% has a stated basis, a stated basis that points somewhere else is worse than
+% none. Built-in profiles carry project_id NULL and stay citable from any project.
+%
 % This function performs no re-identification, trains nothing, and corrects no
 % upstream output. It records evidence somebody else produced.
 %
@@ -55,6 +65,7 @@ assertTrackExists(conn, stream, declared.native_track_id);
 
 entityId = resolveEntity(conn, stream, declared);
 assertStatePairing(declared, entityId);
+assertProvenanceScope(conn, stream, declared);
 assertNotAlreadyAsserted(conn, stream, declared, entityId);
 
 values = struct( ...
@@ -160,6 +171,12 @@ function value = resolveEntity(conn, stream, declared)
 % entity_native_id is a convenience for addressing an EXISTING entity by its own
 % identifier. It is a lookup the caller asked for, not an inference from the
 % track label - the track label is never consulted here.
+%
+% An entity addressed by raw id is checked against the stream's project here.
+% trg_identity_association_project_scope enforces the same rule in the schema,
+% but a raw constraint error names neither project nor why associating a track
+% with an animal from another experiment is meaningless. The native-id lookup
+% below cannot reach a foreign entity, because it searches this project only.
 value = declared.entity_id;
 if ~isnan(value)
     rows = fetch(conn, "SELECT project_id FROM experimental_entities " + ...
@@ -167,6 +184,13 @@ if ~isnan(value)
     if isempty(rows) || height(rows) == 0
         error("vawlume:tracking:EntityNotFound", ...
             "No experimental entity has id %d.", value);
+    end
+    if double(rows.project_id(1)) ~= stream.project_id
+        error("vawlume:tracking:EntityScopeMismatch", ...
+            "Entity %d belongs to a different project than tracking stream " + ...
+            "'%s' in project '%s'. A trajectory cannot be evidence about an " + ...
+            "animal from another experiment.", value, stream.stream_name, ...
+            stream.project_key);
     end
     return
 end
@@ -184,6 +208,77 @@ if isempty(rows) || height(rows) == 0
         declared.entity_native_id, stream.project_key);
 end
 value = double(rows.entity_id(1));
+end
+
+function assertProvenanceScope(conn, stream, declared)
+%ASSERTPROVENANCESCOPE A claim's stated basis must belong to this experiment.
+%
+% Mirrors the three validators vawlume.acoustic.registerReference already applies
+% to its own provenance columns. The asymmetry between the two layers was found
+% by the Phase 2.9 sweep: the acoustic layer refused a cross-project citation by
+% name while this one stored it and handed it back through identityCandidates.
+assertScopedRow(conn, declared.source_file_id, ...
+    "SELECT project_id FROM source_files WHERE source_file_id=", ...
+    stream, "source file", ...
+    "vawlume:tracking:SourceFileNotFound", ...
+    "vawlume:tracking:SourceFileScopeMismatch");
+assertScopedRow(conn, declared.analysis_run_id, ...
+    "SELECT project_id FROM analysis_runs WHERE analysis_run_id=", ...
+    stream, "analysis run", ...
+    "vawlume:tracking:AnalysisRunNotFound", ...
+    "vawlume:tracking:AnalysisRunScopeMismatch");
+
+profileVersionId = declared.mapping_profile_version_id;
+if isnan(profileVersionId)
+    return
+end
+rows = fetch(conn, "SELECT cp.profile_kind, IFNULL(cp.project_id,-1) AS project_id " + ...
+    "FROM config_profile_versions cpv JOIN config_profiles cp " + ...
+    "ON cp.profile_id=cpv.profile_id WHERE cpv.profile_version_id=" + ...
+    string(profileVersionId));
+if isempty(rows) || height(rows) == 0
+    error("vawlume:tracking:MappingProfileNotFound", ...
+        "No config profile version %d exists, so an identity claim cannot " + ...
+        "cite it as the mapping that produced it.", profileVersionId);
+end
+kind = trackingPresentText(rows.profile_kind(1));
+% Identity evidence reaches VAWLUME either from the tracking artifact itself or
+% from a separate reviewed table read through the event-mapping path, so both of
+% those kinds are legitimate and no other is.
+allowed = ["tracking_input_mapping", "external_stream_mapping"];
+if ~ismember(kind, allowed)
+    error("vawlume:tracking:MappingProfileKindInvalid", ...
+        "Identity provenance cites profile version %d of kind '%s'. Identity " + ...
+        "evidence is mapped through a tracking_input_mapping or an " + ...
+        "external_stream_mapping profile; another kind describes a different " + ...
+        "contract entirely.", profileVersionId, kind);
+end
+projectId = double(rows.project_id(1));
+if projectId >= 0 && projectId ~= stream.project_id
+    error("vawlume:tracking:MappingProfileScopeMismatch", ...
+        "Profile version %d belongs to a different project than tracking " + ...
+        "stream '%s' in project '%s'. Cite this project's profile or a " + ...
+        "built-in one.", profileVersionId, stream.stream_name, stream.project_key);
+end
+end
+
+function assertScopedRow(conn, id, query, stream, description, notFoundId, scopeId)
+%ASSERTSCOPEDROW One existence-plus-project-scope check, for a project-scoped row.
+if isnan(id)
+    return
+end
+rows = fetch(conn, query + string(id));
+if isempty(rows) || height(rows) == 0
+    error(notFoundId, "No %s %d exists, so an identity claim cannot cite it.", ...
+        description, id);
+end
+if double(rows.project_id(1)) ~= stream.project_id
+    error(scopeId, ...
+        "The cited %s %d belongs to a different project than tracking stream " + ...
+        "'%s' in project '%s'. Evidence from another experiment is not " + ...
+        "provenance for this one.", description, id, stream.stream_name, ...
+        stream.project_key);
+end
 end
 
 function assertNotAlreadyAsserted(conn, stream, declared, entityId)

@@ -1657,6 +1657,26 @@ CREATE TABLE channel_response_estimate_sources (
 -- ============================================================================
 -- 13. Integrity triggers for cross-table invariants SQLite cannot express as CHECKs
 -- ============================================================================
+--
+-- CONVENTION: most cross-table scope guards below fire on INSERT only.
+--
+-- That is deliberate and it is repository-wide, not an oversight in any one
+-- section: registration APIs insert rows or refuse, and none of them UPDATEs a
+-- scope-bearing column, so the insert guard is the path that actually gets
+-- exercised. A handful of invariants are reinforced with an explicit _update
+-- twin where getting them wrong would silently change the MEANING of a stored
+-- row rather than merely misfile it - the identity unresolved/candidate pairing,
+-- placement dimensionality, acoustic reference channel and event scope,
+-- derived-measurement channel scope, and the channel-response estimate scopes.
+-- Each of those states its own reason above itself.
+--
+-- The consequence, which is worth knowing before relying on it: a direct UPDATE
+-- issued outside the public API can still move an insert-guarded row across a
+-- project boundary - for example repointing channel_placements.coordinate_system_id,
+-- tracking_streams.coordinate_system_id, or tracking_identity_associations.entity_id
+-- at another project's row. PRAGMA foreign_key_check will not see it, because no
+-- foreign key is violated. Do not assume symmetry here; if a later phase starts
+-- updating these columns, the guards it depends on must be added with it.
 
 -- 'unresolved' and a named candidate are mutually exclusive statements, and the
 -- distinction is the whole point of the table: an unknown identity must never be
