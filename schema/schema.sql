@@ -47,7 +47,7 @@ CREATE TABLE schema_info (
 );
 
 INSERT OR IGNORE INTO schema_info(schema_version, description)
-VALUES ('0.7-draft', 'Multimodal spatial foundation: declared coordinate systems and per-channel microphone placement');
+VALUES ('0.7-draft', 'Multimodal inputs and derived evidence: geometry, tracking, acoustic references, response measurements, and channel-response estimates');
 
 PRAGMA user_version = 7;
 
@@ -1613,6 +1613,47 @@ CREATE TABLE derived_measurements (
     )
 );
 
+-- An analysis run is the response/QC profile; its child estimates keep
+-- reference families and frequency scopes separate so contradictory evidence
+-- cannot disappear into one opaque channel gain. Values are uncalibrated
+-- summaries of the cited derived measurements, never correction factors.
+CREATE TABLE channel_response_estimates (
+    channel_response_estimate_id INTEGER PRIMARY KEY,
+    analysis_run_id     INTEGER NOT NULL REFERENCES analysis_runs(analysis_run_id) ON DELETE CASCADE,
+    recording_id        INTEGER NOT NULL REFERENCES recordings(recording_id) ON DELETE CASCADE,
+    recording_channel_id INTEGER NOT NULL REFERENCES recording_channels(recording_channel_id) ON DELETE CASCADE,
+    metric_definition_id INTEGER NOT NULL REFERENCES metric_definitions(metric_definition_id) ON DELETE RESTRICT,
+    estimate_key        TEXT NOT NULL,
+    reference_type      TEXT NOT NULL,
+    aggregation_method  TEXT NOT NULL,
+    aggregation_version TEXT NOT NULL,
+    frequency_min_hz    REAL CHECK (frequency_min_hz IS NULL OR frequency_min_hz >= 0),
+    frequency_max_hz    REAL CHECK (frequency_max_hz IS NULL OR frequency_max_hz >= 0),
+    qc_status           TEXT NOT NULL CHECK (qc_status IN (
+                            'ok',
+                            'insufficient_evidence',
+                            'divergent',
+                            'source_qc_warning',
+                            'not_comparable'
+                        )),
+    value_real          REAL,
+    unit                TEXT,
+    details_json        TEXT NOT NULL,
+    notes               TEXT,
+    CHECK (frequency_max_hz IS NULL OR frequency_min_hz IS NULL
+           OR frequency_max_hz >= frequency_min_hz),
+    UNIQUE(analysis_run_id, estimate_key)
+);
+
+-- RESTRICT is intentional: an estimate must be removed before any supporting
+-- measurement can be deleted. Deleting the estimate run cascades through this
+-- junction without touching its source evidence.
+CREATE TABLE channel_response_estimate_sources (
+    channel_response_estimate_id INTEGER NOT NULL REFERENCES channel_response_estimates(channel_response_estimate_id) ON DELETE CASCADE,
+    derived_measurement_id INTEGER NOT NULL REFERENCES derived_measurements(derived_measurement_id) ON DELETE RESTRICT,
+    PRIMARY KEY(channel_response_estimate_id, derived_measurement_id)
+);
+
 -- ============================================================================
 -- 13. Integrity triggers for cross-table invariants SQLite cannot express as CHECKs
 -- ============================================================================
@@ -1790,6 +1831,105 @@ WHEN NEW.recording_channel_id IS NOT NULL
  )
 BEGIN
     SELECT RAISE(ABORT, 'Derived measurement channel belongs to a different recording than its target');
+END;
+
+CREATE TRIGGER trg_channel_response_estimate_channel_scope
+BEFORE INSERT ON channel_response_estimates
+FOR EACH ROW
+WHEN (SELECT rc.recording_id FROM recording_channels rc
+      WHERE rc.recording_channel_id=NEW.recording_channel_id) IS NOT NEW.recording_id
+BEGIN
+    SELECT RAISE(ABORT, 'Channel-response estimate channel belongs to a different recording');
+END;
+
+CREATE TRIGGER trg_channel_response_estimate_channel_scope_update
+BEFORE UPDATE ON channel_response_estimates
+FOR EACH ROW
+WHEN (SELECT rc.recording_id FROM recording_channels rc
+      WHERE rc.recording_channel_id=NEW.recording_channel_id) IS NOT NEW.recording_id
+BEGIN
+    SELECT RAISE(ABORT, 'Channel-response estimate channel belongs to a different recording');
+END;
+
+-- One response-profile analysis run describes one recording. This keeps the
+-- run-level QC/status vocabulary unambiguous.
+CREATE TRIGGER trg_channel_response_estimate_run_recording_scope
+BEFORE INSERT ON channel_response_estimates
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1 FROM channel_response_estimates cre
+    WHERE cre.analysis_run_id=NEW.analysis_run_id
+      AND cre.recording_id<>NEW.recording_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Channel-response profile run cannot span recordings');
+END;
+
+-- A supporting row must be the same metric, recording, channel, reference
+-- family, and frequency scope as the estimate it supports.
+CREATE TRIGGER trg_channel_response_estimate_source_scope
+BEFORE INSERT ON channel_response_estimate_sources
+FOR EACH ROW
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM channel_response_estimates cre
+    JOIN derived_measurements dm
+      ON dm.derived_measurement_id=NEW.derived_measurement_id
+    JOIN acoustic_references ar
+      ON ar.acoustic_reference_id=dm.acoustic_reference_id
+    WHERE cre.channel_response_estimate_id=NEW.channel_response_estimate_id
+      AND ar.recording_id=cre.recording_id
+      AND dm.recording_channel_id=cre.recording_channel_id
+      AND dm.metric_definition_id=cre.metric_definition_id
+      AND ar.reference_type=cre.reference_type
+      AND ar.frequency_min_hz IS cre.frequency_min_hz
+      AND ar.frequency_max_hz IS cre.frequency_max_hz
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Channel-response estimate source is incompatible with the estimate scope');
+END;
+
+CREATE TRIGGER trg_channel_response_estimate_source_scope_update
+BEFORE UPDATE ON channel_response_estimate_sources
+FOR EACH ROW
+WHEN NOT EXISTS (
+    SELECT 1
+    FROM channel_response_estimates cre
+    JOIN derived_measurements dm
+      ON dm.derived_measurement_id=NEW.derived_measurement_id
+    JOIN acoustic_references ar
+      ON ar.acoustic_reference_id=dm.acoustic_reference_id
+    WHERE cre.channel_response_estimate_id=NEW.channel_response_estimate_id
+      AND ar.recording_id=cre.recording_id
+      AND dm.recording_channel_id=cre.recording_channel_id
+      AND dm.metric_definition_id=cre.metric_definition_id
+      AND ar.reference_type=cre.reference_type
+      AND ar.frequency_min_hz IS cre.frequency_min_hz
+      AND ar.frequency_max_hz IS cre.frequency_max_hz
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Channel-response estimate source is incompatible with the estimate scope');
+END;
+
+-- Updating an estimate cannot invalidate sources already linked to it.
+CREATE TRIGGER trg_channel_response_estimate_scope_update
+BEFORE UPDATE ON channel_response_estimates
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1
+    FROM channel_response_estimate_sources cres
+    JOIN derived_measurements dm ON dm.derived_measurement_id=cres.derived_measurement_id
+    JOIN acoustic_references ar ON ar.acoustic_reference_id=dm.acoustic_reference_id
+    WHERE cres.channel_response_estimate_id=OLD.channel_response_estimate_id
+      AND (ar.recording_id IS NOT NEW.recording_id
+       OR dm.recording_channel_id IS NOT NEW.recording_channel_id
+       OR dm.metric_definition_id IS NOT NEW.metric_definition_id
+       OR ar.reference_type IS NOT NEW.reference_type
+       OR ar.frequency_min_hz IS NOT NEW.frequency_min_hz
+       OR ar.frequency_max_hz IS NOT NEW.frequency_max_hz)
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Channel-response estimate update would invalidate supporting evidence');
 END;
 
 -- A tracking stream and the coordinate system it cites must belong to one
@@ -3078,5 +3218,10 @@ CREATE UNIQUE INDEX idx_derived_measurements_acoustic_unique
     ON derived_measurements(analysis_run_id, metric_definition_id,
                             acoustic_reference_id, IFNULL(recording_channel_id, -1))
     WHERE acoustic_reference_id IS NOT NULL;
+CREATE INDEX idx_channel_response_estimates_run
+    ON channel_response_estimates(analysis_run_id, recording_channel_id,
+                                  metric_definition_id, reference_type);
+CREATE INDEX idx_channel_response_estimate_sources_measurement
+    ON channel_response_estimate_sources(derived_measurement_id);
 
 COMMIT;

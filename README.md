@@ -24,7 +24,8 @@ collapsing native detections. Multimodal intake now also covers declared spatial
 frames, per-channel microphone placement, external tracking registration and
 windowed reads, time-varying track-to-entity identity evidence, and optional
 provenance-bearing acoustic-reference intervals with bounded per-channel audio
-reads and deterministic response measurements.
+reads, deterministic response measurements, and lineage-preserving
+per-reference-family channel-response/QC estimates.
 
 **Not yet implemented:** sequence, bout, motif, and hierarchy-aware analysis;
 continuous-signal ingestion; full acquisition synchronization. These are the
@@ -76,7 +77,7 @@ To check the environment is correctly configured:
 
 ```matlab
 addpath("src")
-results = runtests("tests", IncludeSubfolders=true);   % 474 tests, ~9-25 minutes
+results = runtests("tests", IncludeSubfolders=true);   % 480 tests, ~9-25 minutes
 table(results)
 assert(~isempty(results), "No tests discovered.");
 assertSuccess(results);
@@ -547,7 +548,7 @@ metric identity is never asserted.
 - [`docs/usage/01_prototype_usage_guide.md`](docs/usage/01_prototype_usage_guide.md) — **start here**: requirements, configuration, a minimal end-to-end example, using your own data, outputs, troubleshooting, and current limitations
 - [`docs/design/01_prototype_development_outline.md`](docs/design/01_prototype_development_outline.md) — current prototype development plan
 - [`docs/design/02_temporal_alignment_contract.md`](docs/design/02_temporal_alignment_contract.md) — Phase 7 temporal-alignment design contract, exit criteria, inherited-schema audit, and current implementation boundary
-- [`docs/design/03_multimodal_input_contract.md`](docs/design/03_multimodal_input_contract.md) — multimodal input design contract: coordinate systems, microphone placement, tracking inputs, acoustic references, and channel response. Implemented through per-reference response measurement; cross-reference channel estimation remains planned.
+- [`docs/design/03_multimodal_input_contract.md`](docs/design/03_multimodal_input_contract.md) — multimodal input design contract: coordinate systems, microphone placement, tracking inputs, acoustic references, and channel response, implemented through response/QC estimates without caller attribution
 - [`docs/development/01_repo_structure.md`](docs/development/01_repo_structure.md) — repository policy and MATLAB-specific layout
 - [`docs/development/02_development_workflow.md`](docs/development/02_development_workflow.md) — development conventions for the prototype
 - [`docs/development/03_source_mapping_intermediate_representation.md`](docs/development/03_source_mapping_intermediate_representation.md) — source-mapping IR and dry-run contract
@@ -576,6 +577,7 @@ metric identity is never asserted.
 - [`docs/development/25_visual_identity_association.md`](docs/development/25_visual_identity_association.md) — time-varying native-track to canonical-entity evidence and ambiguity
 - [`docs/development/26_acoustic_reference_registration.md`](docs/development/26_acoustic_reference_registration.md) — optional recording/channel reference intervals, mapper reuse, and provenance
 - [`docs/development/27_audio_window_and_response_measurement.md`](docs/development/27_audio_window_and_response_measurement.md) — bounded audio access, deterministic per-reference/channel metrics, QC, and derived-evidence provenance
+- [`docs/development/28_channel_response_estimates.md`](docs/development/28_channel_response_estimates.md) — reproducible cross-reference aggregation, divergence/QC policy, settings provenance, and restrictive measurement lineage
 
 Extractor-specific design references should live under:
 

@@ -738,6 +738,15 @@ preview = vawlume.acoustic.measureReferenceResponse(conn, ...
 stored = vawlume.acoustic.measureReferenceResponse(conn, ...
     struct(acoustic_reference_id=1), 1, SourceRoot=sessionFolder, ...
     Apply=true, RunKey="session01-low-tone-ch1");
+
+% Aggregate an explicit set of compatible measurement rows. Reference types
+% remain separate; required missing types and divergence become QC evidence.
+response = vawlume.acoustic.estimateChannelResponse(conn, recordingRef, ...
+    rmsMeasurementIds, RequiredReferenceTypes=["tone", "white_noise"], ...
+    MinReferences=2, DivergenceRelativeThreshold=0.25, ...
+    Apply=true, RunKey="session01-channel-response");
+audit = vawlume.acoustic.readChannelResponse(conn, ...
+    struct(analysis_run_id=response.analysis_run_id));
 ```
 
 `reference_type` is open text, frequency bounds are optional, and equal start/end
@@ -748,6 +757,9 @@ reuse the normal `external_stream_mapping` path; see the shipped
 [`../development/26_acoustic_reference_registration.md`](../development/26_acoustic_reference_registration.md).
 Bounded reads and response measurements are described in
 [`../development/27_audio_window_and_response_measurement.md`](../development/27_audio_window_and_response_measurement.md).
+Cross-reference response/QC aggregation and its exact supporting lineage are
+described in
+[`../development/28_channel_response_estimates.md`](../development/28_channel_response_estimates.md).
 
 ---
 
@@ -767,7 +779,7 @@ in the prototype; derived tables are returned to MATLAB.
 | Consilience | `consilience_assessments`, `agreement_statistics`; `manual_reviews` and `manual_reference_events` hold independent human input |
 | Arbitrary-N agreement | `analysis_runs` (a `multi_extractor_agreement` run with many-parent lineage), `agreement_groups`, `agreement_group_members`, `agreement_supporting_edges` |
 | Alignment | `timebases`, `external_streams`, `external_stream_sources`, `external_stream_coverage`, `external_events`, `external_event_attributes`, `alignment_sets`, `alignment_anchors`, `alignment_anchor_observations`, `time_alignment_runs`, `alignment_segments`, `alignment_anchor_residuals` |
-| Multimodal intake and response | `coordinate_systems`, `channel_placements`, `tracking_streams`, `tracking_series`, `tracking_identity_associations`, `acoustic_references`; response applies add `analysis_runs` and `derived_measurements` |
+| Multimodal intake and response | `coordinate_systems`, `channel_placements`, `tracking_streams`, `tracking_series`, `tracking_identity_associations`, `acoustic_references`; response applies add `analysis_runs`, `analysis_run_sources`, `derived_measurements`, `channel_response_estimates`, and `channel_response_estimate_sources` |
 
 Note that `agreement_statistics` belongs to *pairwise* consilience despite its
 name; the arbitrary-N layer stores no summary at all. Its counts, fractions,
@@ -1063,7 +1075,7 @@ extractor-native classes; publication artefacts.
 
 - [`../design/01_prototype_development_outline.md`](../design/01_prototype_development_outline.md) — prototype development plan and completion criteria
 - [`../design/02_temporal_alignment_contract.md`](../design/02_temporal_alignment_contract.md) — alignment design contract, exit criteria, known limitations
-- [`../design/03_multimodal_input_contract.md`](../design/03_multimodal_input_contract.md) — multimodal input design contract. Spatial geometry, tracking input/identity, and per-reference acoustic response measurement are implemented; cross-reference channel estimation remains planned.
+- [`../design/03_multimodal_input_contract.md`](../design/03_multimodal_input_contract.md) — multimodal input design contract. Spatial geometry, tracking input/identity, and acoustic response/QC estimation are implemented without caller attribution.
 
 ### Contracts per stage
 
@@ -1088,6 +1100,7 @@ extractor-native classes; publication artefacts.
 - [`../development/25_visual_identity_association.md`](../development/25_visual_identity_association.md) — track-to-entity association and ambiguity
 - [`../development/26_acoustic_reference_registration.md`](../development/26_acoustic_reference_registration.md) — acoustic-reference registration, query, provenance, and mapper reuse
 - [`../development/27_audio_window_and_response_measurement.md`](../development/27_audio_window_and_response_measurement.md) — bounded local-audio reads, deterministic response metrics, QC, and persistence
+- [`../development/28_channel_response_estimates.md`](../development/28_channel_response_estimates.md) — per-family/channel aggregation, divergence policy, settings provenance, and exact source lineage
 
 ### Configuration and schema
 

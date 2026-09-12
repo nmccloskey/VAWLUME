@@ -396,6 +396,9 @@ provenance. It is not permitted to collapse to a single opaque gain number when
 the evidence is frequency- or reference-dependent, and contradictory evidence
 produces an explicit QC state rather than a silently averaged result.
 
+Implementation reference:
+[`../development/28_channel_response_estimates.md`](../development/28_channel_response_estimates.md).
+
 ## Bounded window access
 
 ### Two readers, not a framework

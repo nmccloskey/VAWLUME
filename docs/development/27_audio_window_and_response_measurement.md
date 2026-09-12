@@ -90,3 +90,6 @@ clipping, an incomplete/invalid band, or a band above Nyquist is returned as an
 explicit warning state. These measurements never overwrite extractor-reported
 power or recording metadata and are not normalization factors or caller
 evidence.
+
+Aggregation across these immutable measurement rows is a separate operation;
+see [`28_channel_response_estimates.md`](28_channel_response_estimates.md).
