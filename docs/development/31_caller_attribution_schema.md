@@ -98,6 +98,19 @@ its semantics whenever present. Nothing converts between them.
 `candidate_status` is `candidate`, `selected` or `rejected`. `candidate_rank` is a
 presentation of score, not a second opinion about it.
 
+`vawlume.attribution.addCandidates` is the public plan-then-apply writer. It
+accepts a batch for one explicit target, checks every entity against the run's
+snapshotted participant set, and atomically inserts all new rows. The Phase 4.5
+writer only creates status `candidate`; selection and rejection belong to the
+decision layer. An identical `(target, entity)` row is reused, while different
+content conflicts rather than overwriting the earlier imported claim.
+
+Ranks are supplied, never generated. The writer treats rank 1 as strongest and
+checks only for contradiction with a higher-is-stronger score: a higher score
+must have a lower rank, and equal scores must share a rank. It neither fills rank
+gaps nor breaks a tie. For a score whose native ordering has another meaning,
+retain the raw score and omit rank.
+
 ### `attribution_evidence`
 
 Long-form evidence supporting a candidate, or the target as a whole.
@@ -120,6 +133,25 @@ statement names whether it rests on a `declared_entity_link` (the user-declared
 calibration or review state) or an `identity_association` (a
 `tracking_identity_associations` row, which carries all of those), and points at
 the row it read.
+
+`vawlume.attribution.addEvidence` appends one atomic batch at target or candidate
+scope. Its public contract is intentionally stricter than the nullable storage
+shape: every row has exactly one of `value_real` or `value_text`, nonempty units
+and semantics, and at least one source identifier or `source_locator`. Relational
+source IDs are checked against the run's recording/project. Candidate-level
+identity statements must identify that same candidate in that same recording.
+
+Evidence has no natural key or uniqueness constraint. An apply therefore means
+"append these observations" and is not idempotent; rerunning one accidentally
+duplicates the evidence. This differs from candidate rows, whose target/entity
+key supports exact reuse.
+
+The schema has direct evidence FKs for an alignment run, source file, mapping
+profile, external event and tracking identity association. It has no evidence FK
+for a general analysis run, artifact, or external stream. Those sources use a
+stable `source_locator` today. The first real attribution exporter in 4.8 must
+report whether that loses a source identity it needs; the closure gate should not
+infer a junction design before then.
 
 ### `attribution_decisions` and `attribution_decision_candidates`
 
