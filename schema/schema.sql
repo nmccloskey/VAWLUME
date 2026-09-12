@@ -1,5 +1,5 @@
 -- VAWLUME prototype relational schema
--- Version: 0.7-draft
+-- Version: 0.8-draft
 -- Date: 2026-09-11
 -- Target: SQLite (MATLAB-centered workflow)
 --
@@ -47,9 +47,9 @@ CREATE TABLE schema_info (
 );
 
 INSERT OR IGNORE INTO schema_info(schema_version, description)
-VALUES ('0.7-draft', 'Multimodal inputs and derived evidence: geometry, tracking, acoustic references, response measurements, and channel-response estimates');
+VALUES ('0.8-draft', 'Alignment robustification: declared piecewise breakpoints, named transform failure reasons, declared segment-uncertainty semantics, and identity-dependent anchor evidence');
 
-PRAGMA user_version = 7;
+PRAGMA user_version = 8;
 
 -- ============================================================================
 -- 1. Project and configuration-profile infrastructure
@@ -1368,9 +1368,11 @@ CREATE TABLE alignment_sets (
 -- readable, but it is redundant with the parent's reference and is trigger-enforced
 -- to equal it. It is a convenience column, never an independent authority.
 --
--- piecewise_affine is representable here and in alignment_segments; fitting it is
--- deliberately not implemented in Phase 7, and the fitting API fails clearly
--- rather than silently degrading to a single affine segment.
+-- piecewise_affine is representable here and in alignment_segments, and its
+-- breakpoints are declared input persisted in alignment_run_breakpoints. Fitting
+-- the model is Phase 3 work: until it lands the fitting API fails clearly rather
+-- than silently degrading to a single affine segment, which would answer a
+-- different question than the caller asked.
 CREATE TABLE time_alignment_runs (
     alignment_run_id    INTEGER PRIMARY KEY,
     alignment_set_id    INTEGER NOT NULL REFERENCES alignment_sets(alignment_set_id) ON DELETE CASCADE,
@@ -1384,9 +1386,47 @@ CREATE TABLE time_alignment_runs (
     -- nothing has been fitted. Defaulting to 'estimated' would have made a row
     -- with no segments and no residuals claim a fit it does not have.
     status              TEXT NOT NULL DEFAULT 'registered' CHECK (status IN ('registered','estimated','validated','rejected','failed')),
+    -- Why a transform did not produce a fit. Without this, a run that was tried
+    -- and could not be honoured is indistinguishable from one nobody attempted:
+    -- both would sit at 'registered' with no segments. 'failed' therefore requires
+    -- a code; 'rejected' may carry one, because a human may reject a fit without a
+    -- machine-readable cause.
+    failure_code        TEXT,
+    failure_reason      TEXT,
     notes               TEXT,
     CHECK (source_timebase_id <> target_timebase_id),
+    CHECK (failure_code IS NULL OR status IN ('rejected','failed')),
+    CHECK (failure_code IS NULL OR failure_reason IS NOT NULL),
+    CHECK (status <> 'failed' OR failure_code IS NOT NULL),
     UNIQUE(alignment_set_id, source_timebase_id)
+);
+
+-- Declared breakpoints for a piecewise-affine transform.
+--
+-- VAWLUME does not search for a breakpoint. Choosing one from the residuals is
+-- model selection, and this prototype has no basis for preferring one
+-- segmentation over another. A breakpoint is a claim that something happened to a
+-- clock, and it is the caller's claim to make.
+--
+-- They are persisted rather than passed only as a call option because a fit must
+-- stay reconstructable from what the database holds. The declared breakpoint set
+-- is part of the model's identity, so refitting with a different set is a
+-- different alignment rather than a correction to this one.
+--
+-- Monotonicity is not enforced here: the solver must reject unsorted input
+-- anyway, and a CHECK cannot see the sibling rows.
+CREATE TABLE alignment_run_breakpoints (
+    alignment_run_breakpoint_id INTEGER PRIMARY KEY,
+    alignment_run_id    INTEGER NOT NULL REFERENCES time_alignment_runs(alignment_run_id) ON DELETE CASCADE,
+    breakpoint_index    INTEGER NOT NULL CHECK (breakpoint_index >= 1),
+    source_time         REAL NOT NULL,
+    -- How the breakpoint arrived: 'caller' today. Free text rather than a closed
+    -- vocabulary, matching anchor_type and evidence_kind elsewhere, so a later
+    -- manifest-declared path needs no DDL change.
+    declared_by         TEXT NOT NULL,
+    notes               TEXT,
+    UNIQUE(alignment_run_id, breakpoint_index),
+    UNIQUE(alignment_run_id, source_time)
 );
 
 -- A logical synchronization anchor: the identity of a coordinating event, not a
@@ -1429,12 +1469,48 @@ CREATE TABLE alignment_anchor_observations (
                             'excluded'
                         )),
     included_in_fit     INTEGER NOT NULL DEFAULT 1 CHECK (included_in_fit IN (0,1)),
+    -- What kind of evidence this reading is. 'device_level' is a TTL, light or
+    -- tone edge and is identity-independent. 'identity_dependent' is derived from
+    -- a biological event whose meaning depends on which animal it concerns.
+    --
+    -- Nullable on purpose: an observation whose class was never declared must stay
+    -- distinguishable from one declared device_level. A default would convert an
+    -- unexamined case into a confident one.
+    evidence_class      TEXT CHECK (evidence_class IS NULL OR evidence_class IN ('device_level','identity_dependent')),
     uncertainty_s       REAL CHECK (uncertainty_s IS NULL OR uncertainty_s >= 0),
     source_file_id      INTEGER REFERENCES source_files(source_file_id) ON DELETE SET NULL,
     mapping_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,
     source_locator      TEXT,
     notes               TEXT,
     CHECK (observation_role <> 'excluded' OR included_in_fit = 0)
+);
+
+-- Visual-identity evidence qualifying an identity-dependent anchor observation.
+--
+-- An identity-dependent anchor is admissible. An identity-dependent anchor whose
+-- identity uncertainty has been silently discarded is not. This table keeps that
+-- uncertainty attached to the observation, where a reader can weigh it.
+--
+-- It is a separate table rather than a column so that the fitting layer, which
+-- reads alignment_anchors and alignment_anchor_observations, does not encounter
+-- identity evidence at all. SQLite cannot forbid a join, so the separation is
+-- structural here and held by test in the pass that implements the behaviour.
+--
+-- Several rows per observation are legal. An anchor qualified by 'ambiguous'
+-- identity evidence is a real case, and refusing it would push the ambiguity out
+-- of the record rather than represent it.
+--
+-- external_events.entity_id is deliberately NOT the link used here. It is a
+-- declared label lookup, weaker than an identity association, and treating it as
+-- evidence would make an unverified guess indistinguishable from an assertion.
+CREATE TABLE alignment_anchor_identity_evidence (
+    alignment_anchor_identity_evidence_id INTEGER PRIMARY KEY,
+    anchor_observation_id INTEGER NOT NULL REFERENCES alignment_anchor_observations(anchor_observation_id) ON DELETE CASCADE,
+    -- RESTRICT, not CASCADE: deleting identity evidence must not silently
+    -- un-qualify an anchor that was admitted because of it.
+    tracking_identity_association_id INTEGER NOT NULL REFERENCES tracking_identity_associations(tracking_identity_association_id) ON DELETE RESTRICT,
+    notes               TEXT,
+    UNIQUE(anchor_observation_id, tracking_identity_association_id)
 );
 
 -- Per-anchor fit evidence. A residual belongs to one pairwise transform, not to
@@ -1472,7 +1548,13 @@ CREATE TABLE alignment_segments (
     offset_s            REAL NOT NULL,
     rmse_s              REAL CHECK (rmse_s IS NULL OR rmse_s >= 0),
     uncertainty_s       REAL CHECK (uncertainty_s IS NULL OR uncertainty_s >= 0),
+    -- What the number beside it means. A stored quantity without declared
+    -- semantics is not stored, the same rule tracking_identity_associations
+    -- applies to identity_value. It is never a confidence interval, a standard
+    -- error, or a probability, and whatever fills it must say so.
+    uncertainty_semantics TEXT,
     CHECK (source_end IS NULL OR source_start IS NULL OR source_end >= source_start),
+    CHECK (uncertainty_s IS NULL OR uncertainty_semantics IS NOT NULL),
     UNIQUE(alignment_run_id, segment_index)
 );
 
@@ -2306,6 +2388,34 @@ BEGIN
     SELECT RAISE(ABORT, 'Alignment run target timebase must equal its alignment set reference timebase');
 END;
 
+-- A breakpoint is only meaningful for a transform that declares a piecewise model.
+-- Without this, an offset or affine run could accumulate segmentation it will never
+-- use, and a later reader could not tell which runs were actually piecewise.
+CREATE TRIGGER trg_alignment_breakpoint_requires_piecewise
+BEFORE INSERT ON alignment_run_breakpoints
+FOR EACH ROW
+WHEN (
+    SELECT method FROM time_alignment_runs
+    WHERE alignment_run_id = NEW.alignment_run_id
+) <> 'piecewise_affine'
+BEGIN
+    SELECT RAISE(ABORT, 'Declared breakpoints require a piecewise_affine transform');
+END;
+
+-- The same state is reachable by moving a run off piecewise_affine after its
+-- breakpoints exist, so the update path is guarded too rather than left to
+-- convention.
+CREATE TRIGGER trg_alignment_run_method_keeps_breakpoints
+BEFORE UPDATE ON time_alignment_runs
+FOR EACH ROW
+WHEN NEW.method <> 'piecewise_affine' AND EXISTS (
+    SELECT 1 FROM alignment_run_breakpoints
+    WHERE alignment_run_id = NEW.alignment_run_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Transform declares breakpoints, so its method must remain piecewise_affine');
+END;
+
 -- An anchor observation that names an external event must name one recorded on the
 -- same clock the observation claims to be on.
 CREATE TRIGGER trg_anchor_observation_event_timebase
@@ -2319,6 +2429,35 @@ WHEN NEW.external_event_id IS NOT NULL AND NEW.timebase_id <> (
 )
 BEGIN
     SELECT RAISE(ABORT, 'Anchor observation event belongs to a stream on a different timebase');
+END;
+
+-- Identity evidence qualifies an anchor the fitter must treat as identity-
+-- dependent. Attaching it to an observation that does not declare that class would
+-- let visual-identity uncertainty sit beside a device-level anchor, where nothing
+-- would ever weigh it.
+CREATE TRIGGER trg_anchor_identity_evidence_requires_class
+BEFORE INSERT ON alignment_anchor_identity_evidence
+FOR EACH ROW
+WHEN IFNULL((
+    SELECT evidence_class FROM alignment_anchor_observations
+    WHERE anchor_observation_id = NEW.anchor_observation_id
+), '') <> 'identity_dependent'
+BEGIN
+    SELECT RAISE(ABORT, 'Anchor identity evidence requires an observation declared identity_dependent');
+END;
+
+-- Guarded on update as well: reclassifying an observation away from
+-- identity_dependent while its evidence remains would strand that evidence in
+-- exactly the state the insert guard refuses.
+CREATE TRIGGER trg_anchor_observation_evidence_class_update
+BEFORE UPDATE ON alignment_anchor_observations
+FOR EACH ROW
+WHEN IFNULL(NEW.evidence_class, '') <> 'identity_dependent' AND EXISTS (
+    SELECT 1 FROM alignment_anchor_identity_evidence
+    WHERE anchor_observation_id = NEW.anchor_observation_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Observation carries identity evidence, so its evidence_class must remain identity_dependent');
 END;
 
 -- A residual pairs two observations of the same logical anchor, taken on the two
@@ -3203,6 +3342,7 @@ CREATE INDEX idx_alignment_runs_set ON time_alignment_runs(alignment_set_id, sou
 CREATE INDEX idx_alignment_anchor_observations_anchor ON alignment_anchor_observations(alignment_anchor_id, timebase_id);
 CREATE INDEX idx_alignment_anchor_observations_event ON alignment_anchor_observations(external_event_id);
 CREATE INDEX idx_alignment_anchor_residuals_run ON alignment_anchor_residuals(alignment_run_id);
+CREATE INDEX idx_alignment_anchor_identity_evidence_association ON alignment_anchor_identity_evidence(tracking_identity_association_id);
 CREATE INDEX idx_aligned_events_time ON aligned_external_events(target_timebase_id, start_time_aligned_s);
 
 -- Exactly one native audio clock per recording. A partial unique index states this

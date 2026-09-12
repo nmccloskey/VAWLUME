@@ -1048,7 +1048,9 @@ function [timebases, streams, events, alignmentRunId] = insertExternalAlignmentR
 % target = source + 0.55, and both anchors are consistent with it, so every
 % residual is zero and the recorded fit error is zero too. uncertainty_s stays
 % 0.002 on the observations because stated measurement uncertainty is a different
-% quantity from fit residual.
+% quantity from fit residual. The segment carries the same bound with its
+% semantics declared, because a stored number without stated semantics is not
+% interpretable evidence.
 timebases = struct();
 timebases.recording = insertTimebase(conn, projectId, recordingId, "recording_elapsed_time", "audio_sample_clock", "s", 384000, "Audio file sample clock.", "REC_SOCIAL_DYAD_01", 1);
 timebases.behavior = insertTimebase(conn, projectId, recordingId, "behavior_controller_clock", "behavior_controller_clock", "s", 100, "Controller event-log clock.", "CTRL_A", 0);
@@ -1120,7 +1122,8 @@ insertRow(conn, "alignment_segments", struct( ...
     scale=1, ...
     offset_s=0.55, ...
     rmse_s=0, ...
-    uncertainty_s=0.002), "alignment_segment_id");
+    uncertainty_s=0.002, ...
+    uncertainty_semantics="max_contributing_anchor_uncertainty_s"), "alignment_segment_id");
 
 insertAlignedExternalEvent(conn, events.contact, alignmentRunId, timebases.recording, 10.000, 11.500);
 insertAlignedExternalEvent(conn, events.approach, alignmentRunId, timebases.recording, 40.000, 40.550);

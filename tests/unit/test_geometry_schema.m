@@ -19,8 +19,8 @@ function testSchemaVersionAndSpatialObjectsExist(testCase)
 conn = fixture.conn;
 
 verifyEqual(testCase, textOf(conn, "SELECT schema_version FROM schema_info"), ...
-    "0.7-draft");
-verifyEqual(testCase, numberOf(conn, "PRAGMA user_version"), 7);
+    "0.8-draft");
+verifyEqual(testCase, numberOf(conn, "PRAGMA user_version"), 8);
 verifyEqual(testCase, numberOf(conn, "PRAGMA foreign_keys"), 1);
 verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
 

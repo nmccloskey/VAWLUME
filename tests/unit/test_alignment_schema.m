@@ -16,7 +16,12 @@ tests = functiontests({ ...
     @testAnchorObservationRedundancyRules, ...
     @testAnchorObservationEventMustShareTimebase, ...
     @testOneTransformPerSourceTimebaseInASet, ...
-    @testResidualsStayInsideTheirRunAndAnchor});
+    @testResidualsStayInsideTheirRunAndAnchor, ...
+    @testTransformFailureReasonsAreExplicit, ...
+    @testDeclaredBreakpointsRequireAPiecewiseTransform, ...
+    @testSegmentUncertaintyDeclaresItsSemantics, ...
+    @testAnchorEvidenceClassIsClosedAndOptional, ...
+    @testAnchorIdentityEvidenceRequiresItsClass});
 end
 
 % ------------------------------------------------------------- timebases ---
@@ -350,6 +355,199 @@ verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
 clear cleanup
 end
 
+% ------------------------------------------------- phase 3 alignment facts ---
+
+function testTransformFailureReasonsAreExplicit(testCase)
+[conn, cleanup] = setUpSchema(); %#ok<ASGLU>
+seedTimebases(conn);
+execute(conn, insertAnalysisRun("align-1"));
+execute(conn, insertAlignmentSet(1, 3));
+execute(conn, insertRun(1, 1, 3, "affine"));
+
+% A run nobody attempted stays 'registered' and says nothing about why.
+verifyEqual(testCase, scalarText(conn, ...
+    "SELECT status FROM time_alignment_runs WHERE alignment_run_id = 1"), "registered");
+verifyEqual(testCase, scalar(conn, ...
+    "SELECT COUNT(*) AS n FROM time_alignment_runs WHERE failure_code IS NULL"), 1);
+
+% A failure must name itself. Without this, a run that was tried and could not be
+% honoured is indistinguishable from one nobody attempted.
+verifySqlFails(testCase, conn, ...
+    "UPDATE time_alignment_runs SET status = 'failed' WHERE alignment_run_id = 1");
+
+% A code needs prose beside it; a code alone is not a reason.
+verifySqlFails(testCase, conn, ...
+    "UPDATE time_alignment_runs SET status = 'failed', " + ...
+    "failure_code = 'SegmentUnderdetermined' WHERE alignment_run_id = 1");
+
+execute(conn, "UPDATE time_alignment_runs SET status = 'failed', " + ...
+    "failure_code = 'SegmentUnderdetermined', failure_reason = " + ...
+    "'Segment 2 holds one anchor and cannot determine a slope' " + ...
+    "WHERE alignment_run_id = 1");
+verifyEqual(testCase, scalarText(conn, ...
+    "SELECT failure_code FROM time_alignment_runs WHERE alignment_run_id = 1"), ...
+    "SegmentUnderdetermined");
+
+% A run that did not fail may not carry a failure code.
+execute(conn, insertRun(1, 2, 3, "offset"));
+verifySqlFails(testCase, conn, ...
+    "UPDATE time_alignment_runs SET failure_code = 'X', failure_reason = 'y' " + ...
+    "WHERE alignment_run_id = 2");
+
+% 'rejected' may carry a code but need not: a human may reject a fit without a
+% machine-readable cause.
+execute(conn, "UPDATE time_alignment_runs SET status = 'rejected' " + ...
+    "WHERE alignment_run_id = 2");
+verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM time_alignment_runs " + ...
+    "WHERE status = 'rejected' AND failure_code IS NULL"), 1);
+
+clear cleanup
+end
+
+function testDeclaredBreakpointsRequireAPiecewiseTransform(testCase)
+[conn, cleanup] = setUpSchema(); %#ok<ASGLU>
+seedTimebases(conn);
+execute(conn, insertAnalysisRun("align-1"));
+execute(conn, insertAlignmentSet(1, 3));
+execute(conn, insertRun(1, 1, 3, "piecewise_affine"));
+execute(conn, insertRun(1, 2, 3, "affine"));
+
+% A piecewise transform may declare where its segments meet.
+execute(conn, insertBreakpoint(1, 1, 600.0));
+execute(conn, insertBreakpoint(1, 2, 1200.0));
+verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM " + ...
+    "alignment_run_breakpoints WHERE alignment_run_id = 1"), 2);
+
+% An affine run has no segments to separate, so segmentation it will never use is
+% refused rather than accumulated.
+verifySqlFails(testCase, conn, insertBreakpoint(2, 1, 600.0));
+
+% Index and source time are each unique within a transform: two breakpoints at one
+% instant, or two claims to be the first, are not a segmentation.
+verifySqlFails(testCase, conn, insertBreakpoint(1, 1, 900.0));
+verifySqlFails(testCase, conn, insertBreakpoint(1, 3, 600.0));
+
+% The same bad state is reachable by moving the run off piecewise afterwards, so
+% the update path is guarded too.
+verifySqlFails(testCase, conn, ...
+    "UPDATE time_alignment_runs SET method = 'affine' WHERE alignment_run_id = 1");
+
+% Removing the breakpoints first makes that same change legal.
+execute(conn, "DELETE FROM alignment_run_breakpoints WHERE alignment_run_id = 1");
+execute(conn, "UPDATE time_alignment_runs SET method = 'affine' " + ...
+    "WHERE alignment_run_id = 1");
+verifyEqual(testCase, scalarText(conn, ...
+    "SELECT method FROM time_alignment_runs WHERE alignment_run_id = 1"), "affine");
+
+clear cleanup
+end
+
+function testSegmentUncertaintyDeclaresItsSemantics(testCase)
+[conn, cleanup] = setUpSchema(); %#ok<ASGLU>
+seedTimebases(conn);
+execute(conn, insertAnalysisRun("align-1"));
+execute(conn, insertAlignmentSet(1, 3));
+execute(conn, insertRun(1, 1, 3, "affine"));
+
+% A segment carrying no uncertainty is complete evidence: the absence is the
+% statement, and it needs no semantics.
+execute(conn, "INSERT INTO alignment_segments(alignment_run_id, segment_index, " + ...
+    "scale, offset_s) VALUES (1, 1, 1.0002, -0.51)");
+verifyEqual(testCase, scalar(conn, ...
+    "SELECT COUNT(*) AS n FROM alignment_segments WHERE uncertainty_s IS NULL"), 1);
+
+% A number without stated semantics is not interpretable evidence, the same rule
+% identity_value carries on tracking_identity_associations.
+verifySqlFails(testCase, conn, ...
+    "UPDATE alignment_segments SET uncertainty_s = 0.004 WHERE alignment_segment_id = 1");
+
+execute(conn, "UPDATE alignment_segments SET uncertainty_s = 0.004, " + ...
+    "uncertainty_semantics = 'max_contributing_anchor_uncertainty_s' " + ...
+    "WHERE alignment_segment_id = 1");
+verifyEqual(testCase, scalarText(conn, "SELECT uncertainty_semantics FROM " + ...
+    "alignment_segments WHERE alignment_segment_id = 1"), ...
+    "max_contributing_anchor_uncertainty_s");
+
+clear cleanup
+end
+
+function testAnchorEvidenceClassIsClosedAndOptional(testCase)
+[conn, cleanup] = setUpSchema(); %#ok<ASGLU>
+seedTimebases(conn);
+execute(conn, insertAnalysisRun("align-1"));
+execute(conn, insertAlignmentSet(1, 3));
+execute(conn, insertAnchor(1, "sync_01"));
+
+% Undeclared: the state every observation registered before anyone asked the
+% question is in, and it must stay distinguishable from a declared answer.
+execute(conn, insertObservation(1, 1, 12.004, "primary", 1));
+
+execute(conn, insertObservationWithClass(1, 2, 11.876, "primary", 1, "device_level"));
+execute(conn, insertObservationWithClass(1, 3, 302.551, "primary", 1, "identity_dependent"));
+
+verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM " + ...
+    "alignment_anchor_observations WHERE evidence_class IS NULL"), 1);
+verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM " + ...
+    "alignment_anchor_observations WHERE evidence_class = 'device_level'"), 1);
+
+% Undeclared is not device_level. A default would have converted an unexamined
+% case into a confident one.
+verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM " + ...
+    "alignment_anchor_observations WHERE evidence_class IS NOT NULL"), 2);
+
+% An unrecognized class is refused rather than coerced into the nearest one.
+verifySqlFails(testCase, conn, ...
+    insertObservationWithClass(1, 4, 55.0, "primary", 1, "probably_a_ttl"));
+
+clear cleanup
+end
+
+function testAnchorIdentityEvidenceRequiresItsClass(testCase)
+[conn, cleanup] = setUpSchema(); %#ok<ASGLU>
+seedTimebases(conn);
+seedIdentityAssociations(conn);
+execute(conn, insertAnalysisRun("align-1"));
+execute(conn, insertAlignmentSet(1, 3));
+execute(conn, insertAnchor(1, "female_entry"));
+execute(conn, insertObservationWithClass(1, 1, 12.004, "primary", 1, "identity_dependent"));
+execute(conn, insertObservationWithClass(1, 2, 11.876, "primary", 1, "device_level"));
+execute(conn, insertObservation(1, 3, 302.551, "primary", 1));
+
+% An identity-dependent anchor may carry the identity evidence that qualifies it.
+execute(conn, insertAnchorIdentityEvidence(1, 1));
+
+% Several links are legal. An anchor qualified by ambiguous identity evidence is a
+% real case, and refusing it would push the ambiguity out of the record rather
+% than represent it.
+execute(conn, insertAnchorIdentityEvidence(1, 2));
+verifyEqual(testCase, scalar(conn, "SELECT COUNT(*) AS n FROM " + ...
+    "alignment_anchor_identity_evidence WHERE anchor_observation_id = 1"), 2);
+
+% The same association twice says nothing new.
+verifySqlFails(testCase, conn, insertAnchorIdentityEvidence(1, 1));
+
+% A device-level anchor may not carry identity evidence: nothing would ever weigh
+% it there, and a TTL edge does not depend on which animal was present.
+verifySqlFails(testCase, conn, insertAnchorIdentityEvidence(2, 1));
+
+% Neither may an observation that never declared a class.
+verifySqlFails(testCase, conn, insertAnchorIdentityEvidence(3, 1));
+
+% Reclassifying an observation away from identity_dependent would strand its
+% evidence in exactly the state the insert guard refuses.
+verifySqlFails(testCase, conn, "UPDATE alignment_anchor_observations " + ...
+    "SET evidence_class = 'device_level' WHERE anchor_observation_id = 1");
+verifySqlFails(testCase, conn, "UPDATE alignment_anchor_observations " + ...
+    "SET evidence_class = NULL WHERE anchor_observation_id = 1");
+
+% Deleting the identity evidence an anchor was admitted on is restricted, so the
+% anchor cannot be silently un-qualified.
+verifySqlFails(testCase, conn, "DELETE FROM tracking_identity_associations " + ...
+    "WHERE tracking_identity_association_id = 1");
+
+clear cleanup
+end
+
 % ----------------------------------------------------------------- setup ---
 
 function [conn, cleanup] = setUpSchema()
@@ -392,6 +590,30 @@ execute(conn, "INSERT INTO timebases(project_id, timebase_name, timebase_kind) "
     "VALUES (1, 'neural_native', 'acquisition_clock')");
 execute(conn, "INSERT INTO timebases(project_id, timebase_name, timebase_kind) " + ...
     "VALUES (1, 'operant_clock', 'controller_clock')");
+end
+
+function seedIdentityAssociations(conn)
+%SEEDIDENTITYASSOCIATIONS Two Phase 2 identity claims over one tracking trace.
+%
+% Both are 'ambiguous' over the same interval, which is what an unresolved
+% crossing looks like: two candidate entities, neither withdrawn.
+execute(conn, "INSERT INTO coordinate_systems(project_id, coordinate_system_key, " + ...
+    "coordinate_system_name, dimensionality, unit) " + ...
+    "VALUES (1, 'arena_2d', 'Arena floor', 2, 'cm')");
+execute(conn, "INSERT INTO external_streams(project_id, recording_id, timebase_id, " + ...
+    "stream_name, stream_kind) VALUES (1, 1, 2, 'pose', 'tracking')");
+execute(conn, "INSERT INTO tracking_streams(external_stream_id, " + ...
+    "coordinate_system_id, native_time_basis) VALUES (1, 1, 'time')");
+execute(conn, "INSERT INTO entity_types(project_id, native_name, is_subject_like) " + ...
+    "VALUES (1, 'mouse', 1)");
+for index = 1:2
+    execute(conn, "INSERT INTO experimental_entities(project_id, entity_type_id, " + ...
+        "native_id) VALUES (1, 1, 'M" + string(index) + "')");
+    execute(conn, "INSERT INTO tracking_identity_associations(external_stream_id, " + ...
+        "native_track_id, entity_id, start_time_native, end_time_native, " + ...
+        "assignment_state, evidence_kind) VALUES (1, 'mouse_a', " + string(index) + ...
+        ", 10.0, 14.0, 'ambiguous', 'appearance_embedding')");
+end
 end
 
 function seedStream(conn)
@@ -439,6 +661,27 @@ sql = "INSERT INTO alignment_anchor_observations(alignment_anchor_id, timebase_i
     "observed_time_native, observation_role, included_in_fit) VALUES (" + ...
     string(anchorId) + ", " + string(timebaseId) + ", " + string(observedTime) + ...
     ", '" + role + "', " + string(included) + ")";
+end
+
+function sql = insertObservationWithClass(anchorId, timebaseId, observedTime, ...
+        role, included, evidenceClass)
+sql = "INSERT INTO alignment_anchor_observations(alignment_anchor_id, timebase_id, " + ...
+    "observed_time_native, observation_role, included_in_fit, evidence_class) " + ...
+    "VALUES (" + string(anchorId) + ", " + string(timebaseId) + ", " + ...
+    string(observedTime) + ", '" + role + "', " + string(included) + ", '" + ...
+    evidenceClass + "')";
+end
+
+function sql = insertAnchorIdentityEvidence(observationId, associationId)
+sql = "INSERT INTO alignment_anchor_identity_evidence(anchor_observation_id, " + ...
+    "tracking_identity_association_id) VALUES (" + string(observationId) + ", " + ...
+    string(associationId) + ")";
+end
+
+function sql = insertBreakpoint(runId, breakpointIndex, sourceTime)
+sql = "INSERT INTO alignment_run_breakpoints(alignment_run_id, breakpoint_index, " + ...
+    "source_time, declared_by) VALUES (" + string(runId) + ", " + ...
+    string(breakpointIndex) + ", " + string(sourceTime) + ", 'caller')";
 end
 
 function sql = insertRun(alignmentSetId, sourceTimebaseId, targetTimebaseId, method)

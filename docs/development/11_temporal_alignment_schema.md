@@ -21,6 +21,15 @@ registered without misclassifying them as event-stream profiles. The `0.4` to
 default, so a transform whose clocks and anchors exist but which has not been
 fitted says so instead of claiming to be `estimated`.
 
+The `0.7` to `0.8` change is Phase 3's, and adds four things this layer
+represented but could not record: declared piecewise breakpoints
+(`alignment_run_breakpoints`), a named reason for a transform that failed
+(`time_alignment_runs.failure_code` and `failure_reason`), declared semantics
+for a segment's uncertainty (`alignment_segments.uncertainty_semantics`), and
+identity-dependent anchor evidence (`alignment_anchor_observations.evidence_class`
+and `alignment_anchor_identity_evidence`). It stores no diagnostic that can be
+recomputed from evidence already held.
+
 ## The eight distinct concepts
 
 The single most important property of this schema is that these are eight
@@ -158,9 +167,19 @@ redundant with the parent's reference and a trigger enforces equality on insert
 and update. It is a convenience column, never an independent authority.
 
 Method vocabulary is closed: `offset`, `affine`, `piecewise_affine`.
-`piecewise_affine` is representable here and in `alignment_segments`; **fitting**
-it is deliberately deferred, and the fitting API must fail clearly rather than
-silently degrading to a single affine segment.
+`piecewise_affine` is representable here and in `alignment_segments`, and its
+breakpoints are declared input in `alignment_run_breakpoints`. **Fitting** the
+model is Phase 3 work; until it lands the fitting API must fail clearly rather
+than silently degrading to a single affine segment.
+
+A breakpoint is the caller's claim that something happened to a clock, never a
+value VAWLUME searched for. It is persisted rather than passed only as a call
+option because the declared set is part of the model's identity: a fit must stay
+reconstructable from what the database holds, and refitting with a different set
+is a different alignment rather than a correction to this one. A trigger pair
+keeps breakpoints and the `piecewise_affine` method together on insert and on
+update. `declared_by` records how the breakpoint arrived and is free text, so a
+later manifest-declared path needs no DDL change.
 
 There are no `identity` runs for the reference clock. The reference is already in
 its own clock, and a row asserting `t = t` would be noise.
@@ -172,6 +191,14 @@ clock's identity and anchors exist but nothing has been fitted; such a row has n
 `estimated` would claim a fit that does not exist. `n_anchors_used` on a
 registered run records how many logical anchors are currently fit-eligible, not
 how many a fit consumed.
+
+The vocabulary does not grow in Phase 3; what was missing was the **reason**.
+`failure_code` and `failure_reason` let a run that was tried and could not be
+honoured say so, because otherwise it is indistinguishable from one nobody
+attempted: both sit at `registered` with no segments. A CHECK requires a code on
+`failed`, requires prose beside any code, and forbids a code on a run that
+neither failed nor was rejected. `rejected` may carry a code but need not, since
+a human may reject a fit without a machine-readable cause.
 
 ## Anchors, observations, residuals
 
@@ -198,6 +225,30 @@ because the whole point is that one anchor is read separately on each clock.
 - `observation_role` is a compact vocabulary (`primary`, `replicate`, `excluded`)
   and a CHECK keeps `excluded` from also claiming to be in the fit. It is
   deliberately not over-specified before real synthetic examples exist.
+- `evidence_class` says whether the reading is `device_level` — a TTL, light or
+  tone edge, identity-independent — or `identity_dependent`, derived from a
+  biological event whose meaning depends on which animal it concerns. It is
+  **nullable on purpose**: an observation whose class was never declared must stay
+  distinguishable from one declared `device_level`, because a default would
+  convert an unexamined case into a confident one. An unrecognized value is
+  refused by CHECK rather than coerced.
+
+`alignment_anchor_identity_evidence` links an identity-dependent observation to
+the Phase 2 `tracking_identity_associations` row that qualifies it, with that
+row's declared value semantics, calibration status and review state intact. An
+identity-dependent anchor is admissible; one whose identity uncertainty has been
+silently discarded is not.
+
+It is a separate table rather than a column so the fitting layer does not
+encounter identity evidence at all. Several rows per observation are legal,
+because an anchor qualified by `ambiguous` identity evidence is a real case and
+refusing it would push the ambiguity out of the record. A trigger pair requires
+the observation to declare `identity_dependent` on insert and to keep declaring
+it on update, and the association is referenced `ON DELETE RESTRICT` so deleting
+identity evidence cannot silently un-qualify an anchor.
+
+`external_events.entity_id` is deliberately **not** the link used here; see the
+section below on why it is a declared lookup rather than identity evidence.
 
 `alignment_anchor_residuals` is per-anchor fit evidence. A residual belongs to one
 pairwise transform, not to the logical anchor, because the same anchor yields a
@@ -261,6 +312,16 @@ Enforced by the database, each with a probe in
 | A residual stays inside its run, anchor, and clocks | trigger |
 | One residual per anchor per run | UNIQUE |
 | An excluded residual states why | CHECK |
+| A failed transform names a failure code | CHECK |
+| A failure code is accompanied by prose | CHECK |
+| Only a rejected or failed transform carries a failure code | CHECK |
+| Declared breakpoints require a `piecewise_affine` method | trigger (insert and update) |
+| Breakpoint index and source time are unique within a transform | UNIQUE |
+| A segment's uncertainty declares its semantics | CHECK |
+| Anchor evidence class vocabulary, with undeclared distinct from declared | CHECK |
+| Anchor identity evidence requires an `identity_dependent` observation | trigger (insert and update) |
+| One identity association cited once per observation | UNIQUE |
+| Identity evidence an anchor was admitted on cannot be deleted | ON DELETE RESTRICT |
 
 **Left to application code**, and stated here so nothing pretends otherwise:
 
@@ -271,7 +332,16 @@ Enforced by the database, each with a probe in
   without gaps or overlaps;
 - that an anchor observed on a clock with no transform in the set is either
   intentional or an error;
-- that a cached `aligned_external_events` row still matches its transform.
+- that a cached `aligned_external_events` row still matches its transform;
+- that the segments of a `piecewise_affine` run tile the source range without
+  gaps or overlaps, and that `fit` and `applyTransform` resolve a breakpoint
+  instant to the same segment;
+- that declared breakpoints are strictly increasing and lie inside the anchored
+  source span — SQLite cannot see sibling rows from a CHECK;
+- that a segment's uncertainty is derived only from the anchors that determined
+  that segment;
+- that the fitting layer reads no identity column. The separation is structural,
+  since SQLite cannot forbid a join, and is held by test.
 
 Each of these gets a regression test in the pass that implements the behaviour
 concerned, not a speculative trigger now.
