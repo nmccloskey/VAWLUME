@@ -1,5 +1,5 @@
 -- VAWLUME prototype relational schema
--- Version: 0.8-draft
+-- Version: 0.9-draft
 -- Date: 2026-09-11
 -- Target: SQLite (MATLAB-centered workflow)
 --
@@ -47,9 +47,9 @@ CREATE TABLE schema_info (
 );
 
 INSERT OR IGNORE INTO schema_info(schema_version, description)
-VALUES ('0.8-draft', 'Alignment robustification: declared piecewise breakpoints, named transform failure reasons, declared segment-uncertainty semantics, and identity-dependent anchor evidence');
+VALUES ('0.9-draft', 'Caller-attribution representation: attribution runs, explicit event-set targets, multi-candidate caller results with declared score semantics, long-form evidence, policy-bearing decisions that select a candidate set, the generic imported-attribution path, and every reasonable agreement-group extent');
 
-PRAGMA user_version = 8;
+PRAGMA user_version = 9;
 
 -- ============================================================================
 -- 1. Project and configuration-profile infrastructure
@@ -81,6 +81,8 @@ CREATE TABLE config_profiles (
                             'tracking_input_mapping',
                             'analysis_settings',
                             'consilience_policy',
+                            'attribution_input_mapping',
+                            'attribution_policy',
                             'other'
                         )),
     is_builtin          INTEGER NOT NULL DEFAULT 0 CHECK (is_builtin IN (0,1)),
@@ -1478,11 +1480,18 @@ CREATE TABLE alignment_anchor_observations (
     -- unexamined case into a confident one.
     evidence_class      TEXT CHECK (evidence_class IS NULL OR evidence_class IN ('device_level','identity_dependent')),
     uncertainty_s       REAL CHECK (uncertainty_s IS NULL OR uncertainty_s >= 0),
+    -- What that number means. A recorded reading uncertainty from one device is
+    -- not comparable with one from another unless both say what they are, so the
+    -- semantics travel with the value exactly as they do on alignment_segments.
+    -- Closes P3-1, carried from Phase 3.
+    uncertainty_semantics TEXT,
     source_file_id      INTEGER REFERENCES source_files(source_file_id) ON DELETE SET NULL,
     mapping_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,
     source_locator      TEXT,
     notes               TEXT,
-    CHECK (observation_role <> 'excluded' OR included_in_fit = 0)
+    CHECK (observation_role <> 'excluded' OR included_in_fit = 0),
+    -- A number without stated semantics is not interpretable evidence.
+    CHECK (uncertainty_s IS NULL OR uncertainty_semantics IS NOT NULL)
 );
 
 -- Visual-identity evidence qualifying an identity-dependent anchor observation.
@@ -1577,7 +1586,12 @@ CREATE TABLE aligned_external_events (
     start_time_aligned_s REAL NOT NULL,
     end_time_aligned_s  REAL,
     uncertainty_s       REAL CHECK (uncertainty_s IS NULL OR uncertainty_s >= 0),
+    -- Semantics travel with the value here too, for the same reason. This cache is
+    -- regenerable and currently unwritten by any public path, but a number it does
+    -- hold must still say what it is. Closes P3-1, carried from Phase 3.
+    uncertainty_semantics TEXT,
     CHECK (end_time_aligned_s IS NULL OR end_time_aligned_s >= start_time_aligned_s),
+    CHECK (uncertainty_s IS NULL OR uncertainty_semantics IS NOT NULL),
     UNIQUE(external_event_id, alignment_run_id)
 );
 
@@ -1736,8 +1750,335 @@ CREATE TABLE channel_response_estimate_sources (
     PRIMARY KEY(channel_response_estimate_id, derived_measurement_id)
 );
 
+
 -- ============================================================================
--- 13. Integrity triggers for cross-table invariants SQLite cannot express as CHECKs
+-- 13. Caller attribution representation
+-- ============================================================================
+--
+-- Caller attribution asks which subject produced a vocal event. That is a
+-- different question from correspondence, and the two must not share a table:
+-- a high temporal IoU between two extractors says nothing about which animal
+-- called. See docs/development/22_phase1_correspondence_boundaries.md, which
+-- stated this requirement in Phase 1, before any attribution code existed.
+--
+-- The governing contract is docs/design/04_caller_attribution_contract.md.
+-- Three of its decisions are load-bearing here and are worth stating at the top:
+--
+--   * There is NO caller_id column anywhere. Several candidate callers per
+--     target is the ordinary shape; one dominant caller is a result, never an
+--     assumption.
+--   * A stored score or probability declares its semantics or is not stored.
+--     A caller label carrying no number records NULL, never 1.0 - converting a
+--     name into certainty is the failure this representation exists to prevent.
+--   * A decision selects a SET of candidates. That is what makes "two animals
+--     called" expressible at all, and what separates it from "we cannot tell
+--     which one did".
+
+-- One reproducible caller-attribution analysis.
+--
+-- Immutable once complete: change the method, the settings profile, the policy
+-- or the target set and it is a different run, never a rewrite of this one.
+-- That is the alignment layer's rule for a completed transform, applied to a
+-- new object for the same reason - a result whose inputs can change under it
+-- cannot be cited.
+--
+-- attribution_path admits 'backend' and 'native_estimate' although no Phase 4
+-- code writes either. Phases 5 and 6 land in this same table, and a vocabulary
+-- that admitted only 'imported' would force a schema version bump to add a
+-- string. No status in this table means 'validated'; attribution is estimated.
+CREATE TABLE attribution_runs (
+    attribution_run_id  INTEGER PRIMARY KEY,
+    analysis_run_id     INTEGER NOT NULL REFERENCES analysis_runs(analysis_run_id) ON DELETE CASCADE,
+    recording_id        INTEGER NOT NULL REFERENCES recordings(recording_id) ON DELETE CASCADE,
+    parent_attribution_run_id INTEGER REFERENCES attribution_runs(attribution_run_id) ON DELETE SET NULL,
+    run_key             TEXT NOT NULL,
+    attribution_path    TEXT NOT NULL CHECK (attribution_path IN (
+                            'imported',
+                            'backend',
+                            'native_estimate'
+                        )),
+    method              TEXT NOT NULL,
+    settings_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,
+    status              TEXT NOT NULL DEFAULT 'planned' CHECK (status IN (
+                            'planned',
+                            'complete',
+                            'failed'
+                        )),
+    failure_code        TEXT,
+    created_at_utc      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    notes               TEXT,
+    UNIQUE(analysis_run_id, run_key),
+    -- A failure that does not say why is indistinguishable from an absence.
+    CHECK (status <> 'failed' OR failure_code IS NOT NULL),
+    -- A run cannot be its own parent.
+    CHECK (parent_attribution_run_id IS NULL OR parent_attribution_run_id <> attribution_run_id)
+);
+
+-- The vocal event attribution applies to.
+--
+-- Exactly one event, from a named event set. The same recording can carry
+-- native detections, pairwise consensus events and arbitrary-N agreement groups
+-- over the same acoustic material; those are three event sets with three
+-- different denominators, and a result that does not say which one it targeted
+-- cannot be compared with anything.
+--
+-- This follows manual_reviews, which targets one detection, match group or
+-- consensus event under the same construction. A generic (target_table,
+-- target_id) pair was rejected: it defeats foreign keys and has no precedent
+-- here. There is deliberately NO target_kind column - which column is non-null
+-- IS the discriminator, and a second copy of that fact is a second thing that
+-- can contradict the row it describes.
+--
+-- A match group is not targetable. It is a proposed correspondence between
+-- detections, not an event.
+--
+-- agreement_extent_method names WHICH extent of an agreement group is meant.
+-- An agreement group has no intrinsic interval - see v_agreement_group_extent -
+-- so targeting one without naming the extent would leave the target's own
+-- timespan undefined. Required for a group target and refused for the others,
+-- because there is nothing for it to disambiguate there.
+CREATE TABLE attribution_targets (
+    attribution_target_id INTEGER PRIMARY KEY,
+    attribution_run_id  INTEGER NOT NULL REFERENCES attribution_runs(attribution_run_id) ON DELETE CASCADE,
+    detection_id        INTEGER REFERENCES detections(detection_id) ON DELETE CASCADE,
+    consensus_event_id  INTEGER REFERENCES consensus_events(consensus_event_id) ON DELETE CASCADE,
+    agreement_group_id  INTEGER REFERENCES agreement_groups(agreement_group_id) ON DELETE CASCADE,
+    agreement_extent_method TEXT CHECK (agreement_extent_method IS NULL OR agreement_extent_method IN (
+                            'union_boundary_of_members',
+                            'intersection_boundary_of_members',
+                            'mean_boundary_of_members',
+                            'longest_member_boundary',
+                            'shortest_member_boundary'
+                        )),
+    notes               TEXT,
+    -- Exactly one event set, named explicitly. These are deliberately separate
+    -- evidentiary layers.
+    CHECK ((detection_id IS NOT NULL) + (consensus_event_id IS NOT NULL)
+         + (agreement_group_id IS NOT NULL) = 1),
+    -- An agreement-group target declares its extent; nothing else may.
+    CHECK ((agreement_group_id IS NOT NULL) = (agreement_extent_method IS NOT NULL))
+);
+
+-- One candidate caller per target.
+--
+-- The UNIQUE is per (target, entity) and NOT per target. Several candidates for
+-- one target is the point; a constraint admitting only one would be the wrong
+-- constraint, and would reintroduce the single caller_id this model exists to
+-- avoid.
+--
+-- score is deliberately unconstrained - it is somebody else's scale and VAWLUME
+-- does not know its range. probability is bounded because the word means
+-- something. Nothing converts between them, in either direction, at any layer.
+-- An imported probability is a probability because the exporting system said so,
+-- and its semantics string attributes that claim to its source.
+--
+-- candidate_rank is a presentation of score, not a second opinion about it.
+CREATE TABLE attribution_candidates (
+    attribution_candidate_id INTEGER PRIMARY KEY,
+    attribution_target_id INTEGER NOT NULL REFERENCES attribution_targets(attribution_target_id) ON DELETE CASCADE,
+    entity_id           INTEGER NOT NULL REFERENCES experimental_entities(entity_id) ON DELETE RESTRICT,
+    candidate_status    TEXT NOT NULL DEFAULT 'candidate' CHECK (candidate_status IN (
+                            'candidate',
+                            'selected',
+                            'rejected'
+                        )),
+    candidate_rank      INTEGER CHECK (candidate_rank IS NULL OR candidate_rank >= 1),
+    score               REAL,
+    score_semantics     TEXT,
+    probability         REAL CHECK (probability IS NULL OR (probability >= 0 AND probability <= 1)),
+    probability_semantics TEXT,
+    source_label        TEXT,
+    notes               TEXT,
+    UNIQUE(attribution_target_id, entity_id),
+    -- A number without stated semantics is not interpretable evidence. Applied
+    -- uniformly here because these tables are new and have no legacy to
+    -- accommodate; P3-1 exists because the same rule was once applied unevenly.
+    CHECK (score IS NULL OR score_semantics IS NOT NULL),
+    CHECK (probability IS NULL OR probability_semantics IS NOT NULL)
+);
+
+-- Long-form evidence supporting a candidate, or the target as a whole.
+--
+-- evidence_dimension is a CLOSED vocabulary while evidence_kind is free text,
+-- and the asymmetry is deliberate. The phase's separation claim - that VAWLUME
+-- keeps temporal, pose, identity and acoustic evidence apart and combines none
+-- of them - is only checkable if the dimensions are enumerable. The kind is open
+-- for the reason tracking_identity_associations.evidence_kind is open: a closed
+-- vocabulary would force an unfamiliar upstream system into the wrong category.
+--
+-- 'imported_composite' is how somebody else's already-combined score is stored
+-- WITHOUT VAWLUME computing one. Its semantics must say who combined what.
+--
+-- identity_statement_kind closes A-1. An entity link read from external_events
+-- is a user-declared label lookup carrying no evidence kind, no semantics, no
+-- calibration and no review state; a tracking_identity_associations row is
+-- identity evidence. Both may support an attribution claim. Neither may be used
+-- silently, so a row derived from one names which.
+CREATE TABLE attribution_evidence (
+    attribution_evidence_id INTEGER PRIMARY KEY,
+    attribution_target_id INTEGER NOT NULL REFERENCES attribution_targets(attribution_target_id) ON DELETE CASCADE,
+    attribution_candidate_id INTEGER REFERENCES attribution_candidates(attribution_candidate_id) ON DELETE CASCADE,
+    evidence_dimension  TEXT NOT NULL CHECK (evidence_dimension IN (
+                            'temporal_alignment',
+                            'pose_localization',
+                            'visual_identity',
+                            'acoustic',
+                            'correspondence',
+                            'imported_composite'
+                        )),
+    evidence_kind       TEXT NOT NULL,
+    value_real          REAL,
+    value_text          TEXT,
+    value_units         TEXT,
+    value_semantics     TEXT,
+    identity_statement_kind TEXT CHECK (identity_statement_kind IS NULL OR identity_statement_kind IN (
+                            'declared_entity_link',
+                            'identity_association'
+                        )),
+    tracking_identity_association_id INTEGER REFERENCES tracking_identity_associations(tracking_identity_association_id) ON DELETE SET NULL,
+    external_event_id   INTEGER REFERENCES external_events(external_event_id) ON DELETE SET NULL,
+    alignment_run_id    INTEGER REFERENCES time_alignment_runs(alignment_run_id) ON DELETE SET NULL,
+    source_file_id      INTEGER REFERENCES source_files(source_file_id) ON DELETE SET NULL,
+    mapping_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,
+    source_locator      TEXT,
+    notes               TEXT,
+    CHECK (value_real IS NULL OR value_semantics IS NOT NULL),
+    -- An identity-derived row names which kind of statement it rests on, and
+    -- points at the row it read. A-1.
+    CHECK (identity_statement_kind IS NULL
+       OR (identity_statement_kind = 'identity_association'
+            AND tracking_identity_association_id IS NOT NULL)
+       OR (identity_statement_kind = 'declared_entity_link'
+            AND external_event_id IS NOT NULL))
+);
+
+-- The derived decision: distinct from the candidate evidence, and re-derivable
+-- from it.
+--
+-- The UNIQUE is what makes "a completed decision is never rewritten in place"
+-- true. A second decision under the same policy for the same target is refused;
+-- a different policy is a different row, and both stay readable. That is what
+-- lets a later phase compare two policies over one body of evidence.
+--
+-- policy_profile_version_id is NOT NULL because a decision without its policy is
+-- not a decision. applied_threshold is stored ALONGSIDE the policy reference,
+-- not instead of it: the profile version is immutable and carries the full
+-- policy, but a policy may declare several thresholds and the profile alone does
+-- not say which one bound this decision.
+--
+-- No status here means 'validated', and no threshold that ships is calibrated.
+CREATE TABLE attribution_decisions (
+    attribution_decision_id INTEGER PRIMARY KEY,
+    attribution_target_id INTEGER NOT NULL REFERENCES attribution_targets(attribution_target_id) ON DELETE CASCADE,
+    decision_status     TEXT NOT NULL CHECK (decision_status IN (
+                            'assigned',
+                            'unassigned',
+                            'ambiguous',
+                            'simultaneous',
+                            'excluded'
+                        )),
+    policy_profile_version_id INTEGER NOT NULL REFERENCES config_profile_versions(profile_version_id) ON DELETE RESTRICT,
+    applied_threshold   REAL,
+    applied_threshold_semantics TEXT,
+    exclusion_reason    TEXT,
+    decided_at_utc      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+    notes               TEXT,
+    UNIQUE(attribution_target_id, policy_profile_version_id),
+    -- A QC exclusion that does not say why is not a QC record.
+    CHECK (decision_status <> 'excluded' OR exclusion_reason IS NOT NULL),
+    CHECK (applied_threshold IS NULL OR applied_threshold_semantics IS NOT NULL)
+);
+
+-- Which candidates a decision selected.
+--
+-- A decision selects a SET, not a winner. This link table is the whole reason
+-- 'simultaneous' is representable: a single winning_candidate_id column would
+-- have made "two animals called" unsayable and quietly reasserted one caller per
+-- event. The status-to-cardinality correspondence is enforced by trigger, since
+-- it spans tables:
+--
+--   assigned     exactly one selected
+--   simultaneous two or more
+--   ambiguous / unassigned / excluded  none
+CREATE TABLE attribution_decision_candidates (
+    attribution_decision_id INTEGER NOT NULL REFERENCES attribution_decisions(attribution_decision_id) ON DELETE CASCADE,
+    attribution_candidate_id INTEGER NOT NULL REFERENCES attribution_candidates(attribution_candidate_id) ON DELETE CASCADE,
+    selection_role      TEXT,
+    PRIMARY KEY(attribution_decision_id, attribution_candidate_id)
+);
+
+-- The imported system's own vocal windows, in their own table.
+--
+-- This is the boundary the phase is built on. A detections row asserts that an
+-- extractor reported acoustic energy it classified as a vocalization. A row here
+-- asserts that an attribution system claims a caller produced a vocalization
+-- around this time. Different claims, different provenance, different failure
+-- modes.
+--
+-- Representing these as detections of a pseudo-extraction-run would have reused
+-- candidate_pairs, match_groups and matching.compare for almost nothing. It was
+-- rejected because detections feeds every agreement denominator in this schema:
+-- an attribution window inserted there would silently enter extractor-agreement
+-- statistics, describing a population that includes claims no extractor made.
+--
+-- Times are NATIVE and are never overwritten. Expressing them on a VAWLUME clock
+-- produces an attribution_window_correspondences row, not an edit.
+CREATE TABLE imported_attribution_windows (
+    imported_attribution_window_id INTEGER PRIMARY KEY,
+    attribution_run_id  INTEGER NOT NULL REFERENCES attribution_runs(attribution_run_id) ON DELETE CASCADE,
+    recording_id        INTEGER NOT NULL REFERENCES recordings(recording_id) ON DELETE CASCADE,
+    timebase_id         INTEGER REFERENCES timebases(timebase_id) ON DELETE RESTRICT,
+    native_window_id    TEXT,
+    start_time_native   REAL NOT NULL,
+    end_time_native     REAL NOT NULL,
+    source_caller_label TEXT,
+    source_file_id      INTEGER REFERENCES source_files(source_file_id) ON DELETE SET NULL,
+    mapping_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,
+    source_locator      TEXT,
+    notes               TEXT,
+    CHECK (end_time_native >= start_time_native),
+    UNIQUE(attribution_run_id, native_window_id)
+);
+
+-- Links an imported window to a VAWLUME target across differing clocks and IDs.
+--
+-- Ambiguity is preserved: one window may carry correspondences to several
+-- targets, with their scores, and nothing here chooses. A correspondence layer
+-- that picked a winner would destroy the evidence a reviewer needs, which is the
+-- same reasoning the pairwise matching layer already follows.
+--
+-- iou_basis exists because aligned duration is not native duration under a
+-- piecewise clock. An IoU computed on aligned intervals is not the IoU of the
+-- native ones when a breakpoint falls between them, so the stored number says
+-- which it is rather than leaving a reader to assume.
+--
+-- eligibility_rule is attribution's own, never the matching specification's.
+-- Detector-to-detector matching asks whether two detectors found the same call;
+-- this asks whether an attribution claim refers to a call VAWLUME knows about.
+CREATE TABLE attribution_window_correspondences (
+    attribution_window_correspondence_id INTEGER PRIMARY KEY,
+    imported_attribution_window_id INTEGER NOT NULL REFERENCES imported_attribution_windows(imported_attribution_window_id) ON DELETE CASCADE,
+    attribution_target_id INTEGER NOT NULL REFERENCES attribution_targets(attribution_target_id) ON DELETE CASCADE,
+    alignment_run_id    INTEGER REFERENCES time_alignment_runs(alignment_run_id) ON DELETE SET NULL,
+    aligned_start_s     REAL,
+    aligned_end_s       REAL,
+    temporal_overlap_s  REAL CHECK (temporal_overlap_s IS NULL OR temporal_overlap_s >= 0),
+    temporal_iou        REAL CHECK (temporal_iou IS NULL OR (temporal_iou >= 0 AND temporal_iou <= 1)),
+    onset_difference_s  REAL,
+    offset_difference_s REAL,
+    iou_basis           TEXT NOT NULL CHECK (iou_basis IN ('native','aligned')),
+    start_extrapolated  INTEGER CHECK (start_extrapolated IS NULL OR start_extrapolated IN (0,1)),
+    end_extrapolated    INTEGER CHECK (end_extrapolated IS NULL OR end_extrapolated IN (0,1)),
+    eligibility_rule    TEXT NOT NULL,
+    min_temporal_iou    REAL,
+    notes               TEXT,
+    UNIQUE(imported_attribution_window_id, attribution_target_id),
+    CHECK (aligned_end_s IS NULL OR aligned_start_s IS NULL OR aligned_end_s >= aligned_start_s),
+    -- An aligned basis means a transform was applied, so name it.
+    CHECK (iou_basis <> 'aligned' OR alignment_run_id IS NOT NULL)
+);
+-- ============================================================================
+-- 14. Integrity triggers for cross-table invariants SQLite cannot express as CHECKs
 -- ============================================================================
 --
 -- CONVENTION: most cross-table scope guards below fire on INSERT only.
@@ -2431,6 +2772,24 @@ BEGIN
     SELECT RAISE(ABORT, 'Anchor observation event belongs to a stream on a different timebase');
 END;
 
+-- The UPDATE twin. Repointing external_event_id or timebase_id on an existing
+-- observation changes which event the reading claims to be OF, not merely where
+-- the row is filed, so this is one of the invariants the convention above says to
+-- reinforce rather than leave to the insert guard. Closes E-1, carried from
+-- Phase 3, where the schema was frozen for closure and could not take it.
+CREATE TRIGGER trg_anchor_observation_event_timebase_update
+BEFORE UPDATE OF external_event_id, timebase_id ON alignment_anchor_observations
+FOR EACH ROW
+WHEN NEW.external_event_id IS NOT NULL AND NEW.timebase_id <> (
+    SELECT es.timebase_id
+    FROM external_events ee
+    JOIN external_streams es ON es.external_stream_id = ee.external_stream_id
+    WHERE ee.external_event_id = NEW.external_event_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Anchor observation event belongs to a stream on a different timebase');
+END;
+
 -- Identity evidence qualifies an anchor the fitter must treat as identity-
 -- dependent. Attaching it to an observation that does not declare that class would
 -- let visual-identity uncertainty sit beside a device-level anchor, where nothing
@@ -2507,8 +2866,153 @@ BEGIN
     SELECT RAISE(ABORT, 'Alignment set reference timebase belongs to a different project than its recording');
 END;
 
+
+-- --- Caller attribution scope and cardinality guards ------------------------
+
+-- A target's event must belong to the run's recording. Attributing a call in one
+-- recording to a run over another is not a misfiled row, it is a false claim.
+CREATE TRIGGER trg_attribution_target_recording
+BEFORE INSERT ON attribution_targets
+FOR EACH ROW
+WHEN (
+    -- Only once a target is actually named. A BEFORE trigger fires ahead of the
+    -- row's CHECK constraints, so an unguarded scope test here would abort a row
+    -- that names no event at all -- reporting a recording mismatch for a row with
+    -- no recording to mismatch, and masking the constraint that says what is
+    -- really wrong.
+    NEW.detection_id IS NOT NULL
+     OR NEW.consensus_event_id IS NOT NULL
+     OR NEW.agreement_group_id IS NOT NULL
+) AND (
+    SELECT COUNT(*) FROM attribution_runs ar
+    WHERE ar.attribution_run_id = NEW.attribution_run_id
+      AND ar.recording_id = COALESCE(
+          (SELECT d.recording_id FROM detections d WHERE d.detection_id = NEW.detection_id),
+          (SELECT ce.recording_id FROM consensus_events ce WHERE ce.consensus_event_id = NEW.consensus_event_id),
+          (SELECT ag.recording_id FROM agreement_groups ag WHERE ag.agreement_group_id = NEW.agreement_group_id)
+      )
+) = 0
+BEGIN
+    SELECT RAISE(ABORT, 'Attribution target event belongs to a different recording than its run');
+END;
+
+-- A candidate caller must be an entity linked to the run's recording. An
+-- imported label naming an animal that was never in the recording is a data
+-- problem the import path must surface, not a row to create quietly.
+CREATE TRIGGER trg_attribution_candidate_entity_scope
+BEFORE INSERT ON attribution_candidates
+FOR EACH ROW
+WHEN (
+    SELECT COUNT(*)
+    FROM attribution_targets at
+    JOIN attribution_runs ar ON ar.attribution_run_id = at.attribution_run_id
+    JOIN recording_entity_links rel ON rel.recording_id = ar.recording_id
+    WHERE at.attribution_target_id = NEW.attribution_target_id
+      AND rel.entity_id = NEW.entity_id
+) = 0
+BEGIN
+    SELECT RAISE(ABORT, 'Candidate caller is not an entity linked to this recording');
+END;
+
+-- A candidate-level evidence row must belong to the target it names.
+CREATE TRIGGER trg_attribution_evidence_candidate_scope
+BEFORE INSERT ON attribution_evidence
+FOR EACH ROW
+WHEN NEW.attribution_candidate_id IS NOT NULL AND (
+    SELECT COUNT(*) FROM attribution_candidates ac
+    WHERE ac.attribution_candidate_id = NEW.attribution_candidate_id
+      AND ac.attribution_target_id = NEW.attribution_target_id
+) = 0
+BEGIN
+    SELECT RAISE(ABORT, 'Attribution evidence candidate belongs to a different target');
+END;
+
+-- A selected candidate must belong to the decision's own target.
+CREATE TRIGGER trg_attribution_decision_candidate_scope
+BEFORE INSERT ON attribution_decision_candidates
+FOR EACH ROW
+WHEN (
+    SELECT COUNT(*)
+    FROM attribution_decisions ad
+    JOIN attribution_candidates ac
+      ON ac.attribution_target_id = ad.attribution_target_id
+    WHERE ad.attribution_decision_id = NEW.attribution_decision_id
+      AND ac.attribution_candidate_id = NEW.attribution_candidate_id
+) = 0
+BEGIN
+    SELECT RAISE(ABORT, 'Selected candidate belongs to a different attribution target');
+END;
+
+-- The status-to-cardinality rule, which is what makes 'simultaneous' a real
+-- claim rather than a label. Written as an update-time guard on the link table
+-- because the count is only knowable once the selections are in.
+--
+-- Both directions are guarded: adding a selection that contradicts the status,
+-- and changing the status to contradict the selections already recorded.
+CREATE TRIGGER trg_attribution_decision_cardinality_insert
+AFTER INSERT ON attribution_decision_candidates
+FOR EACH ROW
+WHEN (
+    SELECT CASE ad.decision_status
+             WHEN 'assigned' THEN
+               (SELECT COUNT(*) FROM attribution_decision_candidates dc
+                 WHERE dc.attribution_decision_id = NEW.attribution_decision_id) > 1
+             WHEN 'simultaneous' THEN 0
+             ELSE 1
+           END
+    FROM attribution_decisions ad
+    WHERE ad.attribution_decision_id = NEW.attribution_decision_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Decision status does not permit this many selected candidates');
+END;
+
+CREATE TRIGGER trg_attribution_decision_cardinality_update
+BEFORE UPDATE OF decision_status ON attribution_decisions
+FOR EACH ROW
+WHEN (
+    SELECT CASE NEW.decision_status
+             WHEN 'assigned' THEN COUNT(*) <> 1
+             WHEN 'simultaneous' THEN COUNT(*) < 2
+             ELSE COUNT(*) <> 0
+           END
+    FROM attribution_decision_candidates dc
+    WHERE dc.attribution_decision_id = NEW.attribution_decision_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Decision status contradicts the candidates already selected');
+END;
+
+-- A correspondence links a window and a target that belong to the same run.
+CREATE TRIGGER trg_attribution_correspondence_run_scope
+BEFORE INSERT ON attribution_window_correspondences
+FOR EACH ROW
+WHEN (
+    SELECT COUNT(*)
+    FROM imported_attribution_windows iw
+    JOIN attribution_targets at
+      ON at.attribution_run_id = iw.attribution_run_id
+    WHERE iw.imported_attribution_window_id = NEW.imported_attribution_window_id
+      AND at.attribution_target_id = NEW.attribution_target_id
+) = 0
+BEGIN
+    SELECT RAISE(ABORT, 'Correspondence window and target belong to different attribution runs');
+END;
+
+-- An imported window belongs to its run's recording.
+CREATE TRIGGER trg_imported_attribution_window_recording
+BEFORE INSERT ON imported_attribution_windows
+FOR EACH ROW
+WHEN (
+    SELECT COUNT(*) FROM attribution_runs ar
+    WHERE ar.attribution_run_id = NEW.attribution_run_id
+      AND ar.recording_id = NEW.recording_id
+) = 0
+BEGIN
+    SELECT RAISE(ABORT, 'Imported attribution window belongs to a different recording than its run');
+END;
 -- ============================================================================
--- 14. Analysis-ready views
+-- 15. Analysis-ready views
 -- ============================================================================
 
 -- Core call/detection view without multiplying rows by experimental participants.
@@ -3231,8 +3735,127 @@ SELECT
 FROM sequence_members sm
 JOIN sequences s ON s.sequence_id = sm.sequence_id;
 
+
+-- Every reasonable extent of an agreement group, one row per (group, method).
+-- See docs/development/31_caller_attribution_schema.md for what each means and
+-- when to prefer which. VAWLUME computes them all and imposes none: which extent
+-- is scientifically right depends on the question being asked, so the choice
+-- belongs to the analyst and the chosen method is recorded on whatever consumes
+-- it. An agreement group has no intrinsic interval of its own - only members.
+CREATE VIEW v_agreement_group_extent AS
+WITH member_geometry AS (
+    SELECT
+        m.agreement_group_id,
+        d.detection_id,
+        d.start_time_s,
+        d.end_time_s,
+        ev.extractor_id
+    FROM agreement_group_members m
+    JOIN detections d ON d.detection_id = m.detection_id
+    JOIN extraction_runs er ON er.extraction_run_id = d.extraction_run_id
+    JOIN extractor_versions ev ON ev.extractor_version_id = er.extractor_version_id
+),
+group_context AS (
+    SELECT
+        agreement_group_id,
+        COUNT(*)                                       AS member_count,
+        COUNT(DISTINCT extractor_id)                   AS extractor_count,
+        MAX(start_time_s) - MIN(start_time_s)          AS onset_spread_s,
+        MAX(end_time_s)   - MIN(end_time_s)            AS offset_spread_s,
+        MIN(start_time_s)                              AS union_start,
+        MAX(end_time_s)                                AS union_end,
+        MAX(start_time_s)                              AS inter_start,
+        MIN(end_time_s)                                AS inter_end,
+        AVG(start_time_s)                              AS mean_start,
+        AVG(end_time_s)                                AS mean_end
+    FROM member_geometry
+    GROUP BY agreement_group_id
+),
+extremes AS (
+    SELECT
+        g.agreement_group_id,
+        (SELECT lm.start_time_s FROM member_geometry lm
+          WHERE lm.agreement_group_id = g.agreement_group_id
+          ORDER BY (lm.end_time_s - lm.start_time_s) DESC, lm.detection_id ASC
+          LIMIT 1)                                     AS longest_start,
+        (SELECT lm.end_time_s FROM member_geometry lm
+          WHERE lm.agreement_group_id = g.agreement_group_id
+          ORDER BY (lm.end_time_s - lm.start_time_s) DESC, lm.detection_id ASC
+          LIMIT 1)                                     AS longest_end,
+        (SELECT lm.detection_id FROM member_geometry lm
+          WHERE lm.agreement_group_id = g.agreement_group_id
+          ORDER BY (lm.end_time_s - lm.start_time_s) DESC, lm.detection_id ASC
+          LIMIT 1)                                     AS longest_detection_id,
+        (SELECT sm.start_time_s FROM member_geometry sm
+          WHERE sm.agreement_group_id = g.agreement_group_id
+          ORDER BY (sm.end_time_s - sm.start_time_s) ASC, sm.detection_id ASC
+          LIMIT 1)                                     AS shortest_start,
+        (SELECT sm.end_time_s FROM member_geometry sm
+          WHERE sm.agreement_group_id = g.agreement_group_id
+          ORDER BY (sm.end_time_s - sm.start_time_s) ASC, sm.detection_id ASC
+          LIMIT 1)                                     AS shortest_end,
+        (SELECT sm.detection_id FROM member_geometry sm
+          WHERE sm.agreement_group_id = g.agreement_group_id
+          ORDER BY (sm.end_time_s - sm.start_time_s) ASC, sm.detection_id ASC
+          LIMIT 1)                                     AS shortest_detection_id
+    FROM group_context g
+)
+SELECT agreement_group_id, extent_method, representative_detection_id,
+       start_time_s, end_time_s, extent_is_empty, gap_s,
+       member_count, extractor_count, onset_spread_s, offset_spread_s
+FROM (
+    SELECT g.agreement_group_id,
+           'union_boundary_of_members' AS extent_method,
+           NULL                        AS representative_detection_id,
+           g.union_start               AS start_time_s,
+           g.union_end                 AS end_time_s,
+           0                           AS extent_is_empty,
+           NULL                        AS gap_s,
+           g.member_count, g.extractor_count, g.onset_spread_s, g.offset_spread_s
+    FROM group_context g
+
+    UNION ALL
+
+    SELECT g.agreement_group_id,
+           'intersection_boundary_of_members',
+           NULL,
+           CASE WHEN g.inter_end >= g.inter_start THEN g.inter_start ELSE NULL END,
+           CASE WHEN g.inter_end >= g.inter_start THEN g.inter_end   ELSE NULL END,
+           CASE WHEN g.inter_end >= g.inter_start THEN 0 ELSE 1 END,
+           CASE WHEN g.inter_end >= g.inter_start THEN NULL
+                ELSE g.inter_start - g.inter_end END,
+           g.member_count, g.extractor_count, g.onset_spread_s, g.offset_spread_s
+    FROM group_context g
+
+    UNION ALL
+
+    SELECT g.agreement_group_id,
+           'mean_boundary_of_members',
+           NULL,
+           g.mean_start, g.mean_end, 0, NULL,
+           g.member_count, g.extractor_count, g.onset_spread_s, g.offset_spread_s
+    FROM group_context g
+
+    UNION ALL
+
+    SELECT g.agreement_group_id,
+           'longest_member_boundary',
+           e.longest_detection_id,
+           e.longest_start, e.longest_end, 0, NULL,
+           g.member_count, g.extractor_count, g.onset_spread_s, g.offset_spread_s
+    FROM group_context g JOIN extremes e USING(agreement_group_id)
+
+    UNION ALL
+
+    SELECT g.agreement_group_id,
+           'shortest_member_boundary',
+           e.shortest_detection_id,
+           e.shortest_start, e.shortest_end, 0, NULL,
+           g.member_count, g.extractor_count, g.onset_spread_s, g.offset_spread_s
+    FROM group_context g JOIN extremes e USING(agreement_group_id)
+);
 -- ============================================================================
--- 15. Indexes for expected prototype queries
+-- 16. Indexes for expected prototype queries
 -- ============================================================================
 
 -- SQLite UNIQUE constraints treat NULL values as distinct. These expression/partial
@@ -3383,5 +4006,16 @@ CREATE INDEX idx_channel_response_estimates_run
                                   metric_definition_id, reference_type);
 CREATE INDEX idx_channel_response_estimate_sources_measurement
     ON channel_response_estimate_sources(derived_measurement_id);
+
+-- Caller attribution. These follow the foreign keys the read surface joins on.
+-- None is justified against a representative workload, because none exists.
+CREATE INDEX idx_attribution_targets_run ON attribution_targets(attribution_run_id);
+CREATE INDEX idx_attribution_candidates_target ON attribution_candidates(attribution_target_id);
+CREATE INDEX idx_attribution_evidence_target ON attribution_evidence(attribution_target_id);
+CREATE INDEX idx_attribution_evidence_candidate ON attribution_evidence(attribution_candidate_id);
+CREATE INDEX idx_attribution_decisions_target ON attribution_decisions(attribution_target_id);
+CREATE INDEX idx_imported_attribution_windows_run ON imported_attribution_windows(attribution_run_id);
+CREATE INDEX idx_attribution_window_correspondences_target
+    ON attribution_window_correspondences(attribution_target_id);
 
 COMMIT;

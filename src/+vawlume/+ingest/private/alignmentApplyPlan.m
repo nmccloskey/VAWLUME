@@ -435,9 +435,14 @@ for index = 1:height(ir.anchor_observations)
         included_in_fit=inclusionOf(row), ...
         source_locator=presentText(row.source_locator(1)), ...
         notes=presentText(row.mapping_rule(1)));
+    % A recorded reading uncertainty carries its semantics or is not stored. The
+    % manifest field has one documented meaning -- the anchor reading uncertainty
+    % whoever wrote the manifest is declaring -- so intake names that rather than
+    % leaving a bare number whose scale a later reader would have to guess.
     uncertainty = double(row.uncertainty_s(1));
     if ~isnan(uncertainty)
         values.uncertainty_s = uncertainty;
+        values.uncertainty_semantics = "declared_anchor_reading_uncertainty_s";
     end
     % Written only when the source declared one. An observation whose class
     % was never stated stays NULL, which is distinguishable from a declared

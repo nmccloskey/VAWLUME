@@ -15,8 +15,8 @@ cleanupDb = onCleanup(@() cleanupDatabase(conn, dbFile));
 summary = vawlume.db.applySchema(conn, fullfile(repoRoot, "schema", "schema.sql"));
 
 verifyGreaterThan(testCase, summary.statements_executed, 0);
-verifyEqual(testCase, string(firstValue(conn, "SELECT schema_version FROM schema_info")), "0.8-draft");
-verifyEqual(testCase, double(firstValue(conn, "PRAGMA user_version")), 8);
+verifyEqual(testCase, string(firstValue(conn, "SELECT schema_version FROM schema_info")), "0.9-draft");
+verifyEqual(testCase, double(firstValue(conn, "PRAGMA user_version")), 9);
 verifyEqual(testCase, double(firstValue(conn, "PRAGMA foreign_keys")), 1);
 verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
 
@@ -70,6 +70,14 @@ expectedTables = [
     "alignment_anchor_residuals"
     "alignment_segments"
     "aligned_external_events"
+    "attribution_runs"
+    "attribution_targets"
+    "attribution_candidates"
+    "attribution_evidence"
+    "attribution_decisions"
+    "attribution_decision_candidates"
+    "imported_attribution_windows"
+    "attribution_window_correspondences"
 ];
 expectedViews = [
     "v_detection_core"
@@ -84,6 +92,7 @@ expectedViews = [
     "v_feature_relationship_endpoints"
     "v_external_events_aligned"
     "v_sequence_members"
+    "v_agreement_group_extent"
 ];
 
 verifyTrue(testCase, all(ismember(expectedTables, sqliteObjects(conn, "table"))));

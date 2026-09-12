@@ -6,9 +6,10 @@ Design contract for **Phase 4 — caller-attribution representation and the gene
 imported path**. Written by itinerary 4.1 before any Phase 4 code exists, so that
 the decisions below are made once rather than negotiated by each later itinerary.
 
-Schema at the time of writing: `0.8-draft` (`PRAGMA user_version = 8`). Phase 4
-expects one bump, to `0.9-draft` (`PRAGMA user_version = 9`), owned by itinerary
-4.2.
+Written against schema `0.8-draft` (`PRAGMA user_version = 8`). Itinerary 4.2
+applied Phase 4's single bump, so the live schema is now `0.9-draft`
+(`PRAGMA user_version = 9`). D1 was revised at 4.2 on user direction; the revision
+is marked where it appears.
 
 This contract governs what caller attribution **means** in VAWLUME and what its
 representation must keep distinguishable. It does not describe an estimator.
@@ -144,22 +145,38 @@ keep consistent and a new way for a row to contradict itself. `manual_reviews` a
 **Match groups are not targetable.** A match group is a proposed correspondence
 between detections, not an event. Attribution targets events.
 
-**Agreement-group targeting is represented but not implemented in Phase 4.** The
-column and the CHECK arm exist from 4.2, because the schema opens once this phase
-and because doc 22 requires the three event sets stay distinguishable. Resolution is
-implemented for detections and consensus events only (4.4).
+**Agreement-group targeting is supported, and the target names which extent it
+used.** `agreement_groups` has **no time columns**: its extent is derived from its
+members, and there is more than one defensible derivation.
 
-The reason is concrete: `agreement_groups` has **no time columns**. Its extent is
-derived from its members, and there is more than one defensible derivation — the
-union of member intervals, their intersection, or the extent of a designated
-representative. Choosing one here, with no consumer to test it against, would be a
-guess frozen into a schema. The first consumer that needs an agreement-group target
-chooses the rule and states it.
+This contract's first draft deferred the whole question, reasoning that choosing
+one derivation with no consumer to test it against would freeze a guess into the
+schema. That reasoning was sound about *choosing*, and wrong about the alternative
+being deferral. **Revised at 4.2 on user direction:** VAWLUME exists to enable
+analytical opportunities without imposing decisions, and where several derivations
+are each defensible, the program computes all reasonable ones, documents what each
+means, and lets the analyst pick the one whose scientific meaning fits the question
+being asked.
 
-This follows the repository's established practice of representing a distinction
-before implementing it, the same practice that keeps `validated` in the alignment
-status vocabulary so that *"a fit is estimated, never validated"* has a contrasting
-term to be stated against.
+So `v_agreement_group_extent` computes five extents per group — union,
+intersection, mean, longest member, shortest member — and
+`attribution_targets.agreement_extent_method` records which one a target used,
+required for a group target and refused for any other. The extent method is part of
+naming the denominator, exactly as the event set is: two attribution runs over the
+same groups under different extents are answering different questions, and a result
+that did not say which would be uncomparable.
+
+The view is derived and never stored, following the repository's rule that a
+quantity recomputable from its authority does not get a second home.
+
+**This generalizes.** Where VAWLUME faces a choice among several scientifically
+defensible derivations of the same underlying rows, the default is to compute and
+document the alternatives rather than to pick one or to defer. The limit is
+usefulness, not completeness: an option nobody could state a reason for preferring
+is noise, and the documentation must say what each option is *for*. The consilience
+layer's existing shape is the model — it generates the labels and quantities that
+let a user ask how a result moves across criteria, instead of answering at one
+criterion and calling it the answer.
 
 ### D2. An attribution run is immutable once complete
 
@@ -461,7 +478,6 @@ is a legitimate outcome, and Phase 4 is an instance of it.
 - a UniversalMatcher, or merging detector-to-detector matching with
   caller-estimate-to-call matching;
 - spectral correspondence, which no Phase 4 consumer needs;
-- agreement-group targeting (D1), pending a consumer that chooses an extent rule;
 - cross-path comparison or sensitivity analysis over attribution results (Phase 7);
 - raw-video ingestion, pose estimation, or image-based re-identification;
 - dense tracking-sample or dense identity materialization;
