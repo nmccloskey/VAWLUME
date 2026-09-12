@@ -327,7 +327,8 @@ Enforced by the database, each with a probe in
 
 - that a set's source transforms cover every stream the manifest named;
 - that `n_anchors_used`, `fit_rmse_s`, and `max_error_s` agree with the stored
-  residuals — the schema stores both but cannot compute one from the other;
+  residuals — the schema stores both but cannot compute one from the other.
+  **Covered by regression test** in `test_alignment_piecewise_fitting.m`;
 - that `alignment_segments` for a `piecewise_affine` run tile the source range
   without gaps or overlaps;
 - that an anchor observed on a clock with no transform in the set is either
@@ -335,7 +336,11 @@ Enforced by the database, each with a probe in
 - that a cached `aligned_external_events` row still matches its transform;
 - that the segments of a `piecewise_affine` run tile the source range without
   gaps or overlaps, and that `fit` and `applyTransform` resolve a breakpoint
-  instant to the same segment;
+  instant to the same segment. **Discharged**: tiling is refused on write by
+  `vawlume.alignment.internal.assertSegmentsTile`, and both layers select
+  segments through the single implementation in
+  `vawlume.alignment.internal.evaluateSegments`. Still not database-enforced,
+  because SQLite cannot express it across rows;
 - that declared breakpoints are strictly increasing and lie inside the anchored
   source span — SQLite cannot see sibling rows from a CHECK;
 - that a segment's uncertainty is derived only from the anchors that determined

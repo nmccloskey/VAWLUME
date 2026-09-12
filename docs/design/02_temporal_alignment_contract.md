@@ -270,10 +270,10 @@ alignment robustification](#phase-3--alignment-robustification).
 | Layer | State |
 | --- | --- |
 | `solveTransform` | **Implemented** (3.4). Continuous segments over declared breakpoints; every unsupportable configuration raises a named error and none falls back to affine |
-| `fit` | Refuses, pending 3.5. A piecewise run is planned as unsupported |
+| `fit` | **Implemented** (3.5). Declared breakpoints are persisted, segments tile on write, and an unsupportable request is recorded as `failed` with a code |
 | `applyTransform` | Refuses more than one stored segment, pending 3.6 |
 
-So a piecewise transform can be solved today and cannot yet be persisted or
+So a piecewise transform can be solved and stored today and cannot yet be
 applied. That is a deliberate staging, not an inconsistency, and each layer says
 so at its own boundary.
 

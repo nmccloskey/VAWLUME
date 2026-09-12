@@ -15,14 +15,23 @@ plan.options = options;
 plan.runs = resolveRuns(conn, plan.set, options.SourceTimebase);
 plan.anchors_without_transform = clocksWithAnchorsButNoTransform(conn, plan.set);
 plan.conflicts = strings(0, 1);
+plan.failures = strings(0, 1);
 
+% A conflict is a disagreement with what is already stored, and blocks the
+% whole apply because writing over it would rewrite history. A failure is one
+% transform's own outcome: it is recorded on that transform and leaves the
+% others alone, so one clock's missing evidence does not take a session down.
 for index = 1:numel(plan.runs)
-    plan.runs(index) = resolveRunFit(conn, plan.set, plan.runs(index));
+    plan.runs(index) = resolveRunFit(conn, plan.set, plan.runs(index), options);
     if strlength(plan.runs(index).conflict_message) > 0
         plan.conflicts(end + 1, 1) = plan.runs(index).conflict_message;
     end
+    if strlength(plan.runs(index).failure_reason) > 0
+        plan.failures(end + 1, 1) = plan.runs(index).failure_reason;
+    end
 end
 plan.has_conflicts = ~isempty(plan.conflicts);
+plan.has_failures = ~isempty(plan.failures);
 end
 
 % ------------------------------------------------------------------- scope ---
@@ -120,43 +129,44 @@ end
 
 % ------------------------------------------------------------ anchor pairing ---
 
-function run = resolveRunFit(conn, set, run)
+function run = resolveRunFit(conn, set, run, options)
 %RESOLVERUNFIT Pair anchors by identity, solve, and classify against storage.
 [run.anchors, run.unpaired_anchors] = resolveAnchorPairs(conn, set, run);
 run.fit_anchor_count = nnz(run.anchors.included_in_fit == 1);
 run.withheld_anchor_count = nnz(run.anchors.included_in_fit == 0);
+run.stored_breakpoints = storedBreakpoints(conn, run);
 
-if run.method == "piecewise_affine"
-    run.action = "unsupported";
-    run.conflict_message = "Transform for source timebase '" + ...
-        run.source_timebase_key + "' declares method 'piecewise_affine', " + ...
-        "which this prototype does not fit.";
+if run.fit_anchor_count == 0
+    run = markFailed(run, "InsufficientAnchors", ...
+        "has no logical anchor with one included observation on both clocks");
     return
 end
 
-if run.fit_anchor_count == 0
-    run.action = "not_fit_ready";
-    run.failure_code = "InsufficientAnchors";
-    run.conflict_message = "Transform for source timebase '" + ...
-        run.source_timebase_key + "' has no logical anchor with one included " + ...
-        "observation on both clocks.";
-    return
+if run.method == "piecewise_affine"
+    [run, ready] = resolveBreakpoints(run, options);
+    if ~ready
+        return
+    end
 end
 
 included = run.anchors(run.anchors.included_in_fit == 1, :);
 try
-    run.fit = vawlume.alignment.solveTransform(run.method, ...
-        included.observed_source_time, included.observed_reference_time);
+    if run.method == "piecewise_affine"
+        run.fit = vawlume.alignment.solveTransform(run.method, ...
+            included.observed_source_time, included.observed_reference_time, ...
+            Breakpoints=run.breakpoints);
+    else
+        run.fit = vawlume.alignment.solveTransform(run.method, ...
+            included.observed_source_time, included.observed_reference_time);
+    end
 catch exception
-    run.action = "not_fit_ready";
-    run.failure_code = extractAfter(string(exception.identifier), ...
-        "vawlume:alignment:");
-    run.conflict_message = "Transform for source timebase '" + ...
-        run.source_timebase_key + "' cannot be fitted: " + string(exception.message);
+    run = markFailed(run, failureCodeOf(exception), ...
+        "cannot be fitted: " + string(exception.message));
     return
 end
 
-run.anchors = applyPredictions(run.anchors, run.fit);
+run.segments = segmentEvidence(run.fit, included);
+run.anchors = applyPredictions(run.anchors, run.segments);
 run.scale = run.fit.scale;
 run.offset_s = run.fit.offset_s;
 run.rmse_s = run.fit.rmse_s;
@@ -166,12 +176,136 @@ run.max_abs_residual_s = run.fit.max_abs_residual_s;
 % describe it; they never feed back into it.
 run.diagnostics = anchorDiagnostics(included);
 influence = leaveOneOutInfluence(run.method, included.observed_source_time, ...
-    included.observed_reference_time, run.fit);
+    included.observed_reference_time, run.fit, run.breakpoints);
 includedRows = find(run.anchors.included_in_fit == 1);
 run.anchors.loo_scale_delta(includedRows) = influence.scale_delta;
 run.anchors.loo_offset_delta_s(includedRows) = influence.offset_delta_s;
 
 run = classifyAgainstStorage(conn, run);
+end
+
+% ------------------------------------------------------------- breakpoints ---
+
+function value = storedBreakpoints(conn, run)
+%STOREDBREAKPOINTS The declared segmentation a transform already carries.
+rows = fetch(conn, "SELECT source_time FROM alignment_run_breakpoints " + ...
+    "WHERE alignment_run_id=" + string(run.alignment_run_id) + ...
+    " ORDER BY breakpoint_index");
+if isempty(rows) || height(rows) == 0
+    value = double.empty(0, 1);
+    return
+end
+value = double(rows.source_time);
+value = value(:);
+end
+
+function [run, ready] = resolveBreakpoints(run, options)
+%RESOLVEBREAKPOINTS Reconcile what is stored with what the caller declared.
+%
+% A declared breakpoint set is part of the model's identity, so a stored set and
+% a different requested set are two alignments rather than one being corrected.
+ready = false;
+requested = options.Breakpoints(:);
+restricted = strlength(options.SourceTimebase) > 0;
+
+if ~isempty(requested) && ~restricted
+    % Breakpoints are a claim about one clock. Applying one caller's set to
+    % every piecewise transform in a set would attribute a drift regime to
+    % clocks that never showed it.
+    error("vawlume:alignment:BreakpointsInvalid", ...
+        ['Breakpoints describe one source clock, so SourceTimebase must name ' ...
+        'the transform they belong to.']);
+end
+
+if ~isempty(run.stored_breakpoints) && ~isempty(requested)
+    if numel(requested) ~= numel(run.stored_breakpoints) || ...
+            any(abs(sort(requested) - run.stored_breakpoints) > 0)
+        run = markConflict(run, ...
+            "already declares breakpoints [" + ...
+            join(compose("%g", run.stored_breakpoints'), ", ") + ...
+            "]. A different segmentation is a different alignment, not a " + ...
+            "correction to this one");
+        return
+    end
+end
+
+if ~isempty(run.stored_breakpoints)
+    run.breakpoints = run.stored_breakpoints;
+elseif ~isempty(requested)
+    run.breakpoints = sort(requested);
+else
+    run = markFailed(run, "BreakpointsRequired", ...
+        ['declares method piecewise_affine but no breakpoints. VAWLUME does ' ...
+        'not search for them: declare where the segments meet']);
+    return
+end
+ready = true;
+end
+
+% -------------------------------------------------------- segment evidence ---
+
+function value = segmentEvidence(fit, included)
+%SEGMENTEVIDENCE Per-segment fit quality and the anchor-uncertainty bound.
+%
+% The bound is the largest recorded anchor uncertainty among the anchors that
+% determined this segment, expressed on the reference clock. It is not a
+% confidence interval, a standard error, or a probability, and the semantics
+% string it is stored beside says so.
+%
+% Absence propagates as absence: a segment whose contributing anchors recorded no
+% uncertainty carries NaN, never 0, which would claim perfect knowledge.
+value = fit.segments;
+count = height(value);
+value.rmse_s = nan(count, 1);
+value.uncertainty_s = nan(count, 1);
+
+index = fit.segment_index(:);
+sourceUncertainty = double(included.source_uncertainty_s);
+referenceUncertainty = double(included.reference_uncertainty_s);
+residual = fit.residual_s(:);
+
+for segment = 1:count
+    rows = index == segment;
+    if ~any(rows)
+        continue
+    end
+    value.rmse_s(segment) = sqrt(mean(residual(rows) .^ 2));
+    % A source-clock uncertainty is a duration on the source clock; scale is
+    % exactly the factor that expresses it on the reference clock.
+    bounds = [value.scale(segment) * sourceUncertainty(rows); ...
+        referenceUncertainty(rows)];
+    bounds = bounds(~isnan(bounds));
+    if ~isempty(bounds)
+        value.uncertainty_s(segment) = max(bounds);
+    end
+end
+end
+
+% ----------------------------------------------------------------- outcome ---
+
+function run = markFailed(run, code, detail)
+%MARKFAILED A transform that was attempted and could not be honoured.
+%
+% Distinct from a conflict. A failure is this transform's own outcome and is
+% recorded on it; a conflict is a disagreement with what is already stored and
+% blocks the whole apply, because writing over it would rewrite history.
+run.action = "not_fit_ready";
+run.failure_code = code;
+run.failure_reason = "Transform for source timebase '" + ...
+    run.source_timebase_key + "' " + detail + ".";
+end
+
+function run = markConflict(run, detail)
+run.action = "conflict";
+run.conflict_message = "Transform for source timebase '" + ...
+    run.source_timebase_key + "' " + detail + ".";
+end
+
+function value = failureCodeOf(exception)
+value = string(exception.identifier);
+if startsWith(value, "vawlume:alignment:")
+    value = extractAfter(value, "vawlume:alignment:");
+end
 end
 
 function [value, unpaired] = resolveAnchorPairs(conn, set, run)
@@ -287,8 +421,14 @@ value = struct( ...
     uncertainty_s=uncertainty);
 end
 
-function value = applyPredictions(value, fit)
-predicted = fit.scale * value.observed_source_time + fit.offset_s;
+function value = applyPredictions(value, segments)
+%APPLYPREDICTIONS Evaluate the fitted segmentation at every paired anchor.
+%
+% Withheld anchors are predicted too, so a held-out reading still receives a
+% residual against the transform it did not help produce. The shared segment
+% evaluator is used rather than a local formula, so the fitter and the applier
+% cannot disagree about which segment owns a boundary instant.
+predicted = vawlume.alignment.internal.evaluateSegments(segments, value.observed_source_time);
 value.predicted_reference_time = predicted;
 value.residual_s = value.observed_reference_time - predicted;
 end
@@ -324,7 +464,7 @@ end
 value.max_deviation_s = max(abs(times - selected(1)));
 end
 
-function value = leaveOneOutInfluence(method, sourceTimes, referenceTimes, fit)
+function value = leaveOneOutInfluence(method, sourceTimes, referenceTimes, fit, knots)
 %LEAVEONEOUTINFLUENCE How far the coefficients move when one anchor is dropped.
 %
 % Reported, never acted on. This says how much a fit leans on one reading; it
@@ -348,13 +488,23 @@ for index = 1:count
     keep = true(count, 1);
     keep(index) = false;
     try
-        reduced = vawlume.alignment.solveTransform(method, ...
-            sourceTimes(keep), referenceTimes(keep));
+        if method == "piecewise_affine"
+            reduced = vawlume.alignment.solveTransform(method, ...
+                sourceTimes(keep), referenceTimes(keep), Breakpoints=knots);
+        else
+            reduced = vawlume.alignment.solveTransform(method, ...
+                sourceTimes(keep), referenceTimes(keep));
+        end
     catch
         continue
     end
-    value.scale_delta(index) = reduced.scale - fit.scale;
-    value.offset_delta_s(index) = reduced.offset_s - fit.offset_s;
+    % A piecewise transform has no single slope, so influence is reported
+    % against the segment the dropped anchor belonged to.
+    segment = fit.segment_index(index);
+    value.scale_delta(index) = reduced.segments.scale(segment) - ...
+        fit.segments.scale(segment);
+    value.offset_delta_s(index) = reduced.segments.offset_s(segment) - ...
+        fit.segments.offset_s(segment);
 end
 end
 
@@ -440,45 +590,61 @@ end
 
 function run = classifyAgainstStorage(conn, run)
 %CLASSIFYAGAINSTSTORAGE A completed fit is never rewritten in place.
-segments = fetch(conn, "SELECT segment_index, scale, offset_s, " + ...
-    "IFNULL(rmse_s,-1) AS rmse_s FROM alignment_segments " + ...
-    "WHERE alignment_run_id=" + string(run.alignment_run_id) + ...
-    " ORDER BY segment_index");
-if height(segments) == 0
+stored = fetch(conn, "SELECT segment_index, " + ...
+    "IFNULL(source_start, 1e308) AS source_start, " + ...
+    "IFNULL(source_end, 1e308) AS source_end, scale, offset_s " + ...
+    "FROM alignment_segments WHERE alignment_run_id=" + ...
+    string(run.alignment_run_id) + " ORDER BY segment_index");
+if height(stored) == 0
     if run.stored_status == "registered"
         run.action = "create";
     else
-        run.action = "conflict";
-        run.conflict_message = "Transform for source timebase '" + ...
-            run.source_timebase_key + "' has status '" + run.stored_status + ...
-            "' but stores no segment; refitting would invent a history.";
+        run = markConflict(run, "has status '" + run.stored_status + ...
+            "' but stores no segment; refitting would invent a history");
     end
     return
 end
-if height(segments) > 1
-    run.action = "conflict";
-    run.conflict_message = "Transform for source timebase '" + ...
-        run.source_timebase_key + "' stores " + string(height(segments)) + ...
-        " segments; piecewise transforms are not fitted or refitted here.";
+
+if height(stored) ~= height(run.segments)
+    run = markConflict(run, "stores " + string(height(stored)) + ...
+        " segments and this fit produces " + string(height(run.segments)) + ...
+        ". A different segmentation is a different alignment identity");
     return
 end
 
-storedScale = double(segments.scale(1));
-storedOffset = double(segments.offset_s(1));
-if agrees(storedScale, run.scale) && agrees(storedOffset, run.offset_s)
-    run.action = "reuse";
-    return
+for index = 1:height(stored)
+    if ~agrees(double(stored.scale(index)), run.segments.scale(index)) || ...
+            ~agrees(double(stored.offset_s(index)), run.segments.offset_s(index)) || ...
+            ~boundAgrees(double(stored.source_start(index)), run.segments.source_start(index)) || ...
+            ~boundAgrees(double(stored.source_end(index)), run.segments.source_end(index))
+        run = markConflict(run, "is already fitted with segment " + ...
+            string(index) + " at scale " + string(double(stored.scale(index))) + ...
+            " and offset " + string(double(stored.offset_s(index))) + ...
+            " s. A different result means different inputs or a different " + ...
+            "method, which needs a new alignment identity rather than an overwrite");
+        return
+    end
 end
-run.action = "conflict";
-run.conflict_message = "Transform for source timebase '" + ...
-    run.source_timebase_key + "' is already fitted with scale " + ...
-    string(storedScale) + " and offset " + string(storedOffset) + ...
-    " s. A different result means different inputs or a different method, " + ...
-    "which needs a new alignment identity rather than an overwrite.";
+run.action = "reuse";
 end
 
 function value = agrees(stored, computed)
 value = abs(stored - computed) <= 1e-12 * max(1, abs(computed));
+end
+
+function value = boundAgrees(stored, computed)
+%BOUNDAGREES An open bound reads back as the sentinel this query substitutes.
+%
+% SQL NULL cannot be fetched into a double column through the Database Toolbox
+% without the IFNULL above, so an open bound arrives as 1e308. Comparing that to
+% NaN directly would report disagreement on every well-formed open segment.
+storedOpen = stored >= 1e307;
+computedOpen = isnan(computed);
+if storedOpen || computedOpen
+    value = storedOpen && computedOpen;
+    return
+end
+value = agrees(stored, computed);
 end
 
 % ---------------------------------------------------------------- plumbing ---
@@ -490,7 +656,16 @@ value = struct(alignment_run_id=NaN, source_timebase_id=NaN, ...
     unpaired_anchors=emptyUnpairedTable(), diagnostics=emptyDiagnostics(), ...
     fit=struct(), fit_anchor_count=0, withheld_anchor_count=0, scale=NaN, ...
     offset_s=NaN, rmse_s=NaN, max_abs_residual_s=NaN, action="create", ...
-    failure_code="", conflict_message="");
+    breakpoints=double.empty(0, 1), stored_breakpoints=double.empty(0, 1), ...
+    segments=emptySegmentTable(), ...
+    failure_code="", failure_reason="", conflict_message="");
+end
+
+function value = emptySegmentTable()
+value = table(zeros(0, 1), zeros(0, 1), zeros(0, 1), zeros(0, 1), ...
+    zeros(0, 1), zeros(0, 1), zeros(0, 1), zeros(0, 1), ...
+    VariableNames=["segment_index", "source_start", "source_end", "scale", ...
+    "offset_s", "anchor_count", "rmse_s", "uncertainty_s"]);
 end
 
 function value = emptyAnchorTable()

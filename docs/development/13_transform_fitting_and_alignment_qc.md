@@ -18,7 +18,7 @@ no timeline is regularized here; a caller asks for aligned times explicitly.
 
 ```matlab
 result = vawlume.alignment.solveTransform(method, sourceTimes, referenceTimes, Breakpoints=knots)
-plan   = vawlume.alignment.fit(conn, alignmentRef)
+plan   = vawlume.alignment.fit(conn, alignmentRef, Breakpoints=knots, SourceTimebase=key)
 result = vawlume.alignment.fit(conn, alignmentRef, Apply=true)
 value  = vawlume.alignment.report(conn, alignmentRef)
 [aligned, transform] = vawlume.alignment.applyTransform(conn, alignmentRunId, nativeTimes)
@@ -341,13 +341,85 @@ from the alignment analysis run, the set, the two clocks, the method, the manife
 and mapping-profile checksums registration recorded, and the specific observation
 IDs named in each residual row.
 
+## Persisting a piecewise fit
+
+`fit` takes the breakpoints with `Breakpoints=`, and **`SourceTimebase` must name
+the transform they belong to**. A breakpoint is a claim about one clock;
+broadcasting one caller's set across every piecewise transform in a set would
+attribute a drift regime to clocks that never showed it.
+
+Apply persists the declared set in `alignment_run_breakpoints`, so the fit stays
+reconstructable from the database alone: the same anchors under a different
+segmentation give a different answer, which makes the set part of what produced
+the coefficients. A later `fit` on the same transform **reuses the stored
+declaration** and needs no restatement.
+
+Segments are written one row per segment with their bounds, per-segment `rmse_s`,
+and a per-segment uncertainty bound. Offset and affine write one segment open at
+both ends, so the table has one shape whatever the method was.
+
+### Tiling is enforced on write
+
+`vawlume.alignment.internal.assertSegmentsTile` refuses any segmentation that
+gaps, overlaps, misnumbers its segments, or bounds its first or last segment.
+Nothing reaches `alignment_segments` without passing it.
+
+`11_temporal_alignment_schema.md` lists tiling as an obligation the database
+cannot express across rows. It is still not database-enforced — it is
+application-enforced, in one place, with a regression test that fails if the
+guard is removed.
+
+`vawlume.alignment.internal.evaluateSegments` is the single implementation of
+segment selection. The fitter predicts anchors through it and the applier reads
+through it, so the two cannot disagree about which segment owns a breakpoint
+instant. They are an internal package rather than `private/` because MATLAB
+refuses a private directory on the path, which would leave both untestable.
+
+### Refit identity, with breakpoints
+
+| Situation | Behaviour |
+| --- | --- |
+| No stored breakpoints, none declared | `failed` with `BreakpointsRequired` |
+| Stored breakpoints, none declared | the stored set is reused |
+| Stored breakpoints, the same set declared | reuse |
+| Stored breakpoints, a different set declared | conflict; needs a new alignment identity |
+| Stored segments differ in number or coefficients from the refit | conflict |
+
+## Failures are recorded, not merely reported
+
+A **conflict** is a disagreement with what is already stored. It blocks the whole
+apply, because writing over it would rewrite history.
+
+A **failure** is one transform's own outcome: it was attempted and could not be
+honoured. It is recorded on that transform as `status = 'failed'` with a
+`failure_code` and `failure_reason`, and it leaves the other transforms alone, so
+one clock's missing evidence does not take a session down with it.
+
+Without this a run that was tried and could not be fitted would be
+indistinguishable from one nobody attempted: both would sit at `registered` with
+no segments.
+
+A set is `fitted` only when every one of its transforms is `estimated`. A set
+holding a failed transform stays `draft`, because a partial outcome that reads as
+a complete one is exactly the distinction the status vocabulary exists to keep.
+
 ## Transactions
 
-Fit apply requires an AutoCommit connection, disables AutoCommit, writes every
-segment, residual, run summary, and the set status, then commits. Any exception
-rolls back and restores the original AutoCommit state before rethrowing. A
-failure part way through leaves no segment, no residual, and every run still
-`registered`.
+Fit apply requires an AutoCommit connection, disables AutoCommit, writes the
+segments, breakpoints and residuals, sets the run and set statuses, then commits.
+Any exception rolls back the inserted rows and restores the original AutoCommit
+state before rethrowing.
+
+**Status updates are not covered by that transaction, and this is a real
+limitation rather than a simplification.** Under the MATLAB `sqlite` interface an
+UPDATE issued through `execute` runs outside the transaction `sqlwrite` opens: it
+takes effect immediately, and a rollback does not undo it. An explicit `BEGIN` is
+refused by the driver, which reports that a transaction is already in progress.
+
+Writes are therefore ordered so that the rows a status claims exist are inserted
+before the status is set. The worst reachable failure mode is a run still marked
+`registered` beside rows that describe it — visible and repairable — rather than
+a run claiming a fit whose evidence was rolled back out from under it.
 
 ## Applying a transform
 
@@ -375,6 +447,11 @@ transform of record.
   implemented at all.
 - Piecewise segments are continuous by construction. A clock discontinuity has no
   representation here.
+- Breakpoints reach `fit` only as a call argument. A session manifest cannot yet
+  declare them.
+- A fitted piecewise transform cannot yet be applied: `applyTransform` still
+  refuses more than one stored segment.
+- Run and set status updates are outside the apply transaction; see Transactions.
 - Unweighted least squares; recorded uncertainty is not a weight.
 - No outlier detection, and no automatic exclusion of a badly fitting anchor.
   Exclusion is a human decision, recorded on the observation and declared

@@ -42,12 +42,28 @@ function result = fit(conn, alignmentRef, options)
 % Name-value options:
 %   Apply           persist a conflict-free plan (default false)
 %   SourceTimebase  restrict to one source clock by its timebase key
+%   Breakpoints     declared source-clock times where a piecewise transform
+%                   changes regime. SourceTimebase must name the transform they
+%                   belong to, because a breakpoint is a claim about one clock.
+%
+% A piecewise_affine transform needs breakpoints and VAWLUME does not search for
+% them. Apply persists the declared set, so a later fit reuses it without
+% restatement and the coefficients stay reconstructable from the database alone.
+% Declaring a different set against a fitted transform is a conflict, not a
+% correction: the same anchors under a different segmentation are a different
+% alignment.
+%
+% A transform that was attempted and could not be honoured is recorded as
+% `failed` with a code and a reason, and does not block the others. That is
+% distinct from a conflict, which disagrees with what is already stored and
+% blocks the whole apply.
 
 arguments
     conn
     alignmentRef (1,1) struct
     options.Apply (1,1) logical = false
     options.SourceTimebase (1,1) string = ""
+    options.Breakpoints double = double.empty(0, 1)
 end
 
 plan = alignmentFitBuildPlan(conn, alignmentRef, options);

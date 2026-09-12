@@ -270,15 +270,36 @@ end
 
 result = vawlume.alignment.fit(fixture.conn, alignmentRef());
 
-verifyTrue(testCase, result.has_conflicts);
-verifyTrue(testCase, any(contains(result.conflicts, "audio_native")));
+% A transform that was attempted and could not be honoured is a failure, not a
+% conflict. A conflict is a disagreement with what is already stored and blocks
+% the whole apply; a failure is this transform's own outcome.
+verifyFalse(testCase, result.has_conflicts);
+verifyTrue(testCase, result.has_failures);
+verifyTrue(testCase, any(contains(result.failures, "audio_native")));
+
 audio = transformFor(result, "audio_native");
 verifyEqual(testCase, audio.action, "not_fit_ready");
+verifyEqual(testCase, audio.failure_code, "InsufficientAnchors");
 
 % The video clock is untouched and still fits: one clock's missing evidence does
 % not take the others down with it.
 video = transformFor(result, "video_native");
 verifyEqual(testCase, video.action, "create");
+
+% Applying records both outcomes. Without this the failed transform would sit
+% at 'registered' with no segments, indistinguishable from one nobody tried.
+applied = vawlume.alignment.fit(fixture.conn, alignmentRef(), Apply=true);
+verifyEqual(testCase, applied.status, "committed");
+verifyEqual(testCase, applied.applied_counts.alignment_runs_failed, 1);
+
+verifyEqual(testCase, runStatus(fixture.conn, "audio_native"), "failed");
+verifyEqual(testCase, runFailureCode(fixture.conn, "audio_native"), ...
+    "InsufficientAnchors");
+verifyEqual(testCase, runStatus(fixture.conn, "video_native"), "estimated");
+
+% A set holding a failed transform is not a fitted set. Saying otherwise would
+% let a partial outcome read as a complete one.
+verifyEqual(testCase, setStatus(fixture.conn), "draft");
 
 clear cleanup
 end
@@ -451,6 +472,31 @@ execute(fixture.conn, "INSERT INTO alignment_anchor_observations(" + ...
 rows = fetch(fixture.conn, "SELECT MAX(anchor_observation_id) AS id " + ...
     "FROM alignment_anchor_observations");
 value = double(rows.id(1));
+end
+
+function value = runStatus(conn, timebaseKey)
+rows = fetch(conn, "SELECT r.status FROM time_alignment_runs r " + ...
+    "JOIN timebases tb ON tb.timebase_id = r.source_timebase_id " + ...
+    "WHERE tb.timebase_name = '" + timebaseKey + "'");
+value = string(rows.status(1));
+end
+
+function value = runFailureCode(conn, timebaseKey)
+rows = fetch(conn, "SELECT IFNULL(r.failure_code,'') AS failure_code " + ...
+    "FROM time_alignment_runs r " + ...
+    "JOIN timebases tb ON tb.timebase_id = r.source_timebase_id " + ...
+    "WHERE tb.timebase_name = '" + timebaseKey + "'");
+column = rows.failure_code;
+if iscell(column)
+    value = string(column{1});
+else
+    value = string(column(1));
+end
+end
+
+function value = setStatus(conn)
+rows = fetch(conn, "SELECT status FROM alignment_sets");
+value = string(rows.status(1));
 end
 
 function value = timebaseId(conn, timebaseKey)
