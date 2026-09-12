@@ -72,6 +72,11 @@
       "source_field": "uncertainty_s",
       "required": false
     },
+    "evidence_class": {
+      "source_field": "evidence_class",
+      "required": false,
+      "note": "device_level or identity_dependent. Left undeclared when the column is absent: an unexamined anchor must stay distinguishable from one declared device-level."
+    },
     "event_reference": {
       "source_field": "event_id",
       "required": false

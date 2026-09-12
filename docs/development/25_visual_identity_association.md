@@ -162,10 +162,16 @@ an audio event to identity resolves the clock question through the alignment
 layer and then asks here, so alignment uncertainty and identity uncertainty stay
 separable all the way down to caller attribution.
 
-Device-level synchronization evidence is unaffected by identity uncertainty. If
-an identity-dependent biological event were ever used as an alignment anchor, its
-identity uncertainty would belong in that anchor's own QC — not implemented, and
-not needed by the current alignment contract.
+Device-level synchronization evidence is unaffected by identity uncertainty.
+**Phase 3 implemented the identity-dependent case**, and the rule this section
+anticipated is the rule it follows: an anchor derived from an identity-dependent
+biological event keeps its identity uncertainty in that anchor's own evidence
+and QC, where it qualifies the anchor and never reaches the clock fit.
+
+The link is one-directional and read-only from this layer's point of view.
+Alignment cites an association; it creates none, rewrites none, and reweights
+none. See `13_transform_fitting_and_alignment_qc.md`, "Identity-dependent
+anchors".
 
 ## Not the same thing as `external_events.entity_id`
 

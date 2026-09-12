@@ -23,6 +23,7 @@ result = vawlume.alignment.fit(conn, alignmentRef, Apply=true)
 value  = vawlume.alignment.report(conn, alignmentRef)
 [aligned, transform] = vawlume.alignment.applyTransform(conn, alignmentRunId, nativeTimes)
 intervals            = vawlume.alignment.applyTransformInterval(conn, alignmentRunId, starts, ends)
+link                 = vawlume.alignment.linkAnchorIdentityEvidence(conn, observationId, associationId)
 outcome = vawlume.alignment.setAnchorInclusion(conn, observationId, included, Reason=why)
 ```
 
@@ -599,6 +600,92 @@ Coverage intervals project through `applyTransformInterval` like any other
 interval, so an interval crossing a breakpoint is stretched by one factor at its
 start and another at its end.
 
+## Identity-dependent anchors
+
+Device-level anchors — TTL, light, tone — are identity-independent, and their
+transforms must stay that way. An anchor derived from an identity-dependent
+biological event is **admissible**; an anchor whose identity uncertainty has
+been silently discarded is not.
+
+Three things stay apart, and nothing merges them:
+
+```text
+the observation's timestamp        a number on a clock
+the observation's evidence class   device_level or identity_dependent
+the identity evidence             which entity the event concerned, with its
+                                  own semantics, calibration and review state
+```
+
+### The evidence class is nullable on purpose
+
+`alignment_anchor_observations.evidence_class` is declared through the ordinary
+anchor mapping profile and intake path, not a second registration route. It
+takes `device_level` or `identity_dependent`; anything else is an error at
+mapping time (`ANCHOR_EVIDENCE_CLASS_INVALID`), not a value rounded to the
+nearest one the schema accepts.
+
+**Undeclared is not device_level.** An observation whose class was never stated
+stays NULL and is reported as `undeclared`, because a default would convert an
+unexamined case into a confident one — the same rule Phase 2 applies to a
+missing identity confidence.
+
+### Linking evidence that already exists
+
+```matlab
+link = vawlume.alignment.linkAnchorIdentityEvidence(conn, observationId, associationId)
+```
+
+Links one anchor observation to one Phase 2 `tracking_identity_associations`
+row. It creates no identity evidence, invents no entity, track, interval or
+score, and computes nothing.
+
+- the observation must be declared `identity_dependent`; a device-level or
+  unexamined reading is refused (`EvidenceClassRequired`);
+- **several links per observation are legal.** An anchor qualified by
+  `ambiguous` identity evidence has more than one candidate entity, and refusing
+  that would push the ambiguity out of the record;
+- `unresolved` evidence is equally linkable: examined, and no entity nameable;
+- the association is referenced `ON DELETE RESTRICT`, so evidence an anchor was
+  admitted on cannot be deleted out from under it.
+
+`external_events.entity_id` is deliberately **not** usable here. It is a declared
+label lookup with no evidence kind, no value semantics, no calibration status
+and no review state; treating it as identity evidence would make an unverified
+guess indistinguishable from a reviewed assertion. See
+`11_temporal_alignment_schema.md`.
+
+### The separation is held by test, not by the database
+
+SQLite cannot forbid a join. The separation is structural — identity evidence
+lives in its own table, and the fit planner's queries name nine tables, none of
+them identity-bearing — but structure alone would not stay true.
+
+`test_alignment_identity_anchors.m` fixes the boundary by varying the evidence
+and requiring the coefficients not to move, at full precision, across:
+
+| Varied | Coefficients |
+| --- | --- |
+| confident evidence attached | unchanged |
+| weak evidence attached | unchanged |
+| two ambiguous candidates attached | unchanged |
+| unresolved evidence attached | unchanged |
+| every identity score rewritten | unchanged |
+| every ambiguous claim rejected | unchanged |
+| every anchor reclassified identity-dependent | unchanged |
+
+If the solver ever read any of it, one of those rows would fail.
+
+### What VAWLUME does not do
+
+It does not down-weight an anchor for weak identity evidence, decide whether an
+identity-dependent anchor should have been used, or detect that an anchor was
+misidentified. Weighting by identity confidence would be exactly the
+contamination this design prevents.
+
+`report` surfaces `anchor_evidence_classes` and `anchor_identity_evidence`
+**beside** the residuals, never combined with them. An anchor can carry both an
+alignment residual and an identity score; no field anywhere mixes them.
+
 ## Limitations
 
 - Offset, affine, and continuous piecewise affine over **declared** breakpoints.
@@ -616,6 +703,10 @@ start and another at its end.
   inherits it from the interval it falls in.
 - A set's status is `draft` or `fitted`. There is no status meaning 'fitted
   except for one clock'; the failed transform carries that fact instead.
+- An anchor's evidence class is declared, never inferred. Nothing examines a
+  marker and decides whether it is identity-dependent.
+- Identity evidence is linked by association id. There is no interval-overlap
+  search matching an anchor to the identity claims covering its moment.
 - Run and set status updates are outside the apply transaction; see Transactions.
 - Unweighted least squares; recorded uncertainty is not a weight.
 - No outlier detection, and no automatic exclusion of a badly fitting anchor.

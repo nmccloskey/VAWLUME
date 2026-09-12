@@ -589,6 +589,13 @@ be **bit-identical** with and without identity evidence attached, across
 confident, weak, `ambiguous`, and `unresolved` cases. That test is the difference
 between documenting a boundary and holding one.
 
+**Implemented in 3.8.** The evidence class arrives through the ordinary anchor
+mapping profile, `vawlume.alignment.linkAnchorIdentityEvidence` cites Phase 2
+evidence without creating any, and `report` surfaces both beside the residuals.
+The invariance test covers seven variations, including rewriting every identity
+score and reclassifying every anchor; see
+`13_transform_fitting_and_alignment_qc.md`, "Identity-dependent anchors".
+
 VAWLUME does not down-weight an anchor for weak identity evidence, does not decide
 whether an identity-dependent anchor should have been used, and does not detect
 that an anchor was misidentified. Owned by 3.2 (representation) and 3.8

@@ -439,6 +439,13 @@ for index = 1:height(ir.anchor_observations)
     if ~isnan(uncertainty)
         values.uncertainty_s = uncertainty;
     end
+    % Written only when the source declared one. An observation whose class
+    % was never stated stays NULL, which is distinguishable from a declared
+    % device_level reading and must remain so.
+    evidenceClass = presentText(row.evidence_class(1));
+    if strlength(evidenceClass) > 0
+        values.evidence_class = evidenceClass;
+    end
     profileIndex = find([plan.profiles.profile_kind] == "alignment_anchor_mapping", 1);
     if ~isempty(profileIndex)
         values.mapping_profile_version_id = ...

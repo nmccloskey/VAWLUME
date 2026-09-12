@@ -52,8 +52,9 @@ result = addIssues(result, issue, sourceKey, "");
 result = addIssues(result, issue, sourceKey, "");
 
 optionalNames = ["observation_role", "included_in_fit", "uncertainty", ...
+    "evidence_class", ...
     "event_reference", "event_source_key", "anchor_type", "expected_order"];
-defaults = {"role", "", "", "", "", "", ""};
+defaults = {"role", "", "", "", "", "", "", ""};
 resolved = struct(anchor_key=anchorField, observation_identity=identityField, ...
     timestamp=timestampField);
 for index = 1:numel(optionalNames)
@@ -158,6 +159,19 @@ for rowIndex = 1:height(tbl)
         end
     end
 
+    % What kind of evidence this reading is. Left empty when the source says
+    % nothing: an undeclared class must stay distinguishable from a declared
+    % device_level one, because defaulting would convert an unexamined case
+    % into a confident one.
+    evidenceClass = lower(sourceToken(tbl, resolved.evidence_class, rowIndex));
+    if strlength(evidenceClass) > 0 && ...
+            ~ismember(evidenceClass, ["device_level", "identity_dependent"])
+        issue = makeIssue("error", "ANCHOR_EVIDENCE_CLASS_INVALID", locator, ...
+            "Anchor evidence class must be device_level or identity_dependent.");
+        result = addIssues(result, issue, sourceKey, recordKey);
+        observationStatus = "invalid";
+    end
+
     eventReference = sourceToken(tbl, resolved.event_reference, rowIndex);
     eventSource = sourceToken(tbl, resolved.event_source_key, rowIndex);
     if strlength(eventSource) == 0
@@ -177,7 +191,8 @@ for rowIndex = 1:height(tbl)
         sourceKey, rowIndex, locator, streamKey, timebaseKey, observedNative, ...
         observedSeconds, nativeUnit, timeTransform, timestampField, timestampResolution, ...
         role, included, ...
-        uncertaintySeconds, eventSource, eventReference, "layout.long", observationStatus};
+        uncertaintySeconds, evidenceClass, eventSource, eventReference, ...
+        "layout.long", observationStatus};
 end
 end
 
@@ -252,7 +267,7 @@ for rowIndex = 1:height(tbl)
             optionalText(rule, "stream_key"), string(rule.timebase_key), ...
             observedNative, observedSeconds, nativeUnit, timeTransform, actualField, ...
             actualResolutions(streamIndex), "primary", ...
-            1, NaN, "", "", "layout.wide.stream_columns(" + streamIndex + ")", ...
+            1, NaN, "", "", "", "layout.wide.stream_columns(" + streamIndex + ")", ...
             observationStatus};
     end
 end
