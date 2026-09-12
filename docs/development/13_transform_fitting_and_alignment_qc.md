@@ -520,6 +520,85 @@ it would inherit the semantics of the segment it came from. A column duplicating
 that string on a cache nothing writes would be storage looking for a purpose;
 add it if and when a refresh API exists.
 
+## Reading a set back
+
+`vawlume.alignment.report` returns what is persisted, for the whole set. It is
+read-only, refits nothing, and is the counterpart to the planning mode of
+`fit`: planning recomputes coefficients from anchors, this reports the fit of
+record, which is what downstream work must use.
+
+| Field | Contents |
+| --- | --- |
+| `transforms` | one row per source clock, with status, segment count, and failure code |
+| `segments` | one row per stored segment, with bounds and per-segment QC |
+| `breakpoints` | the declared segmentation of each piecewise transform |
+| `residuals` | per-anchor fit evidence, including withheld anchors and their reasons |
+| `anchor_dispersion` | replicate spread per anchor and clock, **derived on read** |
+| `anchor_diagnostics` | counts, anchored span, and largest gap, **derived on read** |
+| `failures` | every transform attempted and not fitted |
+| `clocks_without_transform` | clocks carrying readings no transform in the set can use |
+
+Dispersion and diagnostics are derived rather than stored, for the reason the
+contract gives: each is a pure function of evidence the database already holds,
+and a stored copy would be a second thing to keep current. They are computed
+from the same residuals the fitter used, so the read side and the plan side
+agree without a second authority.
+
+For a segmented transform `transforms.scale` and `offset_s` are **NaN**. The
+query aggregates the segment rows, and reporting that aggregate would be a
+number belonging to no part of the clock; `segments` carries the real ones.
+
+## Several source clocks, one reference
+
+An alignment set expresses **one or more source clocks in one chosen reference
+frame**. `UNIQUE(alignment_set_id, source_timebase_id)` gives one transform per
+source clock, and a trigger holds each run's target equal to the set's
+reference.
+
+**The reference timebase is a coordinate choice, not a claim that one device's
+clock is correct.** Nothing in the fitting or reading path ranks the clocks,
+treats the reference as ground truth, or propagates error from it. Choosing a
+neural acquisition clock as the reference for a session says where the analysis
+is expressed, not which hardware keeps better time.
+
+Clocks fit **independently**. Each transform has its own method, its own
+anchors, and its own outcome:
+
+- one clock failing leaves the others fitted and stored;
+- a set is `fitted` only when every transform is `estimated`, so a set holding
+  a failure stays `draft` rather than reading as complete;
+- a clock carrying anchor readings that no transform in the set can use is
+  reported in `clocks_without_transform`, not raised. Registering a clock
+  before its transform is legal, and a manifest that named a stream and forgot
+  its transform looks identical from the database.
+
+The set's reference clock is never listed as a clock without a transform: every
+anchor is read on it by definition, and it needs no transform of its own.
+
+## Coverage under a transform
+
+A regularized timeline distinguishes event-present, event-absent, and
+not-observed. Projection adds a fourth thing that must not be folded into the
+third:
+
+```text
+observation_status   the stream's own statement: it was observed here
+projection_status    the transform's: anchored, or extrapolated
+```
+
+Both are reported on every projected coverage row, and every projected event
+carries `aligned_extrapolated`.
+
+**Coverage and extrapolation are different statements.** A segment can be
+observed and extrapolated at once — the stream was recording, but the transform
+placing it on the reference clock was never anchored that far out. A reader who
+treats the second as the first calls a well-anchored gap in the recording an
+artefact of the fit, or calls an extrapolated projection observed fact.
+
+Coverage intervals project through `applyTransformInterval` like any other
+interval, so an interval crossing a breakpoint is stretched by one factor at its
+start and another at its end.
+
 ## Limitations
 
 - Offset, affine, and continuous piecewise affine over **declared** breakpoints.
@@ -533,6 +612,10 @@ add it if and when a refresh API exists.
   stored residuals. A hand-built transform without them is never flagged.
 - An interval's uncertainty is the larger of its endpoint bounds. Nothing
   accumulates uncertainty along an interval that crosses several segments.
+- `projection_status` is per coverage interval, not per bin. A regularized bin
+  inherits it from the interval it falls in.
+- A set's status is `draft` or `fitted`. There is no status meaning 'fitted
+  except for one clock'; the failed transform carries that fact instead.
 - Run and set status updates are outside the apply transaction; see Transactions.
 - Unweighted least squares; recorded uncertainty is not a weight.
 - No outlier detection, and no automatic exclusion of a badly fitting anchor.

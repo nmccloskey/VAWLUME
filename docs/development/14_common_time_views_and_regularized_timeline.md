@@ -116,3 +116,28 @@ be read back, native and aligned event coordinates can coexist, identity is
 explicit, and covered-empty differs from unavailable. It does not prove real
 device accuracy, establish calibrated residual thresholds, or claim complete
 video/neural synchronization.
+
+## Projection status is not coverage
+
+Phase 3 adds a second statement to every projected coverage interval and every
+projected event.
+
+```text
+observation_status   the stream's own: it was observed across this interval
+projection_status    the transform's: anchored, or extrapolated
+aligned_extrapolated per event, the same statement
+```
+
+They answer different questions and are deliberately not combined. Coverage says
+the stream was recording; extrapolation says the transform placing it on the
+reference clock was never anchored that far out. A stream can be fully observed
+over an interval the transform reaches only by extrapolation, and an interval
+can be well anchored and entirely unobserved.
+
+Folding them together would destroy both: an extrapolated projection would read
+as observed fact, or a genuine recording gap would read as an artefact of the
+fit. The three-state rule this document already states — present, absent,
+not observed — is about coverage alone and is unchanged.
+
+A regularized bin inherits `projection_status` from the coverage interval it
+falls in; the timeline itself computes nothing new about it.
