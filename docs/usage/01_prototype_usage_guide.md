@@ -1168,7 +1168,7 @@ that was never assessed.
 | Event outside declared coverage | `vawlume:alignment:EventOutsideCoverage` | Fix the declared coverage, or pass `ErrorOnOutsideCoverage=false` knowingly |
 | Bin or window rejected | `vawlume:sequence:WindowInvalid`, `:WindowNotDivisible`, `:BinOriginMisaligned`, `:AggregationUnsupported` | Supported aggregations are `onset_count`, `presence`, and `any_overlap` |
 
-### Two environment gotchas
+### Three environment gotchas
 
 1. **`fetch` fails on NULL text columns.** MATLAB's Database Toolbox raises
    `Unexpected NULL; (zero-based) column index: N` when a text column in the
@@ -1179,6 +1179,14 @@ that was never assessed.
    schema statement by statement, preserving `CREATE TRIGGER … END;` blocks,
    because the Database Toolbox does not support script execution for `sqlite`
    connections in this environment.
+3. **A sentinel must match its column's type.** The same wrapping is needed for
+   nullable *numeric* columns, and there the sentinel's type matters: the Database
+   Toolbox types a fetched column from its **first row**, so an integer sentinel on
+   a REAL column returns integers for every row in that column once the first row
+   is the sentinel. `IFNULL(uncertainty_s,-1)` reads a stored `0.001998` back as
+   `0`. Use `IFNULL(uncertainty_s,-1.0)`. This is the more dangerous half of the
+   NULL trap: the text case raises, this one returns a wrong number. VAWLUME's own
+   sources are held to it by `tests/unit/test_null_sentinel_convention.m`.
 
 ### Running the test suite
 

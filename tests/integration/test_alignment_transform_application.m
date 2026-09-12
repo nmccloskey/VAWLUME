@@ -16,6 +16,7 @@ tests = functiontests({ ...
     @testIntervalsReportSegmentsCrossedAndDurationChange, ...
     @testOpenAndReversedIntervals, ...
     @testPropagatedUncertaintyIsDeclaredAndUncalibrated, ...
+    @testMixedSegmentUncertaintySurvivesTheReadBack, ...
     @testOffsetAndAffineApplicationIsUnchanged});
 end
 
@@ -239,6 +240,58 @@ end
 
 % ------------------------------------------------------------------ setup ---
 
+
+function testMixedSegmentUncertaintySurvivesTheReadBack(testCase)
+% The gap between the two cases above: a transform where one segment carries a
+% recorded bound and the other does not.
+%
+% This is P4-1. `applyTransform` reads segment uncertainty through an IFNULL
+% sentinel, and the Database Toolbox types a fetched column from its FIRST row.
+% With an integer sentinel and a NULL first segment, every later real value in
+% that column was silently truncated to an integer -- 0.002 read back as 0.
+%
+% Zero is not a smaller uncertainty. It is a claim of perfect knowledge, which
+% is exactly what "absence propagates as absence, not zero" exists to forbid, so
+% the defect inverted the contract rather than merely blurring it.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+runId = fitPiecewise(fixture);
+
+% Anchors below the knot lose their recorded uncertainty; those at and above it
+% keep it. Segment 1 therefore has no bound and segment 2 does.
+execute(fixture.conn, "UPDATE alignment_anchor_observations " + ...
+    "SET uncertainty_s = NULL, uncertainty_semantics = NULL " + ...
+    "WHERE alignment_anchor_id IN (SELECT alignment_anchor_id " + ...
+    "FROM alignment_anchors WHERE anchor_key IN ('sync01','sync02'))");
+execute(fixture.conn, "DELETE FROM alignment_segments");
+execute(fixture.conn, "DELETE FROM alignment_run_breakpoints");
+execute(fixture.conn, "DELETE FROM alignment_anchor_residuals");
+execute(fixture.conn, "UPDATE time_alignment_runs SET status='registered'");
+vawlume.alignment.fit(fixture.conn, alignmentRef(), ...
+    SourceTimebase="audio_native", Breakpoints=fixture.knot, Apply=true);
+
+stored = fetch(fixture.conn, "SELECT segment_index, " + ...
+    "IFNULL(uncertainty_s,-1.0) AS u FROM alignment_segments " + ...
+    "WHERE alignment_run_id=" + string(runId) + " ORDER BY segment_index");
+verifyEqual(testCase, double(stored.u(1)), -1, ...
+    "Segment 1 should have stored no bound.", AbsTol=1e-12);
+verifyTrue(testCase, double(stored.u(2)) > 0, ...
+    "Segment 2 should have stored a real bound; the fixture is wrong if not.");
+storedBound = double(stored.u(2));
+
+% 500 falls in segment 1, 1200 in segment 2.
+[~, transform] = vawlume.alignment.applyTransform(fixture.conn, runId, [500; 1200]);
+
+verifyTrue(testCase, isnan(transform.uncertainty_s(1)), ...
+    "Segment 1 recorded nothing, so its bound is absent.");
+% The assertion that fails under P4-1: the real value arrives intact rather than
+% truncated to an integer by the sentinel in the row above it.
+verifyEqual(testCase, transform.uncertainty_s(2), storedBound, ...
+    "Segment 2's bound must survive the read back unchanged.", AbsTol=1e-12);
+verifyNotEqual(testCase, transform.uncertainty_s(2), 0, ...
+    "A bound of zero would claim perfect knowledge.");
+
+clear cleanup
+end
 function value = fitPiecewise(fixture)
 vawlume.alignment.fit(fixture.conn, alignmentRef(), ...
     SourceTimebase="audio_native", Breakpoints=fixture.knot, Apply=true);
