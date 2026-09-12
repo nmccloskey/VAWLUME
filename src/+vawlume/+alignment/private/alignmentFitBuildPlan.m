@@ -372,7 +372,8 @@ end
 function value = observationsOn(conn, anchorId, timebaseId)
 value = fetch(conn, "SELECT anchor_observation_id, observed_time_native, " + ...
     "observation_role, included_in_fit, " + ...
-    "IFNULL(uncertainty_s, -1) AS uncertainty_s " + ...
+    "IFNULL(uncertainty_s, -1) AS uncertainty_s, " + ...
+    "IFNULL(notes,'') AS notes " + ...
     "FROM alignment_anchor_observations WHERE alignment_anchor_id=" + ...
     string(anchorId) + " AND timebase_id=" + string(timebaseId) + ...
     " ORDER BY anchor_observation_id");
@@ -402,6 +403,9 @@ end
 if height(observations) == 1
     row = observationStruct(observations);
     reason = side + " observation is excluded from the fit;";
+    if strlength(row.declared_reason) > 0
+        reason = side + " observation withheld: " + row.declared_reason + ";";
+    end
     return
 end
 % Several observations, none included: which one is meant is genuinely unknown.
@@ -418,7 +422,27 @@ value = struct( ...
     observed_time_native=double(rows.observed_time_native(1)), ...
     observation_role=presentText(rows.observation_role(1)), ...
     included_in_fit=double(rows.included_in_fit(1)), ...
-    uncertainty_s=uncertainty);
+    uncertainty_s=uncertainty, ...
+    declared_reason=declaredReason(presentText(rows.notes(1))));
+end
+
+function value = declaredReason(notes)
+%DECLAREDREASON The caller's own words for withholding this reading.
+%
+% vawlume.alignment.setAnchorInclusion appends its decisions to the
+% observation's notes, which is where the decision is recorded and therefore
+% the authority. This reads that authority rather than keeping a second copy
+% of the reason beside it.
+%
+% The last withheld stamp wins: an anchor withheld, restored, and withheld
+% again is described by the most recent decision, and the whole history stays
+% readable in the notes column itself.
+value = "";
+stamps = regexp(notes, "withheld_from_fit:\s*([^|]*)", "tokens");
+if isempty(stamps)
+    return
+end
+value = strtrim(string(stamps{end}{1}));
 end
 
 function value = applyPredictions(value, segments)

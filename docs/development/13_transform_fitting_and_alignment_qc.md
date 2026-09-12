@@ -143,6 +143,14 @@ sitting on its own boundary contributes nothing, since both segments already
 agree there.
 
 `vawlume:alignment:MethodNotImplemented` and
+`vawlume:alignment:FitPlanConflict` is a **defensive guard on a private
+function, deliberately unreachable through the public path.** `fit` calls the
+applier only when the plan is conflict-free, and a conflicting apply returns a
+conflict result and writes nothing rather than raising. The guard is kept so
+this function can never write over a stored fit if a future caller forgets that
+rule, and recorded here so its absence from any public error list is not
+mistaken for an oversight.
+
 `vawlume:alignment:PiecewiseNotImplemented` are both **retired**. With the
 declared path implemented in the solver, the fitter and the applier, and
 estimation refused rather than deferred, no request reaches either. Neither
@@ -257,7 +265,12 @@ which is where the schema puts it and where it is auditable.
 - **a reason is required in both directions.** Withholding evidence and restoring
   it both change which readings produced a fit;
 - the decision is **appended** to the observation's `notes`, so that column reads
-  as a log of what was decided about this reading;
+  as a log of what was decided about this reading. **That column is the
+  authority**: the fitter reads the most recent `withheld_from_fit:` stamp from
+  it when composing the anchor's exclusion reason, so the caller's own words
+  reach the residual and `report` without being copied into a second place that
+  could disagree. A withheld reading with no declared reason keeps the generic
+  description;
 - it touches exactly three columns. No timestamp, clock, event link, uncertainty,
   or provenance column is writable through it. An anchor's observed time is
   evidence; whether it counts is a decision, and only the decision is editable;
@@ -415,19 +428,35 @@ a complete one is exactly the distinction the status vocabulary exists to keep.
 
 Fit apply requires an AutoCommit connection, disables AutoCommit, writes the
 segments, breakpoints and residuals, sets the run and set statuses, then commits.
-Any exception rolls back the inserted rows and restores the original AutoCommit
-state before rethrowing.
+Any exception rolls back **everything** and restores the original AutoCommit
+state before rethrowing. A run is never left claiming an estimate whose evidence
+was rolled back out from under it.
 
-**Status updates are not covered by that transaction, and this is a real
-limitation rather than a simplification.** Under the MATLAB `sqlite` interface an
-UPDATE issued through `execute` runs outside the transaction `sqlwrite` opens: it
-takes effect immediately, and a rollback does not undo it. An explicit `BEGIN` is
-refused by the driver, which reports that a transaction is already in progress.
+The driver's transaction mechanics are worth stating precisely, because a
+fragment of them is easy to mis-read:
 
-Writes are therefore ordered so that the rows a status claims exist are inserted
-before the status is set. The worst reachable failure mode is a run still marked
-`registered` beside rows that describe it — visible and repairable — rather than
-a run claiming a fit whose evidence was rolled back out from under it.
+| Operation | Behaviour with AutoCommit off |
+| --- | --- |
+| `sqlwrite` | **Opens** a transaction |
+| `execute`, `sqlupdate` | **Join** a transaction already open; neither opens one |
+| explicit `BEGIN` | Refused: the driver reports one already in progress |
+
+Probed on its own, a status `UPDATE` therefore looks non-transactional: with no
+prior insert there is no transaction for it to join, so it autocommits and the
+following `commit` reports that none was in progress. **That shape does not occur
+in the apply path.** Every insert precedes every status update, so a transaction
+is always open by the time a status is written.
+
+**The write ordering is therefore load-bearing, not merely defensive.** Reversing
+it would put the statuses outside the transaction and make the guarantee partial.
+`testFailureAfterAStatusUpdateRollsThatUpdateBackToo` pins it: the induced
+failure fires only once a run is already `estimated`, so it cannot pass without
+exercising a status update inside the rollback.
+
+The one exception is an apply that records only failures. It issues no insert, so
+no transaction opens and each status update autocommits on its own, which is
+correct because there is nothing else for it to be atomic with. `insertedRows`
+guards the commit and rollback for exactly that case.
 
 ## Applying a transform
 
@@ -515,11 +544,23 @@ absence is not perfect knowledge. It is **never combined with `rmse_s`**: how
 well the model describes the anchors and how well each anchor was read are
 different quantities, and both are reported separately.
 
-`aligned_external_events.uncertainty_s` has no semantics column of its own. That
-table is an optional regenerable cache that nothing populates, and any value in
-it would inherit the semantics of the segment it came from. A column duplicating
-that string on a cache nothing writes would be storage looking for a purpose;
-add it if and when a refresh API exists.
+### Which uncertainties declare their semantics, and why
+
+Three columns store an `uncertainty_s`, and only one carries a semantics column.
+The rule is not arbitrary:
+
+| Column | Semantics column | Why |
+| --- | --- | --- |
+| `alignment_anchor_observations.uncertainty_s` | No | **Fixed by the schema.** It is the recorded reading uncertainty of one observation, in seconds, on that observation's own clock. There is one thing it can mean, so a per-row declaration would record the same string on every row |
+| `alignment_segments.uncertainty_s` | **Yes** | **Derived, and derivable several ways.** It could have been a maximum, a mean, a propagated variance, or a residual-based bound. Which one it is cannot be inferred from the number, so the row states it |
+| `aligned_external_events.uncertainty_s` | No | **Inherited.** That table is an optional regenerable cache nothing populates; any value in it would carry the semantics of the segment it came from |
+
+The principle: **a stored number declares its semantics when the same column
+could legitimately hold quantities that mean different things.** A column with
+one possible meaning is documented once, here, rather than on every row.
+
+If a refresh API is ever added for `aligned_external_events`, that column moves
+from the third case to the second and gains a semantics column with it.
 
 ## Reading a set back
 

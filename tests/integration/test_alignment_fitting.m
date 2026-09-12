@@ -16,6 +16,7 @@ tests = functiontests({ ...
     @testPlanningWritesNothingAndRefitIsIdempotent, ...
     @testCompletedTransformIsNotRewrittenInPlace, ...
     @testInducedFailureRollsBackEverySegmentAndResidual, ...
+    @testFailureAfterAStatusUpdateRollsThatUpdateBackToo, ...
     @testStoredTransformIsAppliedWithoutRefitting, ...
     @testApplyRefusesUnfittedRejectedAndUntiledRuns, ...
     @testFittingLeavesEveryNativeTimestampUnchanged, ...
@@ -253,6 +254,54 @@ verifyEqual(testCase, count(fixture.conn, "alignment_segments", "1=1"), 0);
 verifyEqual(testCase, count(fixture.conn, "alignment_anchor_residuals", "1=1"), 0);
 verifyEqual(testCase, count(fixture.conn, "time_alignment_runs", ...
     "status = 'registered'"), 2);
+verifyEqual(testCase, count(fixture.conn, "alignment_sets", "status = 'draft'"), 1);
+verifyEqual(testCase, string(fixture.conn.AutoCommit), "on");
+
+clear dropper
+recovered = vawlume.alignment.fit(fixture.conn, alignmentRef(), Apply=true);
+verifyEqual(testCase, recovered.status, "committed");
+
+clear cleanup
+end
+
+function testFailureAfterAStatusUpdateRollsThatUpdateBackToo(testCase)
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+
+% The test above fails on the FIRST residual insert, so no run summary is ever
+% written and the rollback it checks never covers a status update. This one
+% fails on the LAST run, after the first run's summary has already been set.
+%
+% It pins a transaction property that is easy to mis-read from a fragment.
+% Under the MATLAB sqlite interface `sqlwrite` opens a transaction while
+% `execute` and `sqlupdate` only join one already open, so a status update
+% probed on its own appears non-transactional. In the apply path every insert
+% precedes every status update, so a transaction is always open by then and the
+% statuses roll back with the rows that justify them. Reverse that ordering and
+% this test fails.
+lastRun = count(fixture.conn, "time_alignment_runs", "1=1");
+% The trigger fires only once some run is already 'estimated', so the failure
+% cannot happen before a status update has run. Without that condition the test
+% could pass while never exercising the property it exists to pin.
+execute(fixture.conn, "CREATE TRIGGER trg_alignment_fit_failure " + ...
+    "BEFORE INSERT ON alignment_anchor_residuals FOR EACH ROW " + ...
+    "WHEN EXISTS (SELECT 1 FROM time_alignment_runs " + ...
+    "WHERE status = 'estimated') " + ...
+    "BEGIN SELECT RAISE(ABORT,'induced late fit failure'); END");
+dropper = onCleanup(@() dropTrigger(fixture.conn));
+verifyGreaterThan(testCase, lastRun, 1);
+
+verifyError(testCase, ...
+    @() vawlume.alignment.fit(fixture.conn, alignmentRef(), Apply=true), ...
+    ?MException);
+
+% No run may be left claiming an estimate it can no longer justify, including
+% the one whose summary was written before the failure.
+verifyEqual(testCase, count(fixture.conn, "time_alignment_runs", ...
+    "status = 'registered'"), lastRun);
+verifyEqual(testCase, count(fixture.conn, "time_alignment_runs", ...
+    "status <> 'registered'"), 0);
+verifyEqual(testCase, count(fixture.conn, "alignment_segments", "1=1"), 0);
+verifyEqual(testCase, count(fixture.conn, "alignment_anchor_residuals", "1=1"), 0);
 verifyEqual(testCase, count(fixture.conn, "alignment_sets", "status = 'draft'"), 1);
 verifyEqual(testCase, string(fixture.conn.AutoCommit), "on");
 

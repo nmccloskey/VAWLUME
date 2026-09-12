@@ -1,22 +1,39 @@
 function [plan, counts] = alignmentFitApplyPlan(conn, plan)
-%ALIGNMENTFITAPPLYPLAN Persist transforms and residual evidence.
+%ALIGNMENTFITAPPLYPLAN Persist transforms and residual evidence atomically.
 %
-% Inserted rows — segments, breakpoints and residuals — are written under one
-% transaction and roll back together. A partial write would leave a run claiming
-% a fit while only some of its anchors could account for it.
+% Every segment, breakpoint, residual, run summary and set status commits
+% together or not at all. A partial write would leave a run claiming a fit while
+% only some of its anchors could account for it.
 %
-% **Status updates are not covered by that transaction.** Under the MATLAB
-% sqlite interface an UPDATE issued through `execute` runs outside the
-% AutoCommit transaction that `sqlwrite` opens: it takes effect immediately and
-% a later rollback does not undo it. Every write here is therefore ordered so
-% that the rows a status claims exist are inserted before the status is set,
-% which makes the failure mode a run that is still `registered` beside rows that
-% describe it, rather than a run claiming a fit that was rolled back.
+% The transaction mechanics of the MATLAB sqlite interface are worth stating,
+% because they are easy to mis-read from a fragment:
+%
+%   * `sqlwrite` OPENS a transaction when AutoCommit is off;
+%   * `execute` and `sqlupdate` JOIN a transaction that is already open, but
+%     neither opens one;
+%   * an explicit BEGIN is refused, the driver reporting one already in
+%     progress.
+%
+% Every insert here precedes every status update, so a transaction is always
+% open by the time a status is written and the statuses roll back with the rows
+% that justify them. That ordering is load-bearing rather than defensive:
+% reversing it would put the statuses outside the transaction.
+%
+% The one exception is an apply that records only failures. It issues no insert,
+% so no transaction opens, and each status update autocommits on its own - which
+% is correct, because there is nothing else for it to be atomic with. That is
+% what insertedRows guards below.
 %
 % Status becomes 'estimated', never 'validated'. A fit that solves is a fit that
 % solves; calling it validated would assert an accuracy claim no calibrated
 % threshold exists to support.
 
+% Defensive guard on a private function, deliberately unreachable through the
+% public path: vawlume.alignment.fit calls this only when the plan is
+% conflict-free, and a conflicting apply returns a conflict result and writes
+% nothing rather than raising. Kept because this function must never write over
+% a stored fit if a future caller forgets that rule; documented in
+% 13_transform_fitting_and_alignment_qc.md so it does not become folklore.
 if plan.has_conflicts
     error("vawlume:alignment:FitPlanConflict", ...
         "An alignment fit plan with conflicts cannot be applied.");
@@ -201,11 +218,11 @@ end
 % ---------------------------------------------------------------- plumbing ---
 
 function value = insertedRows(counts)
-%INSERTEDROWS How many rows were written through the transactional path.
+%INSERTEDROWS How many rows opened the driver's transaction.
 %
-% Only inserts open the driver's transaction. An apply that recorded nothing but
-% failures issued no insert, so there is no transaction to commit and asking for
-% one raises 'Attempted to commit transaction when none was in progress'.
+% Only sqlwrite opens one. An apply that recorded nothing but failures issued no
+% insert, so there is no transaction to commit or roll back, and asking for one
+% raises 'Attempted to commit transaction when none was in progress'.
 value = counts.alignment_segments + counts.alignment_run_breakpoints + ...
     counts.alignment_anchor_residuals;
 end

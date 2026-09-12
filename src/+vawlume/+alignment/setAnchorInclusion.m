@@ -274,9 +274,7 @@ end
 
 function value = presentText(value)
 value = string(value);
-if ismissing(value)
-    value = "";
-end
+value(ismissing(value)) = "";
 end
 
 function value = sqlText(text)

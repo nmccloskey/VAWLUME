@@ -197,6 +197,12 @@ row = anchorRow(result, "audio_native", "sync04");
 verifyEqual(testCase, row.included_in_fit, 0);
 verifyFalse(testCase, isnan(row.residual_s));
 verifyTrue(testCase, strlength(row.exclusion_reason) > 0);
+
+% The caller's own words reach the QC evidence, not a generic description.
+% The reason is read from the observation's notes, which is where the decision
+% was recorded, rather than copied into a second place that could disagree.
+verifyTrue(testCase, contains(row.exclusion_reason, ...
+    "operator logged a false trigger"));
 verifyEqual(testCase, diagnosticsFor(result, "audio_native").withheld_anchor_count, 1);
 
 % Restoring is a decision too, and is recorded beside the first one.
