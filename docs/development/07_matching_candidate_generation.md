@@ -66,6 +66,11 @@ duration_difference_s  = (endB-startB) - (endA-startA)
 candidate_score        = temporal_iou
 ```
 
+The arithmetic is provided by
+`vawlume.interval.relation(startA, endA, startB, endB)`. Matching supplies the
+run-side meaning and retains its own eligibility rule; the interval primitive
+has no detection identifiers, thresholds, candidate status, or domain mode.
+
 The configured candidate rule is:
 
 ```text

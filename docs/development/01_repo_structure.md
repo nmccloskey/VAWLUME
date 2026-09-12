@@ -99,6 +99,7 @@ VAWLUME/
 │       ├── +db/
 │       ├── +source_mapping/
 │       ├── +ingest/
+│       ├── +interval/
 │       ├── +matching/
 │       ├── +consilience/
 │       ├── +sequence/
@@ -144,6 +145,7 @@ and functional areas can become nested namespaces:
 ```text
 src/+vawlume/+source_mapping/
 src/+vawlume/+ingest/
+src/+vawlume/+interval/
 src/+vawlume/+matching/
 ```
 
