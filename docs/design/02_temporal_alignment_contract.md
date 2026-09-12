@@ -29,6 +29,13 @@ noise. Fits are recorded as `estimated`, never `validated`.
 `vawlume.sequence.regularizeTimeline` builds a MATLAB-only dense working table;
 neither API creates a second canonical timestamp or persists empty bins.
 
+**Phase 3 is underway.** It robustifies this layer rather than redesigning it:
+piecewise-affine fitting, anchor QC and declared exclusion, interval
+transformation, uncertainty propagation, and identity-dependent anchor evidence.
+Its decisions are recorded in [Phase 3 — alignment
+robustification](#phase-3--alignment-robustification) below, and none of them is
+implemented at the time that section was written.
+
 Read this document before changing anything under the alignment tables. Read
 `07_matching_and_consensus.md` in `docs/development/` for what the correspondence
 layer beneath it already guarantees.
@@ -249,10 +256,17 @@ time warping, nonlinear warping, learned synchronization.
 
 ### Piecewise affine
 
-The schema may retain representability for piecewise-affine segments, but
-**fitting piecewise transforms is deferred.** If a caller requests it through the
-Phase 7 API, the implementation fails clearly rather than silently degrading to
-a single affine fit.
+The schema retains representability for piecewise-affine segments.
+
+**Fitting piecewise transforms was deferred in Phase 7**, and the implementation
+fails clearly rather than silently degrading to a single affine fit. That refusal
+is still the shipped behaviour and is still correct: degrading silently would
+answer a different question than the caller asked.
+
+**Phase 3 implements the model.** Its breakpoint, continuity, tiling, and
+extrapolation decisions are D1 to D3 in [Phase 3 — alignment
+robustification](#phase-3--alignment-robustification). The clear failure stays;
+what changes is that a declared, supportable piecewise request stops reaching it.
 
 ## Anchor-selection rule
 
@@ -313,9 +327,309 @@ start/end window, bin width, bin origin and edge convention, source event sets,
 aggregation rule (`onset_count`, `any_overlap`, and so on), and the handling of
 uncovered bins.
 
+## Phase 3 — alignment robustification
+
+**Status: decisions recorded by Phase 3.1; implementation spans 3.2 to 3.9.**
+Nothing in this section is implemented at the time it is written. Where a
+statement describes behaviour, it describes what the phase commits to building,
+and the owning itinerary is named.
+
+Phase 3 implements what this contract already represents. It adds no table to
+express a concept the schema can already hold, it introduces no second path from
+a native time to a reference time, and it does not revisit the vocabulary above.
+The reference timebase remains a coordinate choice, a synchronization anchor
+remains distinct from the experimental event beside it, and a solved fit remains
+`estimated`.
+
+### What Phase 3 changes about the Phase 7 exit limitations
+
+The fifteen limitations recorded at the Phase 7 exit are a frozen historical
+record and are not edited. This table states which of them Phase 3 removes.
+
+| # | Phase 7 limitation | Phase 3 disposition |
+| --- | --- | --- |
+| 1 | Validation is synthetic | **Unchanged.** Phase 3 validation is also synthetic, and recovering a known transform still says nothing about a real device clock |
+| 4 | Offset and affine only | **Removed** for piecewise affine (3.4, 3.5, 3.6). Nonlinear warping remains unimplemented and out of scope |
+| 5 | Replicates preserved but not pooled | **Partially changed.** Replicates are still never pooled into the fit; their spread becomes readable QC evidence (3.3) |
+| 6 | Anchor uncertainty preserved but unweighted | **Partially changed.** Still never a weight; it propagates as a stated, uncalibrated bound (3.6) |
+| 7 | No calibrated QC threshold | **Unchanged, deliberately.** Phase 3 adds diagnostics, not verdicts |
+| 9 | A regularized zero depends on coverage | **Extended** to coverage expressed through a transform (3.7) |
+| 2, 3, 8, 10 to 15 | — | **Unchanged.** None is in Phase 3 scope |
+
+### D1. Breakpoints are declared, never estimated
+
+A piecewise-affine fit takes its breakpoints from the caller. VAWLUME does not
+search for them.
+
+A breakpoint is a claim that something happened to a clock — a restart, a dropped
+buffer, a drift regime change. Choosing one from the residuals is model selection,
+and this prototype has no basis for preferring one segmentation over another.
+Inferring a breakpoint would also make the fit depend on a decision no record
+names, which the refit-identity rule below forbids.
+
+**Breakpoints are therefore persisted as declared input**, not carried only as a
+call option. A fit must be reconstructable from what the database holds: the
+analysis run, the set, the two clocks, the method, the registration checksums, the
+observation IDs in each residual row — and now the breakpoint set. Owned by 3.2
+(representation) and 3.5 (declaration path).
+
+Breakpoint **estimation** is not deferred pending a design; it is refused. If a
+later phase adds it, it must be a separately named method with its own recorded
+provenance, never a default, and never silently selected.
+
+### D2. Segments are continuous at their breakpoints
+
+A piecewise-affine transform is continuous. The segments meet.
+
+A discontinuity would mean one source instant maps to two reference times, which
+leaves `applyTransform` ambiguous at exactly the boundary and makes an interval
+spanning the join ill-defined. A genuine clock discontinuity — a reset, a lost
+buffer — is a different phenomenon: it is a gap in coverage, and where the clocks
+truly diverge it is two alignment identities, not one transform with a jump.
+
+Continuity is a constraint on the fit, not a property hoped for afterwards. With
+knots declared, a continuous piecewise-linear fit is one ordinary least-squares
+problem in a hinge basis:
+
+```text
+reference = a0 + a1 * source + SUM_k b_k * max(0, source - knot_k)
+```
+
+Per-segment `scale` and `offset_s` follow from the coefficients by accumulation,
+so `alignment_segments` stores exactly what it stores today and no new column is
+needed for the coefficients. The solve stays plain `X \ y`: no optimizer, no
+toolbox, no robust regression, no iterative refinement.
+
+Every derived segment scale must be positive. A clock does not run backwards, and
+`vawlume:alignment:NonPositiveTransformScale` already exists to say so. Owned by
+3.4.
+
+### D3. Segments tile the line, and extrapolation is flagged rather than hidden
+
+The segments of a `piecewise_affine` run tile the source axis with no gap and no
+overlap. The first segment is open below (`source_start IS NULL`) and the last is
+open above (`source_end IS NULL`), so every finite source time resolves to exactly
+one segment.
+
+**Boundary ownership: a segment covers `[source_start, source_end)`.** A
+breakpoint instant belongs to the segment that begins at it. This is stated once,
+here, because `fit` and `applyTransform` must not disagree about it and an
+off-by-one at a breakpoint is the defect most likely to survive review.
+
+Tiling is an application obligation — `11_temporal_alignment_schema.md` lists it
+as such — and Phase 3 discharges it by enforcing tiling on write rather than by
+adding a trigger that SQLite cannot express cleanly across rows. Owned by 3.5.
+
+A time outside the **anchored source span** is still transformed, using the
+terminal segment, and is **flagged as extrapolated in the result**. It is never
+returned as though it were equally well supported.
+
+Refusing to extrapolate would break the existing contract, under which
+`applyTransform` returns a value for every input and preserves shape. Returning an
+unmarked number would be worse. The flag therefore rides in the second output,
+beside the segment index that produced each value, and an `ErrorOnExtrapolation`
+option lets a caller escalate it — mirroring the existing `ErrorOnOutsideCoverage`
+rather than inventing a second convention. Owned by 3.6.
+
+Extrapolation and coverage are different statements and must not be conflated:
+coverage says the stream was observed, extrapolation says the transform was not
+anchored there.
+
+### D4. Intervals transform endpoint-wise, and duration is not preserved
+
+Interval transformation is a separate public function, not a mode of
+`applyTransform`. The development plan's guidance against a single switch-laden
+entry point applies to this layer as much as to matching.
+
+An interval's endpoints transform independently. Under a piecewise-affine clock
+with differing segment scales, **the aligned duration is not the native duration**,
+and that is correct rather than a defect. A caller who assumes duration is
+preserved will be wrong exactly when drift matters most, so the help text must say
+so plainly.
+
+An interval result reports, at minimum: aligned start and end; the segments the
+interval crossed; the extrapolation flag for each endpoint; and the native and
+aligned durations so the change is visible rather than inferred. An interval whose
+end precedes its start is refused, reusing
+`vawlume:alignment:AlignedIntervalInvalid`.
+
+`commonTime` currently transforms an event's start and end with two separate
+`applyTransform` calls. That is interval transformation implemented at a caller,
+and once the interval function exists `commonTime` must use it — otherwise two
+interval semantics will coexist, which is the duplication this contract exists to
+prevent. Owned by 3.6, with the `commonTime` change in 3.6 or 3.7.
+
+### D5. Anchor uncertainty propagates as a stated bound, and never as a weight
+
+The fit stays unweighted ordinary least squares. Weighting by recorded
+`uncertainty_s` is a different estimator, and nothing establishes that those
+values are comparable across devices or correctly scaled. That refusal is
+unchanged from Phase 7 and is not reopened.
+
+What Phase 3 adds is propagation. Each segment carries a bound derived from the
+anchors that determined it, stored in the `uncertainty_s` column
+`alignment_segments` already has, beside a new column declaring its semantics.
+`applyTransform` returns that bound for each transformed time.
+
+The semantics are deliberately modest: the bound is the **largest recorded anchor
+uncertainty among the anchors contributing to that segment**, expressed in
+seconds. It is **not** a confidence interval, a standard error, a posterior, or a
+probability, and every place it surfaces must say so.
+
+Two rules make it honest:
+
+- **Absence propagates as absence.** A segment whose contributing anchors recorded
+  no uncertainty carries no bound — not zero, which would claim perfect knowledge.
+  The fitter already represents a missing anchor uncertainty as `NaN` rather than
+  `0`; that precedent is extended, not replaced.
+- **The bound is never combined with the residual.** Fit residual and anchor
+  reading precision are different quantities: one says how well the model
+  describes the anchors, the other how well each anchor was read. Both are
+  reported; neither is folded into the other, nor into a single "alignment
+  confidence".
+
+Following the Phase 2 precedent that a stored number without declared semantics is
+not stored, the schema requires the semantics whenever the value is present.
+Owned by 3.2 (column and constraint), 3.5 (population), 3.6 (propagation).
+
+### D6. Replicate dispersion is derived, never stored
+
+Redundant observations of one anchor on one clock are already preserved, already
+excluded from the fit by a partial unique index, and already counted by the fitter
+as `source_observation_count` and `reference_observation_count`.
+
+Their spread is a **pure function of `alignment_anchor_observations`**, which is
+the authority for those rows. Persisting it would create a second place to look
+for the same number and a second thing to keep current when an observation is
+added or re-included. It is therefore computed on read and surfaced through the
+fit result and through `report`, and no table is added for it.
+
+What is surfaced, per anchor and clock with more than one observation: the
+observation count, the included observation's time, the full spread across all
+observations, and the largest deviation of any other observation from the included
+one — each in seconds, with declared semantics.
+
+A replicate never enters the design matrix, never becomes an independent anchor,
+and is never averaged with the included reading. Owned by 3.3.
+
+### D7. Failure states are named, and a failure is distinguishable from an absence
+
+The status vocabulary does not grow. `registered`, `estimated`, `validated`,
+`rejected`, and `failed` remain the only run states, and `validated` remains
+unreachable.
+
+What Phase 3 adds is the **reason**. A run that failed for a nameable cause
+records a machine-readable code and a human-readable reason, so a `failed` run is
+distinguishable from one that was never attempted — today a run that could not be
+fitted and a run nobody tried both sit at `registered` with no segments.
+
+Conditions are classified as one of three things, and the classification is part
+of the contract:
+
+| Condition | Class |
+| --- | --- |
+| Piecewise requested with no declared breakpoints | raised error |
+| Breakpoints unsorted, duplicated, non-finite, or outside the anchor span | raised error |
+| A segment with too few anchors to determine its own coefficients | raised error |
+| A derived segment scale at or below zero | raised error |
+| Persisted segments that would gap or overlap | raised error, on write |
+| Anchors on a clock that has no transform in the set | reported in the result and in `report` |
+| A transformed time outside the anchored span | flagged in the result; raised only under `ErrorOnExtrapolation` |
+| An anchor set that cannot support its declared model | persisted `failed` with a code |
+
+Named identifiers extend the existing `vawlume:alignment:` family rather than
+starting a parallel one, and the existing identifiers are reused wherever they
+already say the right thing. Owned by 3.1 (vocabulary), 3.2 (persistence), 3.3
+through 3.6 (each raises its own).
+
+### D8. An identity-dependent anchor keeps its uncertainty, and the solver never sees it
+
+Device-level anchors — TTL, light, tone — are identity-independent, and their
+transforms must stay that way. An anchor derived from an identity-dependent
+biological event is admissible; an anchor whose identity uncertainty has been
+silently discarded is not.
+
+Three things stay apart: the observation's timestamp, which is a number on a
+clock; the observation's **evidence class**, which is `device_level` or
+`identity_dependent`; and the **visual-identity evidence** for the entity the
+event concerns, which Phase 2 already represents in
+`tracking_identity_associations` with declared value semantics, calibration
+status, review state, and representable ambiguity.
+
+Decisions:
+
+- The evidence class is **nullable**. An observation whose class was never
+  declared must stay distinguishable from one declared `device_level`, because a
+  default would convert an unexamined case into a confident one — the same rule
+  Phase 2 applies to a missing identity confidence. An unrecognized class is
+  refused, not coerced.
+- Identity evidence is linked from the anchor observation to an existing
+  `tracking_identity_associations` row. Phase 3 creates no identity evidence,
+  invents no entity or track, and computes no score.
+- **Several links per observation are legal.** An anchor qualified by `ambiguous`
+  identity evidence is a real case; refusing it would push the ambiguity out of
+  the record rather than represent it.
+- `external_events.entity_id` is **not** the identity evidence.
+  `11_temporal_alignment_schema.md` already documents it as a declared
+  label-lookup link weaker than an identity association, and treating it as
+  evidence here would deepen that known weakness rather than work around it.
+
+The separation cannot be enforced by the database — SQLite cannot forbid a join —
+so it is enforced by construction and held by test: the fitted coefficients must
+be **bit-identical** with and without identity evidence attached, across
+confident, weak, `ambiguous`, and `unresolved` cases. That test is the difference
+between documenting a boundary and holding one.
+
+VAWLUME does not down-weight an anchor for weak identity evidence, does not decide
+whether an identity-dependent anchor should have been used, and does not detect
+that an anchor was misidentified. Owned by 3.2 (representation) and 3.8
+(behaviour and proof).
+
+### D9. A diagnostic that can be recomputed is not stored
+
+Phase 3 produces more evidence than Phase 7 did: replicate dispersion, anchor
+span and distribution across the source range, per-anchor influence on the fitted
+coefficients, and per-segment fit quality.
+
+The rule governing all of it:
+
+> Persist declared inputs and outcomes that would otherwise be lost. Derive
+> anything that is a pure function of stored evidence.
+
+So breakpoints are stored (a declared input), evidence class and identity links
+are stored (declared inputs), failure codes are stored (an outcome that vanishes
+otherwise), and per-segment coefficients and fit summaries are stored (outcomes).
+Dispersion, anchor span, and leave-one-out influence are derived on read.
+
+`alignment_anchor_residuals` remains the single authority for per-anchor fit
+evidence. Nothing added in this phase becomes a second place to look for a number
+that table already holds.
+
+And a diagnostic is not a verdict. Reporting an influence measure is in scope;
+deciding that a fit is good is not, and no column may encode that judgement.
+Owned by 3.2 (what little is persisted) and 3.3 and 3.7 (what is derived and
+surfaced).
+
+### Phase 3 non-goals
+
+Beyond the Phase 7 non-goals above, which all still hold:
+
+- breakpoint estimation, changepoint detection, or automatic segmentation;
+- weighting a fit by recorded uncertainty, in any form or under any name;
+- robust regression, iterative reweighting, sigma clipping, or automatic anchor
+  exclusion;
+- confidence intervals, standard errors, or p-values presented as calibrated;
+- any threshold that would let a fit become `validated`;
+- rewriting a completed transform in place;
+- discontinuous piecewise transforms;
+- a second clock-correction path for any modality;
+- caller attribution, caller probability, combined confidence, or `+attribution/`;
+- declaring breakpoints from the session manifest — worth doing, deferred past
+  Phase 3 so the fitting work stays bounded.
+
 ## Non-goals
 
-Not in this phase:
+Not in the first (Phase 7) alignment implementation:
 
 - full continuous neural-signal ingestion;
 - sample-by-sample photometry or miniscope storage in SQLite;
