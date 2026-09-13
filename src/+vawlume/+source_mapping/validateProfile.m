@@ -62,7 +62,7 @@ report = finalizeReport(report);
         if hasKind
             if ~ismember(kind, ["project_input", "extractor_output", ...
                     "external_stream_mapping", "alignment_anchor_mapping", ...
-                    "tracking_input_mapping"])
+                    "tracking_input_mapping", "attribution_input_mapping"])
                 addIssue("error", "PROFILE_UNSUPPORTED_KIND", location + ".profile.kind", ...
                     "Unsupported source_mapping profile kind: " + kind + ".");
             elseif strlength(options.ExpectedKind) > 0 && kind ~= options.ExpectedKind
@@ -77,10 +77,10 @@ report = finalizeReport(report);
                 "Unsupported mapping-profile schema version: " + schemaVersion + ".");
         elseif hasSchemaVersion && ismember(kind, ...
                 ["external_stream_mapping", "alignment_anchor_mapping", ...
-                "tracking_input_mapping"]) && schemaVersion ~= "0.3-draft"
+                "tracking_input_mapping", "attribution_input_mapping"]) && schemaVersion ~= "0.3-draft"
             addIssue("error", "PROFILE_UNSUPPORTED_SCHEMA_VERSION", ...
                 location + ".profile.profile_schema_version", ...
-                "External-stream, anchor, and tracking profiles require mapping-profile schema version 0.3-draft.");
+                "External-stream, anchor, tracking, and attribution profiles require mapping-profile schema version 0.3-draft.");
         end
 
         versionLabel = profileVersionLabel(entry, profile, kind, location);
@@ -103,9 +103,139 @@ report = finalizeReport(report);
                 validateAlignmentAnchorProfile(entry, location);
             case "tracking_input_mapping"
                 validateTrackingInputProfile(entry, location);
+            case "attribution_input_mapping"
+                validateAttributionInputProfile(entry, location);
         end
     end
 
+
+    function validateAttributionInputProfile(entry, location)
+        %VALIDATEATTRIBUTIONINPUTPROFILE A tool-agnostic imported attribution table.
+        %
+        % The contract names roles, never vendor columns, and it is deliberately
+        % strict about two things the rest of the profile language leaves open:
+        % caller-label resolution must be declared, and the semantics of any
+        % number the file carries must be stated. Both exist because an imported
+        % attribution result that cannot say whose claim it is, or what its
+        % numbers meant where they came from, is not evidence.
+        if requireMapping(entry, "source", location + ".source")
+            requiredText(entry.source, "table_role", location + ".source.table_role");
+        end
+
+        if requireMapping(entry, "context", location + ".context")
+            requiredText(entry.context, "window_timebase_key", ...
+                location + ".context.window_timebase_key");
+            [unit, hasUnit] = requiredText(entry.context, "native_time_unit", ...
+                location + ".context.native_time_unit");
+            if hasUnit
+                validateTimeUnit(unit, location + ".context.native_time_unit");
+            end
+            requiredText(entry.context, "exporting_system", ...
+                location + ".context.exporting_system");
+        end
+
+        if requireMapping(entry, "columns", location + ".columns")
+            required = ["native_window_id", "window_start", "window_end", ...
+                "caller_label"];
+            for index = 1:numel(required)
+                name = required(index);
+                if ~hasField(entry.columns, name)
+                    addIssue("error", "PROFILE_MISSING_FIELD", ...
+                        location + ".columns." + name, ...
+                        "An imported attribution table must declare " + name + ".");
+                else
+                    requiredText(entry.columns.(name), "source_field", ...
+                        location + ".columns." + name + ".source_field");
+                end
+            end
+            optional = ["score", "probability"];
+            for index = 1:numel(optional)
+                name = optional(index);
+                if hasField(entry.columns, name)
+                    requiredText(entry.columns.(name), "source_field", ...
+                        location + ".columns." + name + ".source_field");
+                end
+            end
+        end
+
+        % A stored number declares its semantics or is not stored. The profile is
+        % where the exporter's meaning is recorded, because VAWLUME cannot
+        % recover it afterwards from the number alone.
+        if requireMapping(entry, "value_semantics", location + ".value_semantics")
+            if hasField(entry, "columns")
+                for name = ["score", "probability"]
+                    if hasField(entry.columns, name) && ...
+                            ~hasField(entry.value_semantics, name)
+                        addIssue("error", "PROFILE_MISSING_FIELD", ...
+                            location + ".value_semantics." + name, ...
+                            "A declared " + name + " column requires " + name + ...
+                            " semantics saying what the number meant where it came from.");
+                    end
+                end
+            end
+        end
+
+        % Resolution is declared or the import is refused. Nothing infers which
+        % entity a label denotes from string similarity, and nothing creates an
+        % entity to accommodate an unrecognized one.
+        if requireMapping(entry, "caller_label_resolution", ...
+                location + ".caller_label_resolution")
+            resolution = entry.caller_label_resolution;
+            [policy, hasPolicy] = requiredText(resolution, "policy", ...
+                location + ".caller_label_resolution.policy");
+            if hasPolicy && policy ~= "declared_only"
+                addIssue("error", "PROFILE_INVALID_FIELD", ...
+                    location + ".caller_label_resolution.policy", ...
+                    "Only declared_only caller-label resolution is supported. " + ...
+                    "Inferring an entity from a label is the failure this refuses.");
+            end
+            if ~isfield(resolution, "map")
+                addIssue("error", "PROFILE_MISSING_FIELD", ...
+                    location + ".caller_label_resolution.map", ...
+                    "Declared caller-label resolution requires a map.");
+            else
+                validateCallerLabelMap(resolution.map, ...
+                    location + ".caller_label_resolution.map");
+            end
+        end
+
+        if hasField(entry, "mapping_policy")
+            if isfield(entry.mapping_policy, "preserve_source_values") && ...
+                    ~isequal(logical(entry.mapping_policy.preserve_source_values), true)
+                addIssue("error", "PROFILE_INVALID_FIELD", ...
+                    location + ".mapping_policy.preserve_source_values", ...
+                    "Imported values are preserved exactly. A profile cannot opt out " + ...
+                    "of that: a rescaled imported score is unauditable, because the " + ...
+                    "original is gone.");
+            end
+        end
+    end
+
+    function validateCallerLabelMap(map, location)
+        entries = normalizeSequence(map);
+        if isempty(entries)
+            addIssue("error", "PROFILE_MISSING_FIELD", location, ...
+                "Declared caller-label resolution requires at least one mapping.");
+            return
+        end
+        seen = strings(0, 1);
+        for index = 1:numel(entries)
+            item = entries{index};
+            itemLocation = location + "[" + string(index) + "]";
+            [label, hasLabel] = requiredText(item, "caller_label", ...
+                itemLocation + ".caller_label");
+            requiredText(item, "entity_native_id", itemLocation + ".entity_native_id");
+            if hasLabel
+                if ismember(label, seen)
+                    addIssue("error", "PROFILE_INVALID_FIELD", ...
+                        itemLocation + ".caller_label", ...
+                        "Caller label " + label + " is mapped more than once. " + ...
+                        "One label cannot denote two entities.");
+                end
+                seen(end+1, 1) = label; %#ok<AGROW>
+            end
+        end
+    end
     function validateTrackingInputProfile(entry, location)
         %VALIDATETRACKINGINPUTPROFILE A tool-agnostic canonicalized tracking table.
         %
@@ -1096,6 +1226,10 @@ report = finalizeReport(report);
             case "tracking_input_mapping"
                 allowed = ["profile", "source", "context", "columns", ...
                     "bodypart_roles", "coverage", "mapping_policy", "validation"];
+            case "attribution_input_mapping"
+                allowed = ["profile", "source", "context", "columns", ...
+                    "value_semantics", "caller_label_resolution", ...
+                    "mapping_policy", "validation"];
             otherwise
                 allowed = "profile";
         end

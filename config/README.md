@@ -163,7 +163,36 @@ declared, because letting an import create a frame implicitly would let it
 choose its own units and dimensionality. See
 [`24_tracking_input_contract.md`](../docs/development/24_tracking_input_contract.md).
 
-### 6. Recording-device profile
+
+### 6. Imported caller-attribution source mapping profile
+
+Location:
+
+```text
+config/01_mapping_profiles/attribution/
+```
+
+Declares how an external attribution system's export becomes VAWLUME's imported
+caller-attribution representation: which columns carry the window identifier and
+bounds, the claimed caller label, and optionally a score or probability.
+
+Two blocks are required that other mapping profiles do not have, and both exist
+because an imported attribution result that cannot answer them is not evidence.
+`value_semantics` states what a score or probability meant **where it came from**,
+because VAWLUME cannot recover that from the number afterwards.
+`caller_label_resolution` maps each label to an entity explicitly, with
+`policy: declared_only` — a label is a string in somebody else's file, and nothing
+infers which animal it denotes.
+
+The loader **refuses** a profile that sets
+`mapping_policy.preserve_source_values` to false. Imported values are stored
+exactly as the file carried them; a rescaled imported score is unauditable
+forever, because the original is gone.
+
+See
+[`generic_imported_attribution_profile.json`](01_mapping_profiles/attribution/generic_imported_attribution_profile.json)
+and [`../docs/development/32_imported_attribution_intake.md`](../docs/development/32_imported_attribution_intake.md).
+### 7. Recording-device profile
 
 Describes acquisition hardware/context, for example:
 
@@ -182,7 +211,7 @@ Recommended location:
 config/02_device_profiles/
 ```
 
-### 7. Experimental-setup profile
+### 8. Experimental-setup profile
 
 Describes the physical/behavioral recording context, for example:
 
@@ -204,7 +233,7 @@ Recommended location:
 config/03_setup_profiles/
 ```
 
-### 8. Extractor settings profile
+### 9. Extractor settings profile
 
 Captures the detailed settings used for one extraction context.
 
@@ -212,7 +241,7 @@ Unlike the built-in output mapping profile, an extractor settings profile descri
 
 Settings artifacts may remain external to the repository for real projects, with file identity/checksum recorded in provenance.
 
-### 9. Matching and consilience specification
+### 10. Matching and consilience specification
 
 Governs one cross-extractor matching analysis: which run pair is legal, what
 makes a detection pair a temporally plausible candidate, how ambiguity is
@@ -243,7 +272,7 @@ threshold in it is a deterministic demonstration value chosen to exercise
 algorithm behaviour on synthetic fixtures. None is empirically calibrated, and
 none should be reported as optimal or recommended.
 
-### 10. Session alignment manifests
+### 11. Session alignment manifests
 
 Location:
 
@@ -267,7 +296,7 @@ The tracked
 is illustrative. Its clocks, rates, and file names are synthetic, and it is an
 example of the manifest grammar rather than a template of validated settings.
 
-### 11. Arbitrary-N extractor-agreement policies
+### 12. Arbitrary-N extractor-agreement policies
 
 Location:
 
@@ -295,7 +324,7 @@ cannot make feature support an admission criterion: potential support, realized
 availability, and observed outcome stay separately queryable rather than
 becoming a membership test.
 
-### 12. Caller-attribution decision policies
+### 13. Caller-attribution decision policies
 
 Location:
 
@@ -330,7 +359,7 @@ A policy is an input, never a constant. Applying a different one to the same
 candidates produces a different decision and changes no candidate row, which is
 what makes comparing policies over one body of evidence possible.
 
-### 13. Cross-profile examples
+### 14. Cross-profile examples
 
 Examples that demonstrate how multiple profile kinds are associated can live in:
 

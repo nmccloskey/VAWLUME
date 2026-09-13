@@ -1099,6 +1099,52 @@ number another system already combined, provided its semantics says so; VAWLUME
 does not compute that number. Evidence rows have no natural schema key, so each
 successful `addEvidence(..., Apply=true)` deliberately appends new observations.
 
+
+Rather than entering candidates by hand, an external attribution system's export
+can be imported through a versioned mapping profile:
+
+```matlab
+% Plan first. Nothing is written, and every row it could not map is listed.
+plan = vawlume.ingest.attribution(conn, ...
+    struct(project_key="my-project", run_key="caller-import-1"), ...
+    "data/caller_export.csv");
+disp(plan.windows)
+disp(plan.issues)
+
+result = vawlume.ingest.attribution(conn, runRef, "data/caller_export.csv", ...
+    Apply=true);
+```
+
+Omit `ProfilePath` to use the shipped template under
+`config/01_mapping_profiles/attribution/`, or pass your own. The source file's
+SHA-256, the profile version and its checksum are all recorded, so every imported
+value can be traced back to the bytes it came from.
+
+**The exporting system's numbers are stored exactly as the file carried them.**
+No rescaling, no renormalization, no clamping, and no promotion of a score to a
+probability because it happened to fall in `[0,1]`. Each number carries the
+profile's declared semantics, saying what it meant *where it came from*.
+
+**Caller labels resolve only as the profile declares.** A label is a string in
+somebody else's file. Nothing infers which entity it denotes, and nothing creates
+an entity to accommodate an unrecognized one — a label naming an animal that was
+never in the recording is refused by name, with every offending label listed.
+
+**Unmappable rows are reported, not dropped.** A reversed window, a missing
+caller, an undeclared label and an out-of-range probability each appear in
+`plan.issues` with the row number and the reason.
+
+**Intake relates imported windows to no VAWLUME event.** They land with their
+native timing intact, on the exporting system's own clock. Because of that, an
+import stores windows and provenance but **no candidate rows**: a candidate
+belongs to a target, an imported claim belongs to a window, and mapping one onto
+the other requires a correspondence that has not been established. The claims come
+back in `result.claims` with their values intact. See
+[`../development/32_imported_attribution_intake.md`](../development/32_imported_attribution_intake.md)
+for what that means in practice.
+
+An import applies once per run. Evidence is append-only, so a second apply would
+duplicate rather than reconcile.
 Applying a declared policy turns those candidates into one decision per target,
 and completes the run:
 

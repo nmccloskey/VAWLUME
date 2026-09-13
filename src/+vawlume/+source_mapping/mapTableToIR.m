@@ -46,6 +46,10 @@ switch string(profile.profile_kind)
         result = mapTrackingTableToIR( ...
             tbl, result, profileEntry, profileLocation, options);
         return
+    case "attribution_input_mapping"
+        result = mapAttributionTableToIR( ...
+            tbl, result, profileEntry, profileLocation, options);
+        return
     case "extractor_output"
         % Continue through the inherited generic extractor field mapper.
     otherwise

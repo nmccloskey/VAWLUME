@@ -18,6 +18,8 @@ result.anchor_fit_pairs = emptyAnchorFitPairsTable();
 result.tracking_streams = emptyTrackingStreamsTable();
 result.tracking_series = emptyTrackingSeriesTable();
 result.tracking_columns = emptyTrackingColumnsTable();
+result.attribution_windows = emptyAttributionWindowsTable();
+result.attribution_claims = emptyAttributionClaimsTable();
 result.issues = emptyIssuesTable();
 result.summary = struct();
 result.valid_for_ingest = false;
@@ -134,6 +136,37 @@ types(ismember(names, "is_required")) = "double";
 value = typedEmptyTable(names, types);
 end
 
+
+% Imported attribution is deliberately two tables: the window an exporting system
+% claimed a vocalization occupied, and the caller claims made about it. They are
+% separate because one window may carry several claims, and because a window is a
+% statement about time while a claim is a statement about an animal.
+%
+% No VAWLUME event key appears here. Relating an imported window to a detection or
+% consensus event is correspondence work with its own eligibility rule, and doing
+% it during mapping would make every import quietly assert a match.
+
+function value = emptyAttributionWindowsTable()
+names = ["window_key", "source_key", "source_row", "source_locator", ...
+    "native_window_id", "timebase_key", "start_time_native", "end_time_native", ...
+    "native_time_unit", "mapping_rule", "status"];
+types = repmat("string", 1, numel(names));
+types(ismember(names, ["source_row", "start_time_native", "end_time_native"])) = "double";
+value = typedEmptyTable(names, types);
+end
+
+% caller_label is the exporting system's own string and is preserved verbatim.
+% entity_native_id is what the profile DECLARED it denotes -- never inferred, and
+% resolved against the database only at intake, where an unknown one is refused.
+function value = emptyAttributionClaimsTable()
+names = ["claim_key", "window_key", "source_key", "source_row", ...
+    "source_locator", "caller_label", "entity_native_id", ...
+    "score", "score_semantics", "probability", "probability_semantics", ...
+    "exporting_system", "exporting_system_version", "mapping_rule", "status"];
+types = repmat("string", 1, numel(names));
+types(ismember(names, ["source_row", "score", "probability"])) = "double";
+value = typedEmptyTable(names, types);
+end
 function value = typedEmptyTable(names, types)
 value = table(Size=[0, numel(names)], VariableTypes=cellstr(types), ...
     VariableNames=cellstr(names));

@@ -113,6 +113,8 @@ verifyEqual(testCase, string(fieldnames(result)), [
     "tracking_streams"
     "tracking_series"
     "tracking_columns"
+    "attribution_windows"
+    "attribution_claims"
     "issues"
     "summary"
     "valid_for_ingest"

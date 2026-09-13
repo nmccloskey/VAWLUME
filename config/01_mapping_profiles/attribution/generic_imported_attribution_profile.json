@@ -1,0 +1,90 @@
+{
+  "profiles": [
+    {
+      "profile": {
+        "id": "vawlume.attribution.generic_imported.v0_1",
+        "name": "Generic imported caller-attribution table",
+        "kind": "attribution_input_mapping",
+        "profile_schema_version": "0.3-draft",
+        "status": "built_in_template_draft",
+        "profile_version": "0.1.0"
+      },
+
+      "source": {
+        "table_role": "caller_attribution_export",
+        "source_key_default": "source:attribution_table",
+        "shape": "long",
+        "shape_note": "One row per (window, claimed caller). A system emitting one row per window with several caller columns is a different shape and needs its own profile; guessing at a universal reshaper here would silently mis-associate scores with callers.",
+        "tool_independence": "This profile names roles, never vendor columns. Any attribution system reaches VAWLUME through the same declaration by pointing each role at whatever it happened to call it."
+      },
+
+      "context": {
+        "window_timebase_key": "attribution_native",
+        "native_time_unit": "s",
+        "exporting_system": "Example Caller Attribution System",
+        "exporting_system_version": "unknown",
+        "timing_note": "Imported window times are NATIVE to the exporting system's own clock and are stored unchanged. Whether that clock is the recording's clock is a question this profile cannot answer and does not try to: relating it to a VAWLUME event is correspondence work, and it happens after intake with an explicit transform."
+      },
+
+      "columns": {
+        "native_window_id": {
+          "source_field": "window_id",
+          "note": "The exporting system's own window identifier, stored verbatim. It is never interpreted as a VAWLUME detection ID even when it looks like one."
+        },
+        "window_start": {
+          "source_field": "start_s",
+          "native_unit": "s"
+        },
+        "window_end": {
+          "source_field": "end_s",
+          "native_unit": "s"
+        },
+        "caller_label": {
+          "source_field": "caller",
+          "note": "The exporting system's label for the claimed caller, stored verbatim. It becomes a VAWLUME entity only through caller_label_resolution below."
+        },
+        "score": {
+          "source_field": "score",
+          "note": "Optional. Unconstrained range. Stored exactly as the file carries it."
+        },
+        "probability": {
+          "source_field": "probability",
+          "note": "Optional. Must lie in [0,1]. A value outside that range is refused rather than clamped, because clamping would silently rewrite the exporter's claim."
+        }
+      },
+
+      "value_semantics": {
+        "score": "Exporting-system caller score; producer declared in context.exporting_system; range as the exporter defines it; uncalibrated; not a probability and not comparable across exporting systems",
+        "probability": "Exporting-system caller probability; producer declared in context.exporting_system; range=[0,1]; calibration is the exporter's claim and is not validated by VAWLUME",
+        "semantics_note": "These strings travel with every stored number. They say what the number meant WHERE IT CAME FROM. VAWLUME neither recomputes nor re-normalizes them, because a rescaled imported score is unauditable forever: the original is gone."
+      },
+
+      "caller_label_resolution": {
+        "policy": "declared_only",
+        "policy_note": "A label in somebody else's file is a string. VAWLUME never infers which entity it denotes from string similarity, case folding, or edit distance, and never creates an entity to accommodate an unrecognized label. Every label is declared here or the import is refused by name.",
+        "map": [
+          { "caller_label": "A", "entity_native_id": "A" },
+          { "caller_label": "B", "entity_native_id": "B" }
+        ],
+        "unresolved_label_policy": "refuse",
+        "unresolved_label_note": "An imported label naming an animal not among the run's participating entities is a surfaced problem, not a new entity. The import names every offending label rather than dropping those rows."
+      },
+
+      "mapping_policy": {
+        "preserve_source_values": true,
+        "preserve_source_values_note": "No rescaling, no renormalization, no clamping, and no conversion of a score into a probability because it happened to fall in [0,1].",
+        "unmappable_row_policy": "report",
+        "unmappable_row_note": "A row that cannot be mapped is reported as an issue and excluded from the plan. It is never silently dropped, because a preview that hides what it could not read is worse than one that reads nothing.",
+        "correspondence_policy": "none",
+        "correspondence_note": "Intake relates imported windows to nothing. Associating them with VAWLUME detections or consensus events is a separate, explicit step with its own eligibility rule."
+      },
+
+      "validation": {
+        "require_window_bounds": true,
+        "require_caller_label": true,
+        "require_one_of_score_or_probability": false,
+        "require_one_of_score_or_probability_note": "A label with no number is a legitimate import. The writer records NULL for both, never 1.0: converting a name into certainty is the specific failure this refuses."
+      }
+    }
+  ]
+}
