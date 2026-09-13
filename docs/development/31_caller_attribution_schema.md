@@ -177,6 +177,58 @@ which one bound this decision.
 completed decision is never rewritten in place" true. A different policy is a
 different row and both stay readable.
 
+
+#### The public decision path (Phase 4.6)
+
+`vawlume.attribution.decide` is the only writer. The caller never names a
+selection: the policy chooses it, which makes a decision whose status contradicts
+its selection set unreachable through the public API rather than merely refused.
+The schema triggers remain the backstop for direct SQL.
+
+The shipped rule, in order. Every branch records the threshold that actually
+bound it, because a policy declares several and the profile alone does not say
+which one decided a given row.
+
+| Order | Condition | Status | Threshold recorded |
+|---|---|---|---|
+| 1 | caller declared a QC exclusion with a reason | `excluded` | none; the reason is the record |
+| 2 | no candidate carries the column the policy reads | `excluded` | none |
+| 3 | the strongest value is below `selection_threshold` | `unassigned` | `selection_threshold` |
+| 4 | exactly one candidate lies within `separation_margin` of the top | `assigned` | `separation_margin` |
+| 5 | several contenders, each at or above `co_occurrence_threshold` | `simultaneous` | `co_occurrence_threshold` |
+| 6 | several contenders, not each that strong | `ambiguous` | `co_occurrence_threshold` |
+
+Two distinctions in that table carry the layer's whole claim.
+
+**Rows 2 and 3 are not the same outcome.** Row 3 means the rule ran and nothing
+passed. Row 2 means the rule could not run at all. Collapsing them would report
+an absence of evidence as evidence of absence.
+
+**Rows 5 and 6 are opposite claims about different things.** Both leave several
+contenders. `simultaneous` says more than one animal called — a claim about the
+world. `ambiguous` says the evidence cannot separate them — a claim about the
+evidence. The policy separates them by asking whether each contender is
+*independently* strong, not merely close to the others.
+
+**Row 4 is why a threshold cannot manufacture confidence.** Clearing
+`selection_threshold` is never sufficient on its own; a candidate is assigned only
+when nothing else is indistinguishable from it.
+
+Candidate `rank` is not read. Rank is caller-supplied presentation of a score,
+not independent evidence, and a policy that read it would be deciding on a
+presentation choice.
+
+#### Completion freezes evidence, not decisions
+
+When every target of a run has a decision, `decide` sets the attribution run to
+`complete` and its analysis parent to `completed` in the same transaction.
+
+After that, `addCandidates` and `addEvidence` refuse with `RunNotWritable` — but
+`decide` does not. The asymmetry is deliberate: freezing the evidence is what
+makes a later policy comparable against the same candidates, and freezing the
+decision set would foreclose the comparison that separating the layers exists to
+permit.
+
 ### `imported_attribution_windows`
 
 The imported system's own vocal windows. Times are **native and never

@@ -1086,10 +1086,72 @@ number another system already combined, provided its semantics says so; VAWLUME
 does not compute that number. Evidence rows have no natural schema key, so each
 successful `addEvidence(..., Apply=true)` deliberately appends new observations.
 
-**This workflow is still intentionally incomplete.** The run remains `planned`
-and its analysis parent remains `started`. Candidates are evidence-bearing
-possibilities, not a result selecting one caller. Phase 4.6 applies a declared
-policy and records assigned, unassigned, ambiguous, simultaneous, or excluded.
+Applying a declared policy turns those candidates into one decision per target,
+and completes the run:
+
+```matlab
+% Plan first. Nothing is written, and every target's outcome is visible.
+decisionPreview = vawlume.attribution.decide(conn, ...
+    struct(project_key="my-project", run_key="caller-import-1"));
+disp(decisionPreview.decisions)
+
+decisionResult = vawlume.attribution.decide(conn, ...
+    struct(project_key="my-project", run_key="caller-import-1"), ...
+    struct(), Apply=true);
+```
+
+Omit the policy reference to use the shipped illustrative policy,
+[`prototype_attribution_decision_policy.json`](../../config/08_attribution_policies/prototype_attribution_decision_policy.json),
+or pass `struct(profile_path="path/to/your_policy.json")` to supply your own.
+Either way the policy is registered and checksummed, and each decision names the
+version that produced it.
+
+The five statuses, and what each one claims:
+
+| Status | Selected candidates | The claim |
+|---|---|---|
+| `assigned` | exactly 1 | this entity called |
+| `simultaneous` | 2 or more | these entities called — a claim about the world |
+| `ambiguous` | 0 | we cannot tell which — a claim about the evidence |
+| `unassigned` | 0 | the policy ran and nothing was supportable |
+| `excluded` | 0 | the policy could not be applied, or you declared a QC exclusion |
+
+**Ambiguous and simultaneous are opposite claims, not degrees of the same one.**
+Both leave several candidates standing. The shipped policy separates them by
+asking whether every close contender is *independently* strong: if they are, it
+says two animals called; if they are merely close, it says the evidence cannot
+separate them.
+
+**Clearing a threshold is never sufficient by itself.** A candidate is assigned
+only when no other candidate is within the policy's `separation_margin` of it.
+That is what stops a threshold quietly manufacturing confidence out of a narrow
+margin.
+
+Exclude a target yourself when you know something the numbers do not:
+
+```matlab
+vawlume.attribution.decide(conn, runRef, struct(), Apply=true, ...
+    Exclusions=struct(attribution_target_id=7, ...
+        reason="channel 2 clipped through this call"));
+```
+
+A reason is required. VAWLUME does not invent QC failures from the numbers.
+
+**A decision is derived, and the layers stay separate.** Apply a different
+policy to the same candidates and you get a different decision while every
+candidate row stays byte-identical. Both decisions remain readable, which is how
+you compare policies over one body of evidence. A second decision for one target
+under the *same* policy version is refused rather than rewritten.
+
+Once every target has a decision the attribution run becomes `complete` and its
+analysis parent `completed`. Completion freezes the **evidence** — further
+candidates and evidence rows are refused — but deliberately not the decision
+set, because applying another policy to frozen candidates is the point.
+
+**What a decision is not.** It is not a probability that the selected entity
+called, it is not calibrated, and it is not a combination of the four evidence
+dimensions: the policy reads one candidate column and no evidence row. No status
+means `validated`, and the vocabulary does not contain the word.
 
 ---
 

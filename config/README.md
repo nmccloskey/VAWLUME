@@ -295,7 +295,42 @@ cannot make feature support an admission criterion: potential support, realized
 availability, and observed outcome stay separately queryable rather than
 becoming a membership test.
 
-### 12. Cross-profile examples
+### 12. Caller-attribution decision policies
+
+Location:
+
+```text
+config/08_attribution_policies/
+```
+
+A decision policy governs how the candidate caller rows of an attribution run
+become one decision per target: which candidate column it reads, how far apart
+two candidates must be before one can be assigned, and how strong several
+contenders must each be before the result claims that more than one animal
+called. Like a matching specification it is registered and checksummed in
+`config_profile_versions`, under `profile_kind` `attribution_policy`, and its
+version is named on every `attribution_decisions` row it produced.
+
+The shipped
+[`prototype_attribution_decision_policy.json`](08_attribution_policies/prototype_attribution_decision_policy.json)
+declares `calibration_status.state = "illustrative_prototype"`, and the loader
+**refuses** a policy claiming `calibrated`: nothing in this prototype could
+justify the claim, and a calibrated-looking threshold is the one thing a caller
+attribution layer must not publish.
+
+Two of its numbers exist to stop a threshold manufacturing confidence.
+`separation_margin` keeps a candidate from being assigned while another remains
+indistinguishable from it, so clearing the selection floor is never sufficient
+on its own. `co_occurrence_threshold` is the bar every contender must reach
+independently before the policy will say two animals called rather than that the
+evidence cannot separate them — the difference between a claim about the world
+and a claim about the evidence.
+
+A policy is an input, never a constant. Applying a different one to the same
+candidates produces a different decision and changes no candidate row, which is
+what makes comparing policies over one body of evidence possible.
+
+### 13. Cross-profile examples
 
 Examples that demonstrate how multiple profile kinds are associated can live in:
 

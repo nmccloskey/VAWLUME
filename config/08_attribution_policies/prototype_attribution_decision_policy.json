@@ -1,0 +1,75 @@
+{
+  "profile": {
+    "id": "vawlume.attribution.decision.prototype.v1",
+    "name": "Prototype caller-attribution decision policy",
+    "kind": "attribution_policy",
+    "profile_schema_version": "0.1-draft",
+    "profile_version": "0.1.0",
+    "description": "Versioned, checksum-bearing policy governing how candidate caller rows become one decision per attribution target. Registered as a config_profiles row of kind attribution_policy and named on every attribution_decisions row it produced."
+  },
+
+  "calibration_status": {
+    "state": "illustrative_prototype",
+    "meaning": "Every numeric threshold below is a deterministic demonstration value chosen to exercise decision behaviour on synthetic candidates. None is empirically calibrated, and none should be reported as an optimal or recommended setting. A decision produced under this policy is an estimate, never a validated result.",
+    "evidence_basis": "synthetic caller-attribution candidates only; no real attribution system output has been imported and no real paired session has ever been ingested",
+    "calibration_requires": "imported output from a real attribution system, plus an independently established ground truth for who called, neither of which exists"
+  },
+
+  "decision_rule": {
+    "key": "threshold_with_separation_and_co_occurrence",
+    "version": "0.1.0",
+    "reads": "score",
+    "reads_meaning": "The candidate column this policy compares. A policy reads one column and never mixes the two, because a score and a probability are different quantities on different scales. Rank is not read: rank is caller-supplied presentation of a score, not independent evidence.",
+    "requires_value_semantics": true,
+    "ordering": "higher_is_stronger",
+    "ordering_meaning": "This policy assumes the column it reads increases with support for the candidate. A source whose scale runs the other way must not be decided with this policy."
+  },
+
+  "thresholds": {
+    "selection_threshold": 0.5,
+    "selection_threshold_meaning": "The minimum value a candidate must reach to be supportable at all. Nothing below this can be selected under any branch.",
+
+    "separation_margin": 0.15,
+    "separation_margin_meaning": "How far below the strongest candidate a candidate may fall and still be treated as indistinguishable from it. Candidates within this margin of the top are contenders together; clearing the selection threshold alone never produces an assignment while another candidate remains this close.",
+
+    "co_occurrence_threshold": 0.7,
+    "co_occurrence_threshold_meaning": "The value EVERY contender must independently reach before this policy will claim that more than one animal called. Below it, several close contenders mean the evidence cannot separate them, not that several animals vocalized."
+  },
+
+  "statuses": {
+    "assigned": "Exactly one candidate is supportable and no other candidate is within the separation margin of it. One selected candidate.",
+    "simultaneous": "Two or more contenders each independently reach the co-occurrence threshold. This is a claim about the world: more than one animal called. All contenders selected.",
+    "ambiguous": "Candidates are present and at least one is supportable, but they cannot be separated and do not each independently reach the co-occurrence threshold. This is a claim about the evidence, not about the world. No candidate selected.",
+    "unassigned": "The policy was applied and no candidate reached the selection threshold. No candidate selected.",
+    "excluded": "The policy could not be applied to this target at all, or a caller declared a QC exclusion with a reason. No candidate selected.",
+    "validated": "Not a status. No decision this prototype can produce is validated, and the vocabulary does not contain the word."
+  },
+
+  "exclusion_rules": {
+    "no_readable_value": {
+      "enabled": true,
+      "reason": "no candidate carried the value this policy reads",
+      "meaning": "Distinct from unassigned. Unassigned means the rule ran and nothing passed; this means the rule could not run. Collapsing them would report an absence of evidence as evidence of absence."
+    }
+  },
+
+  "caller_declared_exclusions": {
+    "permitted": true,
+    "requires_reason": true,
+    "meaning": "A caller may exclude a target for a stated QC reason. VAWLUME does not invent QC failures from the numbers: a person decides that a target should not be attributed, and the reason is stored with the decision."
+  },
+
+  "refusals": {
+    "no_candidates": "A target with no candidate rows at all is refused rather than silently decided. Absence of candidates is an unfinished analysis, not an outcome.",
+    "decision_exists": "A second decision for the same target under the same policy version is refused. A completed decision is never rewritten in place.",
+    "mixed_value_availability": "Not refused. Candidates lacking the read value are ignored for ranking and reported, because a partially scored batch is a real state of imported data."
+  },
+
+  "what_this_policy_is_not": [
+    "not a probability that the selected entity called",
+    "not calibrated, and not derived from any calibrated quantity",
+    "not a combination of the four uncertainty dimensions; this policy reads one candidate column and no evidence row",
+    "not a re-scoring of candidates; candidate values are inputs and are never rewritten",
+    "not evidence that the candidate set was complete"
+  ]
+}
