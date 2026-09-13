@@ -3,6 +3,29 @@ function tests = test_interval_relation
 tests = functiontests(localfunctions);
 end
 
+function setupOnce(testCase)
+% Add src/ if it is absent, and remove it only if this file added it.
+%
+% This suite previously relied on the caller having put src/ on the path. That
+% works alone and fails in company: several neighbouring suites call rmpath in
+% their own teardown, after which vawlume.interval.relation cannot be resolved
+% and every test here errors. Recorded as P4-4 at 4.6 and fixed at 4.9, when it
+% began blocking verification of the layer that consumes this primitive.
+repoRoot = fileparts(fileparts(fileparts(mfilename("fullpath"))));
+sourcePath = fullfile(repoRoot, "src");
+testCase.TestData.added_path = ~contains(path, sourcePath);
+testCase.TestData.source_path = sourcePath;
+if testCase.TestData.added_path
+    addpath(sourcePath);
+end
+end
+
+function teardownOnce(testCase)
+if testCase.TestData.added_path && contains(path, testCase.TestData.source_path)
+    rmpath(testCase.TestData.source_path);
+end
+end
+
 function testIdenticalIntervals(testCase)
 actual = vawlume.interval.relation(1, 3, 1, 3);
 

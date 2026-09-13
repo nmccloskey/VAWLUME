@@ -144,7 +144,7 @@ Every numeric threshold that any of these edges depends on is an illustrative
 demonstration value. Calibration requires a genuine paired extractor session
 and an independent manually reviewed reference subset, neither of which exists.
 
-## Where caller attribution will attach
+## Where caller attribution will attach (written in Phase 1; see the section after it)
 
 Not implemented. Recorded here so the boundary is not blurred retroactively.
 
@@ -167,6 +167,44 @@ explicitly does not assert that the linked entity emitted any selected
 detection; time-bounded participation requires the interval join demonstrated
 in [`examples/agreement_filter_demo.m`](../../examples/agreement_filter_demo.m).
 
+
+## Caller attribution attached at Phase 4
+
+No longer future work. The section above described what would be needed; this
+records what was built, so the layer list stays complete rather than silently
+gaining a member.
+
+Attribution adds **one** correspondence layer, and it is deliberately not one of
+the three above:
+
+| Layer | Question | Rule lives in |
+|---|---|---|
+| Pairwise matching | did two detectors find the same call? | the matching specification |
+| Arbitrary-N agreement | do N extractors converge on one call? | the agreement policy |
+| **Imported-window correspondence** | **does an attribution claim refer to a call VAWLUME knows about?** | **the attribution mapping profile** |
+
+Those are different questions. Two detectors disagreeing is a measurement
+difference between tools doing the same job; an attribution system's window
+disagreeing with a VAWLUME event may mean the two systems were segmenting
+different things entirely — one delimiting a vocalization, the other bracketing
+a region to localize a caller in.
+
+So the layers share the interval **primitive** (`vawlume.interval.relation`) and
+share no rule, no threshold and no eligibility function. `+matching/` knows
+nothing about attribution, and a test asserts it.
+
+The two constraints this document set in Phase 1 both held:
+
+- an attribution target names which event set it came from, through three
+  explicit foreign keys and an exclusive CHECK;
+- correspondence evidence and attribution evidence do not share a table.
+  `attribution_window_correspondences` records how an imported window relates to
+  an event; `attribution_evidence` records what supports a caller claim. A
+  correspondence produces one evidence row in the `correspondence` dimension,
+  which is a pointer to the correspondence rather than a merging of the two.
+
+See [`32_imported_attribution_intake.md`](32_imported_attribution_intake.md) and
+[`33_attribution_correspondence.md`](33_attribution_correspondence.md).
 ## Where each contract is documented
 
 | Layer | Documents |

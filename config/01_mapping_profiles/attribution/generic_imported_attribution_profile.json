@@ -79,6 +79,18 @@
         "correspondence_note": "Intake relates imported windows to nothing. Associating them with VAWLUME detections or consensus events is a separate, explicit step with its own eligibility rule."
       },
 
+      "correspondence": {
+        "eligibility_rule": "positive_overlap_and_min_temporal_iou_on_declared_basis",
+        "rule_note": "This asks whether an imported attribution claim refers to a call VAWLUME knows about. That is a different question from whether two detectors found the same call, and it is deliberately NOT the matching specification's rule: a detector disagreeing with another detector is a measurement difference, while an attribution system's window disagreeing with a VAWLUME event may mean the systems were segmenting different things entirely.",
+        "min_temporal_iou": 0.05,
+        "min_temporal_iou_note": "Deliberately independent of the matching specification's floor, and deliberately lower than it. An attribution system's window often brackets a call loosely, because it was produced to localize a caller rather than to delimit a vocalization, so a floor tuned for detector-to-detector agreement would discard true correspondences whose only fault is a generous window. The two floors happening to coincide would be a coincidence, not a shared calibration, and neither layer may be tuned by changing the other.",
+        "require_positive_overlap": true,
+        "preserve_ambiguity": true,
+        "preserve_ambiguity_note": "A window plausibly referring to two VAWLUME events produces two correspondences, both stored with their scores. Nothing chooses. A correspondence layer that picked a winner would destroy the evidence a later reviewer needs, and the reviewer is the only one who can weigh it.",
+        "calibration_status": "illustrative_prototype",
+        "calibration_note": "min_temporal_iou is a demonstration value chosen to exercise behaviour on synthetic windows. It is not calibrated, and no correspondence produced under it is validated."
+      },
+
       "validation": {
         "require_window_bounds": true,
         "require_caller_label": true,

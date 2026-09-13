@@ -1145,6 +1145,42 @@ for what that means in practice.
 
 An import applies once per run. Evidence is append-only, so a second apply would
 duplicate rather than reconcile.
+
+Imported windows arrive related to nothing. Relating them to the events VAWLUME
+knows about is an explicit, separate step:
+
+```matlab
+% The exporter used its own clock: transform through a fitted alignment run.
+result = vawlume.attribution.correspondWindows(conn, runRef, ...
+    AlignmentRun=7, Apply=true);
+
+% Or assert that the exporter used the recording's clock.
+result = vawlume.attribution.correspondWindows(conn, runRef, ...
+    SameClock=true, Apply=true);
+```
+
+**One of the two is required.** There is no default, because a correspondence
+computed on incomparable clocks is a plausible number and a wrong one — the IoU
+looks ordinary, the row stores cleanly, and the error surfaces as a caller
+attributed to the wrong call.
+
+The rule comes from the `correspondence` block of the mapping profile the import
+registered, so a stored correspondence names a rule that still exists. It is
+attribution's own and deliberately **not** the matching specification's: two
+detectors disagreeing is a measurement difference, while an attribution system's
+window disagreeing with a VAWLUME event may mean the two were segmenting
+different things.
+
+**Ambiguity is preserved.** A window plausibly referring to two events produces
+two correspondences, both stored with their scores. Nothing chooses;
+`result.ambiguous_window_count` tells you how many windows are in that state.
+Windows matching nothing are counted in `windows_without_correspondence` — a
+finding, not a failure.
+
+Each correspondence records whether its IoU was computed on `native` or `aligned`
+intervals, because **aligned duration is not native duration** under a piecewise
+clock, and whether either endpoint fell outside the transform's anchored range.
+See [`../development/33_attribution_correspondence.md`](../development/33_attribution_correspondence.md).
 Applying a declared policy turns those candidates into one decision per target,
 and completes the run:
 

@@ -209,6 +209,41 @@ report = finalizeReport(report);
                     "original is gone.");
             end
         end
+
+        % Attribution's own eligibility rule, deliberately separate from the
+        % matching specification's. Detector-to-detector matching asks whether
+        % two detectors found the same call; this asks whether an attribution
+        % claim refers to a call VAWLUME knows about. Sharing a threshold between
+        % them would make one layer's calibration silently govern the other.
+        if hasField(entry, "correspondence")
+            correspondence = entry.correspondence;
+            location2 = location + ".correspondence";
+            requiredText(correspondence, "eligibility_rule", ...
+                location2 + ".eligibility_rule");
+            if ~hasField(correspondence, "min_temporal_iou")
+                addIssue("error", "PROFILE_MISSING_FIELD", ...
+                    location2 + ".min_temporal_iou", ...
+                    "A declared correspondence rule requires min_temporal_iou.");
+            else
+                floorValue = correspondence.min_temporal_iou;
+                if ~isnumeric(floorValue) || ~isscalar(floorValue) || ...
+                        ~isfinite(floorValue) || floorValue < 0 || floorValue > 1
+                    addIssue("error", "PROFILE_INVALID_FIELD", ...
+                        location2 + ".min_temporal_iou", ...
+                        "min_temporal_iou must be a finite number in [0,1].");
+                end
+            end
+            % A correspondence layer that resolved ambiguity would destroy the
+            % evidence a reviewer needs, so a profile cannot switch it off.
+            if hasField(correspondence, "preserve_ambiguity") && ...
+                    ~isequal(logical(correspondence.preserve_ambiguity), true)
+                addIssue("error", "PROFILE_INVALID_FIELD", ...
+                    location2 + ".preserve_ambiguity", ...
+                    "Ambiguous correspondence is always preserved. A profile " + ...
+                    "cannot opt out: choosing a winner here would discard the " + ...
+                    "evidence a reviewer needs to weigh it.");
+            end
+        end
     end
 
     function validateCallerLabelMap(map, location)
@@ -1228,7 +1263,7 @@ report = finalizeReport(report);
                     "bodypart_roles", "coverage", "mapping_policy", "validation"];
             case "attribution_input_mapping"
                 allowed = ["profile", "source", "context", "columns", ...
-                    "value_semantics", "caller_label_resolution", ...
+                    "value_semantics", "caller_label_resolution", "correspondence", ...
                     "mapping_policy", "validation"];
             otherwise
                 allowed = "profile";
