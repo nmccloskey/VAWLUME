@@ -56,6 +56,44 @@ What cannot be recorded twice is the **identical** candidate for the identical
 interval — that would double the evidence without adding any, and would look
 like corroboration it is not. `vawlume:tracking:IdentityAssociationDuplicate`.
 
+
+### Precedence, when a caller needs one answer
+
+Deferred through Phases 2 and 3 and settled at 4.7, because Phase 4's attribution
+layer is the first consumer that must act on a single identity.
+
+`identityCandidates` is unchanged. It still returns every overlapping claim and
+still chooses nothing — a query layer that invented precedence would hide
+evidence, which is why this sat open for three phases rather than being guessed
+at.
+
+`vawlume.tracking.resolveIdentity` is the caller-invoked rule:
+
+1. a claim whose `assignment_state` is `rejected` is never chosen;
+2. `assigned` > `candidate` > `ambiguous` > `unresolved`;
+3. among claims still tied, the **narrowest** interval covering the query wins;
+4. still tied — no selection, and the tie is reported.
+
+Step 3 answers the case the deferral was about: a session-long weak candidate
+beside a precise manual correction over a crossing. A narrower interval is the
+structural signal that somebody looked harder at that moment.
+
+**The rule reads `assignment_state` and interval width, and nothing else.** Not
+`identity_value` — those are numbers from different upstream systems on scales
+nothing establishes are comparable, the same refusal the alignment layer makes
+about anchor uncertainty. Not `evidence_kind`, `review_state` or `method` —
+those are free text by the design above, so a rule keyed on them would work for
+the strings seen so far and fail silently on the first unfamiliar one. Not
+recency: this table carries no creation timestamp.
+
+It returns the chosen claim, every claim it set aside, and **which step decided**.
+A precedence rule whose reasoning is not returned is a silent rule with extra
+steps. It also reads with `IncludeRejected=true`, so a rejected claim appears as
+set aside rather than being invisible — otherwise a reader could not tell whether
+one existed at all.
+
+A resolution is **not** identity evidence. It is a record of which stored claim a
+stated rule selected, and it creates no row in this table.
 ### Unresolved is a statement; no evidence is not
 
 `entity_id IS NULL` with `assignment_state = 'unresolved'` records that **nothing
@@ -196,6 +234,17 @@ explicitly how much a declared event link is worth relative to a reviewed
 interval-scoped association — that decision belongs there, not here, and neither
 representation should be changed to look like the other in the meantime.
 
+
+**Settled at 4.7.** Caller attribution now records which of the two a piece of
+evidence rests on. An `attribution_evidence` row whose `evidence_dimension` is
+`visual_identity` must declare `identity_statement_kind` —
+`declared_entity_link` or `identity_association` — and name the row it rests on;
+`vawlume:attribution:EvidenceIdentityRequired` refuses one that does not.
+
+The rule is **not** "prefer the stronger one". Both may legitimately support a
+claim, and a weak link used knowingly and recorded as weak is honest evidence.
+What is forbidden is using either silently, which is precisely what made the two
+indistinguishable at the point of consumption. Neither representation changed.
 ## Identity evidence can outlive the trace it names
 
 Associations are keyed on `native_track_id`, not on a `tracking_series_id` — see

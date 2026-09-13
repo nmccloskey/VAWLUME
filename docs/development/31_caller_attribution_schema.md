@@ -127,7 +127,12 @@ its own open vocabularies.
 `imported_composite` is how somebody else's already-combined score is stored
 without VAWLUME computing one.
 
-`identity_statement_kind` closes **A-1**. An evidence row derived from an identity
+`identity_statement_kind` closes **A-1**. **Required whenever
+`evidence_dimension` is `visual_identity`** (4.7): that dimension rests on an
+identity statement by definition, and a row that did not say which kind left a
+user-declared label lookup indistinguishable from real identity evidence.
+`vawlume:attribution:EvidenceIdentityRequired` refuses it. The rule is never
+"prefer the stronger one" -- it is never use either silently. An evidence row derived from an identity
 statement names whether it rests on a `declared_entity_link` (the user-declared
 `external_events.entity_id` lookup, carrying no evidence kind, semantics,
 calibration or review state) or an `identity_association` (a

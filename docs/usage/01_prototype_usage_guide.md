@@ -812,17 +812,30 @@ read through the same `applyTransform` API used by every other consumer.
 
 **Prerequisite: channel rows.** Microphone placement, bounded audio reads, and
 response measurement all address an established `recording_channels` row, and
-**no public function creates one.** Project intake establishes the recording but
-not its channels, so for a multi-channel recording you must insert them yourself
-alongside the recording's `channel_count`:
+project intake establishes the recording but not its channels — how many channels
+a file carries is a property of the acquisition rather than of the mapping.
+Declare them explicitly:
 
 ```matlab
 execute(conn, "UPDATE recordings SET channel_count=2 WHERE recording_id=1");
-execute(conn, "INSERT INTO recording_channels(recording_id,channel_index," + ...
-    "channel_label) VALUES(1,1,'left'),(1,2,'right')");
+left = vawlume.geometry.registerRecordingChannel(conn, ...
+    struct(recording_id=1), struct(channel_index=1, channel_label="left"));
+right = vawlume.geometry.registerRecordingChannel(conn, ...
+    struct(recording_id=1), struct(channel_index=2, channel_label="right"));
 ```
 
-`channel_index` is one-based and must match the channel order in the audio file;
+`channel_index` is one-based and must match the channel order in the audio file.
+That is a caller assertion: nothing inspects the audio to confirm it, and the
+returned `channel_count_is_caller_asserted` says so. A channel index above the
+recording's declared `channel_count` is refused when the recording declares one;
+a recording declaring no count is not second-guessed.
+
+Re-registering a channel with the same label and role reuses it. Re-registering
+the same index with a *different* label or role raises
+`vawlume:geometry:ChannelConflict` rather than rewriting it, because placements,
+measurements and response estimates already address that channel by ID and
+changing what it denotes underneath them would silently re-point evidence.
+
 `readAudioWindow` refuses a recording whose declared `channel_count` or
 `sample_rate_hz` disagrees with the artifact. A recording-native video clock in
 `timebases` is likewise a prerequisite for tracking registration and is
@@ -1474,9 +1487,10 @@ numbers retain separate declared semantics.
   language; generalized profile composition and full device/setup domain
   validation are not implemented.
 - `aligned_external_events` is an optional cache with no public refresh API.
-- **No public function creates `recording_channels`.** Placement, bounded audio
-  reads, and response measurement all require channel rows, and project intake
-  does not create them; see the prerequisite in section 7.5.
+- `recording_channels` rows are a caller assertion: `registerRecordingChannel`
+  records that a recording has a channel, and nothing inspects the audio to
+  confirm it. A channel index above a declared `channel_count` is refused; a
+  recording declaring no count is not checked at all.
 - Only long-form delimited-text tracking exports are supported, one source file
   per stream, and `readWindow` reads the whole artifact and filters in memory. A
   frame-basis window cannot be projected onto a reference clock.
@@ -1485,9 +1499,13 @@ numbers retain separate declared semantics.
   and arena landmarks are not.
 - A pixel coordinate system supports no real-distance computation, and VAWLUME
   computes no distances at all.
-- Identity association intervals for one track may overlap, and nothing defines
-  which claim wins. `identityCandidates` returns every overlapping claim rather
-  than choosing; a caller that needs one answer must decide precedence itself.
+- Identity association intervals for one track may overlap. `identityCandidates`
+  still returns every overlapping claim and never chooses; `resolveIdentity`
+  applies a stated precedence rule when a caller asks for one answer. That rule
+  reads `assignment_state` and interval width only — not `identity_value`,
+  `evidence_kind`, `review_state` or recency — and it refuses to break a tie
+  rather than inventing a winner. It is a rule, not a measurement, and two
+  equally specific claims in the same state remain unresolved by design.
 - Identity evidence is keyed on the track label rather than on a trace row, so
   deleting a stream's `tracking_series` rows by hand leaves its associations
   behind. `PRAGMA foreign_key_check` cannot see this. No public function deletes

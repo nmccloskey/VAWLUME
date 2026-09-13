@@ -372,6 +372,12 @@ stronger one. A consumer that needs to know how much each is worth — caller
 attribution is the first — has to weigh them explicitly rather than treat an
 `entity_id` as an `entity_id`.
 
+
+**Closed at 4.7.** `visual_identity` evidence must now declare
+`identity_statement_kind` and name the row it rests on, so a declared entity link
+can no longer read as an identity association. See
+[`25_visual_identity_association.md`](25_visual_identity_association.md) and
+[`31_caller_attribution_schema.md`](31_caller_attribution_schema.md).
 ## Sequence tables
 
 `sequences`, `sequence_members`, `bouts`, and `bout_members` are **untouched** by

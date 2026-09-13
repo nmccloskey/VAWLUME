@@ -119,6 +119,22 @@ for index = 1:count
         error("vawlume:attribution:EvidenceIdentityInvalid", ...
             "Identity-derived evidence must support a candidate, not an unnamed target-level entity.");
     end
+    % A-1, closed at 4.7. Visual-identity evidence rests on an identity
+    % statement by definition, so it names which kind. An `external_events`
+    % entity link is a user-declared label lookup carrying no evidence kind,
+    % semantics, calibration or review state; a `tracking_identity_associations`
+    % row carries all of them. Both may legitimately support a claim, and the
+    % rule is not "prefer the stronger one" -- it is never use either silently.
+    % Without this, a weak declared link and real identity evidence were
+    % indistinguishable at the point attribution consumes them, which is exactly
+    % the confusion A-1 was raised about.
+    if dimensions(index) == "visual_identity" && kind == ""
+        error("vawlume:attribution:EvidenceIdentityRequired", ...
+            "visual_identity evidence must declare identity_statement_kind " + ...
+            "(declared_entity_link or identity_association) and name the row " + ...
+            "it rests on. A declared entity link and an identity association " + ...
+            "are different strengths of claim and must not be indistinguishable.");
+    end
 end
 locators = rawTextColumn(rows, "source_locator", strings(count, 1));
 hasPointer = ~isnan(associationIds) | ~isnan(externalEventIds) | ...
