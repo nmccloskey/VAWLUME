@@ -23,6 +23,14 @@ function result = createRun(conn, recordingRef, runSpec, options)
 % agreement_extent_method. All selected events must belong to one source event
 % set and to RECORDINGREF.
 %
+% agreement_extent_method may name ONE basis or SEVERAL. An agreement group has
+% no intrinsic interval -- five derivations are defensible and none is ground
+% truth -- so naming two produces one target per (group, basis), and a run can
+% carry results on both without a second run over a separately ingested copy of
+% the same claims. Each target keeps its own basis, and a correspondence against
+% the union extent is not a correspondence against the intersection extent.
+% Repeating a basis is refused rather than deduplicated.
+%
 % sources is a scalar struct containing one or more of source_file_ids,
 % artifact_ids, external_stream_ids, or analysis_run_ids. Direct sources and
 % the participating-entity/link snapshot are retained in the attribution-run

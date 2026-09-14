@@ -38,15 +38,21 @@ rows = fetch(conn, "SELECT t.attribution_target_id AS target_id, " + ...
     " ORDER BY t.attribution_target_id");
 
 count = height(rows);
-targets = table(NaN(count, 1), strings(count, 1), NaN(count, 1), ...
-    NaN(count, 1), NaN(count, 1), false(count, 1), ...
-    VariableNames=["attribution_target_id", "target_kind", "recording_id", ...
+targets = table(NaN(count, 1), strings(count, 1), strings(count, 1), ...
+    NaN(count, 1), NaN(count, 1), NaN(count, 1), false(count, 1), ...
+    VariableNames=["attribution_target_id", "target_kind", ...
+    "target_extent_basis", "recording_id", ...
     "start_time_s", "end_time_s", "extent_is_empty"]);
 if count == 0
     return
 end
 
 targets.attribution_target_id = double(rows.target_id);
+% Which derivation supplied this target's interval. Empty for a detection or a
+% consensus event, which carry their own. Carried out of here rather than left
+% behind, because a consumer comparing two bases must be able to say which
+% result rests on which.
+targets.target_extent_basis = presentText(rows.agreement_extent_method);
 targets.recording_id = nullableNumber(double(rows.recording_id));
 targets.start_time_s = nullableNumber(double(rows.start_time_s));
 targets.end_time_s = nullableNumber(double(rows.end_time_s));
@@ -66,4 +72,9 @@ end
 
 function value = nullableNumber(value)
 value(value >= 1e308 | value < 0) = NaN;
+end
+
+function value = presentText(raw)
+value = string(raw);
+value(ismissing(value)) = "";
 end

@@ -1213,6 +1213,49 @@ other would attribute a clock-drift artefact to a choice about group boundaries.
 A NULL `claim_score` means the exporter supplied no number for that caller. It does
 not mean zero.
 
+### Comparing extent bases
+
+An agreement group has no interval of its own — five derivations are defensible and
+VAWLUME computes all of them, imposing none. To compare two, name both when the run
+is created:
+
+```matlab
+run = vawlume.attribution.createRun(conn, struct(recording_id=1), struct( ...
+    run_key="caller-import-1", attribution_path="imported", ...
+    method="External Caller 2.0", settings_profile_version_id=1, ...
+    target_set=struct(agreement_group_ids=[1 2], ...
+        agreement_extent_method=["union_boundary_of_members", ...
+                                 "intersection_boundary_of_members"]), ...
+    participating_entity_ids=[1 2], ...
+    sources=struct(source_file_ids=1)), Apply=true);
+```
+
+Each *(group, basis)* becomes its own target, so one run gives you both answers
+rather than needing a second run over a re-imported copy of the same claims.
+`result.extent_bases` lists the bases a run spans, and every correspondence names
+its own in `target_extent_basis`.
+
+**Do not pool results across bases.** The intervals differ, so the scores differ;
+aggregating them averages numbers that were never comparable. Filter or group by
+`target_extent_basis` instead.
+
+Where members do not all overlap, the **intersection extent is empty** and that
+target simply produces nothing — no zero-length interval, no fallback. Under a
+multi-basis run this is ordinary rather than an error: the union target
+corresponds and the intersection target does not.
+
+Which basis is right for your question is yours to decide. VAWLUME records which
+one a result rests on; it does not rank them.
+
+### Re-running a correspondence
+
+Applying twice is refused — `vawlume:attribution:CorrespondenceAlreadyApplied` —
+because evidence is append-only and a second apply would duplicate rather than
+reconcile. To correspond the same windows under different terms, create a new run.
+
+Planning still works on an applied run, so you can preview what a different clock
+declaration would have produced without writing anything.
+
 Applying a declared policy turns those candidates into one decision per target,
 and completes the run:
 

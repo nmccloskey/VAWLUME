@@ -314,6 +314,16 @@ The extent basis is **not** stored on `attribution_window_correspondences`. It i
 already declared on `attribution_targets`, one join away and unambiguous, and a
 second copy would be a second place for one fact to be wrong.
 
+**A run may hold one agreement group under several bases.** Each *(group, basis)*
+is its own `attribution_targets` row — no UNIQUE prevents it, and the two have
+different intervals, so they are genuinely different targets. This is what lets an
+analyst compare union against intersection without a second attribution run. The
+consequence for target identity: an `agreement_group_id` alone no longer
+necessarily identifies one target in a run, so `attributionResolveTarget` requires
+`agreement_extent_method` as a disambiguator and raises
+`vawlume:attribution:TargetAmbiguous` without it — machinery 4.2 built before
+anything needed it.
+
 Claim columns are NULL where a window carries no claim, and a NULL `claim_score` is
 an absent number rather than a zero one.
 

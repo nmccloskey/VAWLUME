@@ -25,6 +25,15 @@ tests = functiontests({ ...
     @testMissingTransformIsRefused, ...
     @testRunWithNoImportedWindowsIsRefused, ...
     @testPlanningWritesNothing, ...
+    @testASecondApplyIsRefusedByName, ...
+    @testPlanningStillWorksOnAnAppliedRun, ...
+    @testAnEmptyCorrespondenceRunStillCommitsCleanly, ...
+    @testOneRunMayCarryOneGroupUnderTwoExtentBases, ...
+    @testExtentBasisAndIouBasisAreDistinctFields, ...
+    @testAScalarExtentMethodStillWorks, ...
+    @testARepeatedExtentBasisIsRefused, ...
+    @testAnUnknownExtentBasisIsRefusedByName, ...
+    @testEmptyIntersectionIsStillEmptyAndStillSkipped, ...
     @testViewShowsTheImportedClaimBesideItsCorrespondence, ...
     @testViewNamesTheExtentBasisOnlyWhereOneApplies, ...
     @testMatchingPackageIsUntouched});
@@ -310,6 +319,180 @@ verifyTrue(testCase, contains(correspondenceSource, ...
 clear cleanup
 end
 
+% --- re-running (4.9b) ----------------------------------------------------
+
+function testASecondApplyIsRefusedByName(testCase)
+% Observed before the guard was written: the second apply hit
+% UNIQUE(window, target), the Toolbox raised database:sqlite:interfaceError, and
+% the transaction rolled back leaving one correspondence and one evidence row.
+% Nothing was ever duplicated -- but the caller could not tell "already applied"
+% from a real database fault. Now it can.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+importWindows(fixture, "w1,9.9,10.6,A,0.9,0.9");
+vawlume.attribution.correspondWindows(fixture.conn, runRef(fixture), ...
+    SameClock=true, Apply=true);
+verifyEqual(testCase, correspondenceRowCount(fixture), 1);
+verifyEqual(testCase, evidenceRowCount(fixture), 1);
+
+verifyRefused(testCase, ...
+    @() vawlume.attribution.correspondWindows(fixture.conn, runRef(fixture), ...
+        SameClock=true, Apply=true), ...
+    "vawlume:attribution:CorrespondenceAlreadyApplied");
+
+% Nothing appended, and nothing lost either.
+verifyEqual(testCase, correspondenceRowCount(fixture), 1);
+verifyEqual(testCase, evidenceRowCount(fixture), 1);
+clear cleanup
+end
+
+function testPlanningStillWorksOnAnAppliedRun(testCase)
+% The guard is on Apply, not on planning. Previewing what a different clock
+% declaration would have produced is legitimate on an applied run, and planning
+% writes nothing.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+importWindows(fixture, "w1,9.9,10.6,A,0.9,0.9");
+vawlume.attribution.correspondWindows(fixture.conn, runRef(fixture), ...
+    SameClock=true, Apply=true);
+
+preview = vawlume.attribution.correspondWindows(fixture.conn, runRef(fixture), ...
+    AlignmentRun=fixture.alignment_run_id);
+verifyEqual(testCase, preview.status, "planned");
+verifyFalse(testCase, preview.committed);
+verifyEqual(testCase, preview.iou_basis, "aligned");
+% And it wrote nothing: the applied native-basis row is untouched.
+verifyEqual(testCase, correspondenceRowCount(fixture), 1);
+stored = fetch(fixture.conn, "SELECT iou_basis FROM attribution_window_correspondences");
+verifyEqual(testCase, presentText(stored.iou_basis(1)), "native");
+clear cleanup
+end
+
+function testAnEmptyCorrespondenceRunStillCommitsCleanly(testCase)
+% A run where the rule admits nothing is a legitimate empty result, and nothing
+% opened a transaction. The guard must not turn that into an error -- the 4.9
+% handoff records commit firing with no transaction open as a real failure mode.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+% Far from both detections, so nothing clears the eligibility floor.
+importWindows(fixture, "w1,500.0,501.0,A,0.9,0.9");
+result = vawlume.attribution.correspondWindows(fixture.conn, runRef(fixture), ...
+    SameClock=true, Apply=true);
+
+verifyEqual(testCase, result.status, "corresponded");
+verifyEqual(testCase, height(result.correspondences), 0);
+verifyEqual(testCase, result.windows_without_correspondence, 1);
+verifyEqual(testCase, correspondenceRowCount(fixture), 0);
+clear cleanup
+end
+
+% --- extent basis as an analytical choice (4.9b) --------------------------
+
+function testOneRunMayCarryOneGroupUnderTwoExtentBases(testCase)
+% The point of the pass. Comparing union against intersection used to require a
+% second attribution run over a separately ingested copy of the same claims.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+runId = addAgreementGroupRun(fixture, ["union_boundary_of_members", ...
+    "mean_boundary_of_members"]);
+importWindowsForRun(fixture, runId, "g1,9.9,11.1,A,0.7,0.7");
+result = vawlume.attribution.correspondWindows(fixture.conn, ...
+    struct(attribution_run_id=runId), SameClock=true, Apply=true);
+
+% Two targets for one group, each with its own interval, each corresponded.
+verifyEqual(testCase, height(result.correspondences), 2);
+verifyEqual(testCase, sort(result.extent_bases)', ...
+    ["mean_boundary_of_members" "union_boundary_of_members"]);
+bases = sort(presentText(result.correspondences.target_extent_basis))';
+verifyEqual(testCase, bases, ...
+    ["mean_boundary_of_members" "union_boundary_of_members"]);
+
+% The two rest on different intervals, so their scores differ. Neither
+% overwrote the other.
+ious = double(result.correspondences.temporal_iou);
+verifyNotEqual(testCase, ious(1), ious(2));
+clear cleanup
+end
+
+function testExtentBasisAndIouBasisAreDistinctFields(testCase)
+% The negative check. iou_basis says native-or-aligned; target_extent_basis says
+% which derivation gave the group an interval at all. A field spanning both
+% would let a reader attribute a drift artefact to an extent choice.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+runId = addAgreementGroupRun(fixture, "union_boundary_of_members");
+importWindowsForRun(fixture, runId, "g1,9.9,11.1,A,0.7,0.7");
+result = vawlume.attribution.correspondWindows(fixture.conn, ...
+    struct(attribution_run_id=runId), SameClock=true, Apply=true);
+
+names = string(result.correspondences.Properties.VariableNames);
+verifyTrue(testCase, ismember("iou_basis", names));
+verifyTrue(testCase, ismember("target_extent_basis", names));
+% No third field conflates them. A name containing "basis" must be exactly one
+% of the two; anything else would be a combined field by another name.
+basisNames = names(contains(names, "basis"));
+verifyEqual(testCase, sort(basisNames), ["iou_basis" "target_extent_basis"]);
+% And they carry different values here, so neither is a copy of the other.
+verifyEqual(testCase, presentText(result.correspondences.iou_basis(1)), "native");
+verifyEqual(testCase, presentText( ...
+    result.correspondences.target_extent_basis(1)), "union_boundary_of_members");
+clear cleanup
+end
+
+function testAScalarExtentMethodStillWorks(testCase)
+% Inherited callers pass a scalar. This pass adds a capability; it does not get
+% to break them to do it.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+runId = addAgreementGroupRun(fixture, "union_boundary_of_members");
+stored = fetch(fixture.conn, "SELECT agreement_extent_method AS m " + ...
+    "FROM attribution_targets WHERE attribution_run_id=" + string(runId));
+verifyEqual(testCase, height(stored), 1);
+verifyEqual(testCase, presentText(stored.m(1)), "union_boundary_of_members");
+clear cleanup
+end
+
+function testARepeatedExtentBasisIsRefused(testCase)
+% A caller naming a basis twice believed something about this run that is not
+% true. Deduplicating quietly would hide the misunderstanding.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+verifyRefused(testCase, ...
+    @() addAgreementGroupRun(fixture, ["union_boundary_of_members", ...
+        "union_boundary_of_members"]), ...
+    "vawlume:attribution:TargetSpecInvalid");
+clear cleanup
+end
+
+function testAnUnknownExtentBasisIsRefusedByName(testCase)
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+verifyRefused(testCase, ...
+    @() addAgreementGroupRun(fixture, ["union_boundary_of_members", ...
+        "median_boundary_of_members"]), ...
+    "vawlume:attribution:TargetSpecInvalid");
+clear cleanup
+end
+
+function testEmptyIntersectionIsStillEmptyAndStillSkipped(testCase)
+% Inherited behaviour, proven not to have regressed now that a run may hold
+% several bases. The fixture's two detections do not overlap, so the
+% intersection extent is empty -- and an empty extent has no interval to compare
+% against. Skipped, never compared against an invented one.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+runId = addAgreementGroupRun(fixture, ["union_boundary_of_members", ...
+    "intersection_boundary_of_members"]);
+importWindowsForRun(fixture, runId, "g1,9.9,11.1,A,0.7,0.7");
+
+extent = fetch(fixture.conn, "SELECT extent_is_empty AS e, gap_s AS g " + ...
+    "FROM v_agreement_group_extent WHERE agreement_group_id=1 " + ...
+    "AND extent_method='intersection_boundary_of_members'");
+verifyEqual(testCase, double(extent.e(1)), 1);
+verifyTrue(testCase, double(extent.g(1)) > 0);
+
+result = vawlume.attribution.correspondWindows(fixture.conn, ...
+    struct(attribution_run_id=runId), SameClock=true, Apply=true);
+
+% Only the union target corresponded. The empty one produced nothing at all --
+% not a zero-length interval, not a NaN score, no row.
+verifyEqual(testCase, height(result.correspondences), 1);
+verifyEqual(testCase, presentText( ...
+    result.correspondences.target_extent_basis(1)), "union_boundary_of_members");
+clear cleanup
+end
+
 % --- the read surface (4.9a) ---------------------------------------------
 
 function testViewShowsTheImportedClaimBesideItsCorrespondence(testCase)
@@ -369,28 +552,37 @@ end
 
 % ---------------------------------------------------------------- helpers ---
 
-function runId = addAgreementGroupRun(fixture)
+function runId = addAgreementGroupRun(fixture, extentMethods)
 % A second attribution run over the same recording, targeting an agreement group
-% under a named extent. The group spans both detections, so its union extent is
-% [10.0, 11.0] and a window bracketing both plausibly refers to it.
+% under one or several named extents.
+%
+% The group spans both detections, which do NOT overlap. So its union extent is
+% [10.0, 11.0] and a window bracketing both plausibly refers to it, while its
+% intersection extent is empty -- which is what makes this fixture useful for
+% both the multi-basis case and the empty-extent case.
+if nargin < 2
+    extentMethods = "union_boundary_of_members";
+end
 conn = fixture.conn;
-execute(conn, "INSERT INTO analysis_runs(analysis_run_id,project_id,run_type," + ...
-    "run_key) VALUES(11,1,'multi_extractor_agreement','agree-1')");
-execute(conn, "INSERT INTO analysis_run_extraction_inputs(analysis_run_id," + ...
-    "extraction_run_id) VALUES(11,1)");
-execute(conn, "INSERT INTO agreement_groups(agreement_group_id,analysis_run_id," + ...
-    "recording_id,group_key,derivation_method) " + ...
-    "VALUES(1,11,1,'g1','connected_component')");
-execute(conn, "INSERT INTO agreement_group_members(agreement_group_id,detection_id) " + ...
-    "VALUES(1,1),(1,2)");
+if isempty(fetch(conn, "SELECT agreement_group_id FROM agreement_groups"))
+    execute(conn, "INSERT INTO analysis_runs(analysis_run_id,project_id," + ...
+        "run_type,run_key) VALUES(11,1,'multi_extractor_agreement','agree-1')");
+    execute(conn, "INSERT INTO analysis_run_extraction_inputs(analysis_run_id," + ...
+        "extraction_run_id) VALUES(11,1)");
+    execute(conn, "INSERT INTO agreement_groups(agreement_group_id," + ...
+        "analysis_run_id,recording_id,group_key,derivation_method) " + ...
+        "VALUES(1,11,1,'g1','connected_component')");
+    execute(conn, "INSERT INTO agreement_group_members(agreement_group_id," + ...
+        "detection_id) VALUES(1,1),(1,2)");
+end
 run = vawlume.attribution.createRun(conn, struct(recording_id=1), ...
-    struct(run_key="phase49a-group", attribution_path="imported", ...
+    struct(run_key="phase49b-group", attribution_path="imported", ...
         method="External Caller 2.0", settings_profile_version_id=1, ...
         target_set=struct(agreement_group_ids=1, ...
-            agreement_extent_method="union_boundary_of_members"), ...
+            agreement_extent_method=extentMethods), ...
         participating_entity_ids=[1 2], ...
         sources=struct(source_file_ids=1), ...
-        notes="Agreement-group target for the extent-basis read surface."), ...
+        notes="Agreement-group target set for extent-basis work."), ...
     Apply=true);
 runId = run.run.attribution_run_id;
 end

@@ -104,6 +104,70 @@ A window that corresponds to nothing is reported in
 `windows_without_correspondence`. That is a finding, not a failure: an attribution
 system may have emitted a window for a call no extractor found.
 
+## Extent basis: which interval an agreement group brought
+
+Added at 4.9b. An agreement group has **no intrinsic interval** — five derivations
+are defensible and none is ground truth — so a target naming a group also names the
+basis its interval came from, and a run may carry **one group under several bases**:
+
+```matlab
+run = vawlume.attribution.createRun(conn, recordingRef, struct( ...
+    target_set=struct(agreement_group_ids=[1 2], ...
+        agreement_extent_method=["union_boundary_of_members", ...
+                                 "intersection_boundary_of_members"]), ...
+    ...), Apply=true);
+```
+
+That produces one target per *(group, basis)*, so comparing union against
+intersection no longer requires a second attribution run over a separately ingested
+copy of the same claims. Each correspondence names its basis in
+`target_extent_basis`, and `result.extent_bases` lists the bases a run spans.
+Repeating a basis is refused rather than deduplicated: a caller who named one twice
+believed something about the run that is not true.
+
+Two targets for one group are genuinely two targets. A correspondence against the
+union extent is **not** a correspondence against the intersection extent — the
+intervals differ, so the scores differ — and pooling results across bases compares
+numbers that were never comparable.
+
+**`iou_basis` and `target_extent_basis` are different facts.**
+
+| Field | Says | Empty when |
+|---|---|---|
+| `iou_basis` | the IoU was computed on `native` or `aligned` intervals | never |
+| `target_extent_basis` | which derivation gave an agreement group its interval | the target is a detection or consensus event, which carry their own |
+
+A reader conflating them would attribute a clock-drift artefact to a choice about
+group boundaries. No field combines them, and a test asserts that no third
+`*basis*` field appears.
+
+What the extent basis does **not** tell you: which derivation is scientifically
+right for your question. It names the one a result rests on. Choosing among them is
+the analyst's, and VAWLUME computes all five precisely so the choice stays visible
+rather than being frozen into the schema.
+
+An agreement group whose declared extent is **empty** — members that do not all
+overlap, under the intersection method — has no interval, and is skipped rather
+than compared against an invented one. Under a multi-basis run this is ordinary:
+the union target corresponds and the intersection target produces nothing at all.
+
+## Re-running
+
+**A second `Apply` on a run that already carries correspondences is refused** by
+name, `vawlume:attribution:CorrespondenceAlreadyApplied`, because
+`attribution_evidence` has no natural key and a second apply would append rather
+than reconcile. That is the imported path's answer to the same question.
+
+Planning is **not** refused. It writes nothing, and previewing what a different
+clock declaration would have produced is a legitimate thing to do on an applied
+run.
+
+Before this guard, a second apply hit
+`UNIQUE(imported_attribution_window_id, attribution_target_id)` and surfaced as an
+opaque Database Toolbox interface error, rolling back cleanly. Nothing was ever
+duplicated in that table — but the caller could not distinguish "already applied"
+from a genuine database fault, and the protection did not extend to evidence rows.
+
 ## What is stored
 
 One `attribution_window_correspondences` row per eligible (window, target) pair,
@@ -129,6 +193,8 @@ where it applies.
 | `vawlume:attribution:TargetSetEmpty` | the run has no targets |
 | `vawlume:attribution:CorrespondenceCrossesRecording` | windows and targets span more than one recording |
 | `vawlume:attribution:CorrespondenceRuleUndeclared` | the mapping profile declares no correspondence block |
+| `vawlume:attribution:CorrespondenceAlreadyApplied` | the run already carries correspondences; planning still works |
+| `vawlume:attribution:TargetSpecInvalid` | an unknown or repeated `agreement_extent_method`, or a group lacking the requested derived extent |
 
 ## What this layer cannot express
 
