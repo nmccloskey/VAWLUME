@@ -1323,6 +1323,87 @@ called, it is not calibrated, and it is not a combination of the four evidence
 dimensions: the policy reads one candidate column and no evidence row. No status
 means `validated`, and the vocabulary does not contain the word.
 
+### Reading a run back
+
+One function returns everything the run stored, and judges none of it:
+
+```matlab
+value = vawlume.attribution.report(conn, ...
+    struct(project_key="my-project", run_key="caller-import-1"));
+
+disp(value.candidates)            % every candidate, with its semantics
+disp(value.evidence)              % one row per dimension, units intact
+disp(value.claim_correspondences) % the imported claim beside the event it reached
+disp(value.decisions)             % each decision with the policy that bound it
+disp(value.qc)                    % facts about the run
+```
+
+**Know the grain of each table before you count anything.**
+
+| Table | One row per |
+|---|---|
+| `targets` | attribution target |
+| `candidates` | (target, candidate entity) |
+| `evidence` | stored evidence record |
+| `imported_claims` | (imported window, claimed caller) |
+| `correspondences` | stored correspondence |
+| `claim_correspondences` | (claim, correspondence) — the joined story |
+| `decisions` | (target, policy version) |
+| `decision_selections` | candidate a decision selected |
+
+`claim_correspondences` is the one to be careful with. A window carrying two
+claims appears **twice** there for one correspondence, and a claim whose window
+corresponds to two targets appears twice for one claim. Both are real
+multiplicities and neither is collapsed — but count correspondences from
+`correspondences`, not from the joined table. QC does exactly that.
+
+**All candidates appear.** Nothing marks one as the answer. If you want the
+highest-scoring one, sort by `score` yourself and know that you did.
+
+**The four evidence dimensions stay separate**, as rows carrying their own
+`evidence_dimension`, units and semantics. `qc.evidence_by_dimension` counts each
+one; there is no total, no coverage fraction, and no field spanning two. An
+`imported_composite` row is somebody else's already-combined number, stored with
+its producer named — VAWLUME did not compute it and does not decompose it.
+
+**Absence reads as absence.** A missing number is `NaN` and missing text is `""`,
+never `0` and never a default. A candidate with no acoustic evidence has no
+acoustic row rather than a zero-valued one, because a zero would claim a
+measurement was made. `NaN` in `imported_claims.score` means the exporting system
+supplied no number for that caller.
+
+### What QC tells you, and what it does not
+
+`value.qc` is counts, memberships and observed ranges:
+
+- `targets_without_candidate` — which targets got nothing, with enough identity
+  to go and look;
+- `targets_with_empty_extent` — agreement groups whose declared extent is empty,
+  so nothing *could* correspond to them;
+- `evidence_by_dimension` — how much of each kind of evidence this run carries;
+- `claims_without_score` — imported claims the source supplied no number for;
+- `windows_without_correspondence` and `windows_with_multiple_correspondences`;
+- `correspondence_by_basis` — count, window count, and observed IoU min, median
+  and max, **per basis pair**;
+- `imported_label_resolution` — which source label resolved to which entity.
+
+**There is no quality score, no threshold, and no aggregate that reads as a
+verdict.** That is deliberate. A count of scoreless claims is a fact; "this run
+has poor score coverage" would be an opinion dressed as a measurement, and this
+prototype has no calibrated basis for one.
+
+QC cannot tell you whether any claimed caller called, whether the exporting
+system's numbers are calibrated, whether a window that corresponded to nothing
+refers to a real call VAWLUME missed, or which extent basis is right for your
+question. Counts of missing evidence describe this run's **inputs**, not its
+quality.
+
+**Correspondence scores are summarized within a basis pair and never pooled.** An
+IoU on aligned intervals is not the IoU of the native ones under a piecewise
+clock, and an IoU against a group's union extent is not the IoU against its
+intersection extent. A single run-wide distribution would average quantities that
+measure different things, so none is offered.
+
 ---
 
 ## 8. Outputs and data model
