@@ -12,6 +12,9 @@ function tests = test_imported_attribution_intake
 tests = functiontests({ ...
     @testPlanningWritesNothingAndReportsWhatItCouldNotMap, ...
     @testImportLandsWindowsWithProvenance, ...
+    @testEachClaimIsItsOwnRowWithItsOwnLabelAndValue, ...
+    @testStoredClaimValuesAreBitIdenticalAndCarryTheirSemantics, ...
+    @testAStoredClaimWithNoNumberStaysNullRatherThanBecomingOne, ...
     @testWindowTimesAreBitIdenticalToTheSourceFile, ...
     @testClaimValuesAreBitIdenticalToTheSourceFile, ...
     @testALabelWithNoNumberStaysAbsentRatherThanBecomingOne, ...
@@ -62,9 +65,9 @@ source = writeSource(fixture, [ ...
 result = vawlume.ingest.attribution(fixture.conn, runRef(fixture), source, Apply=true);
 verifyEqual(testCase, result.status, "imported");
 verifyEqual(testCase, result.applied_counts.imported_attribution_windows, 2);
+verifyEqual(testCase, result.applied_counts.imported_attribution_claims, 3);
 
 stored = fetch(fixture.conn, "SELECT w.native_window_id AS id, " + ...
-    "IFNULL(w.source_caller_label,'') AS labels, " + ...
     "IFNULL(f.checksum_sha256,'') AS file_checksum, " + ...
     "IFNULL(v.checksum_sha256,'') AS profile_checksum, " + ...
     "p.profile_kind AS profile_kind " + ...
@@ -75,12 +78,78 @@ stored = fetch(fixture.conn, "SELECT w.native_window_id AS id, " + ...
     "ORDER BY w.imported_attribution_window_id");
 
 verifyEqual(testCase, presentText(stored.id)', ["w1" "w2"]);
-% Both labels claimed over w1 are recorded verbatim on the window.
-verifyEqual(testCase, presentText(stored.labels(1)), "A|B");
 % Origin is recoverable: which file, which bytes, which profile version.
 verifyEqual(testCase, strlength(presentText(stored.file_checksum(1))), 64);
 verifyEqual(testCase, strlength(presentText(stored.profile_checksum(1))), 64);
 verifyEqual(testCase, presentText(stored.profile_kind(1)), "attribution_input_mapping");
+clear cleanup
+end
+
+function testEachClaimIsItsOwnRowWithItsOwnLabelAndValue(testCase)
+% P4-5. Two callers claimed over one window are two rows, each carrying its own
+% verbatim label and its own number. Before 0.10-draft the window held 'A|B' --
+% a string no source file contained -- and the two scores were discarded, so a
+% number could not be attributed to the caller it belonged to.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+source = writeSource(fixture, [ ...
+    "w1,10.0,10.4,A,0.9137,0.8812"; ...
+    "w1,10.0,10.4,B,0.4210,0.1188"]);
+vawlume.ingest.attribution(fixture.conn, runRef(fixture), source, Apply=true);
+
+stored = fetch(fixture.conn, "SELECT c.claim_ordinal AS ordinal, " + ...
+    "c.source_caller_label AS label, e.native_id AS entity, " + ...
+    "c.score AS score, c.probability AS probability " + ...
+    "FROM imported_attribution_claims c " + ...
+    "JOIN experimental_entities e ON e.entity_id = c.entity_id " + ...
+    "JOIN imported_attribution_windows w " + ...
+    "  ON w.imported_attribution_window_id = c.imported_attribution_window_id " + ...
+    "WHERE w.native_window_id='w1' ORDER BY c.claim_ordinal");
+
+verifyEqual(testCase, height(stored), 2);
+verifyEqual(testCase, presentText(stored.label)', ["A" "B"]);
+% The label resolved to an entity, and each caller kept its own number.
+verifyEqual(testCase, presentText(stored.entity)', ["A" "B"]);
+verifyEqual(testCase, double(stored.score)', [0.9137 0.4210]);
+verifyEqual(testCase, double(stored.probability)', [0.8812 0.1188]);
+% No synthesized multi-value label survives anywhere.
+verifyFalse(testCase, any(contains(presentText(stored.label), "|")));
+clear cleanup
+end
+
+function testStoredClaimValuesAreBitIdenticalAndCarryTheirSemantics(testCase)
+% The claim travels with the sentence that makes it interpretable. Exact
+% comparison, not a tolerance: the claim is that nothing was transformed.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+source = writeSource(fixture, "w1,10.0,10.4,A,1234.56789,0.8812");
+vawlume.ingest.attribution(fixture.conn, runRef(fixture), source, Apply=true);
+
+stored = fetch(fixture.conn, "SELECT score, score_semantics AS ss, " + ...
+    "probability, probability_semantics AS ps FROM imported_attribution_claims");
+verifyEqual(testCase, double(stored.score(1)), 1234.56789);
+verifyEqual(testCase, double(stored.probability(1)), 0.8812);
+verifyTrue(testCase, contains(presentText(stored.ss(1)), "uncalibrated"));
+verifyTrue(testCase, contains(presentText(stored.ss(1)), "not a probability"));
+verifyTrue(testCase, contains(presentText(stored.ps(1)), "not validated by VAWLUME"));
+clear cleanup
+end
+
+function testAStoredClaimWithNoNumberStaysNullRatherThanBecomingOne(testCase)
+% The failure this refuses, now at the storage layer rather than only in the
+% returned plan: a label with no number must not acquire certainty on its way in.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+source = writeSource(fixture, "w1,10.0,10.4,A,,");
+vawlume.ingest.attribution(fixture.conn, runRef(fixture), source, Apply=true);
+
+stored = fetch(fixture.conn, "SELECT " + ...
+    "SUM(score IS NULL) AS null_scores, " + ...
+    "SUM(probability IS NULL) AS null_probabilities, " + ...
+    "SUM(score IS NOT NULL) AS present_scores, " + ...
+    "COUNT(*) AS n FROM imported_attribution_claims");
+verifyEqual(testCase, double(stored.n(1)), 1);
+verifyEqual(testCase, double(stored.null_scores(1)), 1);
+verifyEqual(testCase, double(stored.null_probabilities(1)), 1);
+% Not zero, not one, not any other substitute.
+verifyEqual(testCase, double(stored.present_scores(1)), 0);
 clear cleanup
 end
 
@@ -249,6 +318,11 @@ execute(fixture.conn, "DROP TRIGGER trg_induced_import_failure");
 verifyTrue(testCase, threw, "The induced failure must propagate.");
 verifyEqual(testCase, windowRowCount(fixture), before, ...
     "A failed import must leave no partial window.");
+% And no orphan claim: claims are written in the same transaction as the windows
+% they belong to.
+claims = fetch(fixture.conn, "SELECT COUNT(*) AS n FROM imported_attribution_claims");
+verifyEqual(testCase, double(claims.n(1)), 0, ...
+    "A failed import must leave no claim either.");
 % The provenance rows written before the failure roll back with it.
 verifyEqual(testCase, sourceFileCount(fixture), sourceFilesBefore);
 clear cleanup
@@ -269,12 +343,15 @@ verifyEqual(testCase, double(correspondences.n(1)), 0);
 % And no candidate or evidence row either: a candidate belongs to
 % (target, entity) and an imported claim to (window, entity), so mapping one
 % onto the other without correspondence would assert a match that does not
-% exist. See P4-5.
+% exist. The claims now have their own home, which is not a candidate and never
+% becomes one implicitly.
 candidates = fetch(fixture.conn, "SELECT COUNT(*) AS n FROM attribution_candidates");
 evidence = fetch(fixture.conn, "SELECT COUNT(*) AS n FROM attribution_evidence");
 verifyEqual(testCase, double(candidates.n(1)), 0);
 verifyEqual(testCase, double(evidence.n(1)), 0);
-% The claims are still returned intact, so nothing was lost.
+% The claims landed as claims, and are still returned intact.
+claims = fetch(fixture.conn, "SELECT COUNT(*) AS n FROM imported_attribution_claims");
+verifyEqual(testCase, double(claims.n(1)), 2);
 verifyEqual(testCase, height(result.claims), 2);
 verifyEqual(testCase, result.correspondence, ...
     "none; 4.9 relates these windows to VAWLUME events");

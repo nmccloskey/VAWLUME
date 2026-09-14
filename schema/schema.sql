@@ -1,6 +1,6 @@
 -- VAWLUME prototype relational schema
--- Version: 0.9-draft
--- Date: 2026-09-11
+-- Version: 0.10-draft
+-- Date: 2026-09-14
 -- Target: SQLite (MATLAB-centered workflow)
 --
 -- Design priorities:
@@ -47,9 +47,9 @@ CREATE TABLE schema_info (
 );
 
 INSERT OR IGNORE INTO schema_info(schema_version, description)
-VALUES ('0.9-draft', 'Caller-attribution representation: attribution runs, explicit event-set targets, multi-candidate caller results with declared score semantics, long-form evidence, policy-bearing decisions that select a candidate set, the generic imported-attribution path, and every reasonable agreement-group extent');
+VALUES ('0.10-draft', 'Imported caller claims preserved relationally: one row per (window, claimed caller) carrying the exporting system''s score and probability with their declared semantics and explicit missingness, replacing a delimiter-joined label string, plus a correspondence read surface naming the agreement-group extent basis');
 
-PRAGMA user_version = 9;
+PRAGMA user_version = 10;
 
 -- ============================================================================
 -- 1. Project and configuration-profile infrastructure
@@ -2023,6 +2023,13 @@ CREATE TABLE attribution_decision_candidates (
 --
 -- Times are NATIVE and are never overwritten. Expressing them on a VAWLUME clock
 -- produces an attribution_window_correspondences row, not an edit.
+--
+-- A window is a statement about TIME only. Which caller was claimed over it, and
+-- with what number, is imported_attribution_claims - one row per claim, because
+-- the source shape is one row per (window, caller) and a window may carry several.
+-- This table held a source_caller_label column through 0.9-draft; it stored a
+-- '|'-joined synthesis of every label claimed over the window, which is a string
+-- no source file ever contained. Dropped at 0.10-draft.
 CREATE TABLE imported_attribution_windows (
     imported_attribution_window_id INTEGER PRIMARY KEY,
     attribution_run_id  INTEGER NOT NULL REFERENCES attribution_runs(attribution_run_id) ON DELETE CASCADE,
@@ -2031,13 +2038,66 @@ CREATE TABLE imported_attribution_windows (
     native_window_id    TEXT,
     start_time_native   REAL NOT NULL,
     end_time_native     REAL NOT NULL,
-    source_caller_label TEXT,
     source_file_id      INTEGER REFERENCES source_files(source_file_id) ON DELETE SET NULL,
     mapping_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,
     source_locator      TEXT,
     notes               TEXT,
     CHECK (end_time_native >= start_time_native),
     UNIQUE(attribution_run_id, native_window_id)
+);
+
+-- One imported caller claim: this exporting system said this caller produced the
+-- vocalization in this window, with this number.
+--
+-- P4-5. Through 0.9-draft the importer parsed the exporter's score and probability
+-- and then had nowhere to put them: a candidate belongs to (target, entity) and an
+-- imported claim belongs to (window, entity), and mapping one onto the other
+-- requires correspondence, which happens later. Writing a candidate on every
+-- target of the run would have asserted that every window's claim applies to every
+-- event. So the number was discarded at intake and the read surface could not show
+-- it. This table is where it lives instead, BEFORE any correspondence exists.
+--
+-- Storing a claim here is NOT a candidate and never becomes one implicitly.
+-- Promotion would require deciding which correspondence is good enough to carry a
+-- claim onto a target, which is a policy question; answering it in storage would
+-- collapse the ambiguity the correspondence layer exists to preserve. The explicit
+-- path stays vawlume.attribution.addCandidates.
+--
+-- The score/probability discipline is attribution_candidates' discipline,
+-- deliberately identical: score is unconstrained because it is somebody else's
+-- scale, probability is bounded because the word means something, nothing converts
+-- between them, and a number without stated semantics is not interpretable
+-- evidence. P3-1 exists because that last rule was once applied unevenly; it is
+-- applied uniformly here.
+--
+-- A claim with no number is a legitimate import. Both value columns are NULL and
+-- neither becomes 1.0: converting a name into certainty is the specific failure
+-- the profile's require_one_of_score_or_probability=false refuses.
+--
+-- entity_id is nullable although the shipped resolution policy - declared_only
+-- with unresolved_label_policy=refuse - means intake either resolves every label
+-- or refuses the import by name, so no NULL is written under it. It is nullable
+-- because resolution is a POLICY: a future profile permitting an unresolved label
+-- needs somewhere honest to put one, and the alternative is an importer that must
+-- invent an entity to satisfy a constraint.
+CREATE TABLE imported_attribution_claims (
+    imported_attribution_claim_id INTEGER PRIMARY KEY,
+    imported_attribution_window_id INTEGER NOT NULL REFERENCES imported_attribution_windows(imported_attribution_window_id) ON DELETE CASCADE,
+    claim_ordinal       INTEGER NOT NULL CHECK (claim_ordinal >= 1),
+    source_caller_label TEXT NOT NULL,
+    entity_id           INTEGER REFERENCES experimental_entities(entity_id) ON DELETE RESTRICT,
+    score               REAL,
+    score_semantics     TEXT,
+    probability         REAL CHECK (probability IS NULL OR (probability >= 0 AND probability <= 1)),
+    probability_semantics TEXT,
+    source_locator      TEXT,
+    notes               TEXT,
+    -- One claim per caller per window. A source repeating a label over one window
+    -- is asserting the same thing twice, possibly with two different numbers, and
+    -- silently keeping whichever was written first is how a score goes missing.
+    UNIQUE(imported_attribution_window_id, source_caller_label),
+    CHECK (score IS NULL OR score_semantics IS NOT NULL),
+    CHECK (probability IS NULL OR probability_semantics IS NOT NULL)
 );
 
 -- Links an imported window to a VAWLUME target across differing clocks and IDs.
@@ -3011,6 +3071,27 @@ WHEN (
 BEGIN
     SELECT RAISE(ABORT, 'Imported attribution window belongs to a different recording than its run');
 END;
+
+-- A claimed caller, once resolved, must be an entity linked to the recording the
+-- claim is about. Exactly the rule trg_attribution_candidate_entity_scope applies
+-- to a candidate, for the same reason: an imported label resolving to an animal
+-- that was never in the recording is a surfaced problem, not a new participant.
+--
+-- Guarded on NEW.entity_id IS NOT NULL because the column is nullable by design -
+-- an unresolved claim under some future resolution policy has no entity to scope.
+CREATE TRIGGER trg_imported_attribution_claim_entity_scope
+BEFORE INSERT ON imported_attribution_claims
+FOR EACH ROW
+WHEN NEW.entity_id IS NOT NULL AND (
+    SELECT COUNT(*)
+    FROM imported_attribution_windows iw
+    JOIN recording_entity_links rel ON rel.recording_id = iw.recording_id
+    WHERE iw.imported_attribution_window_id = NEW.imported_attribution_window_id
+      AND rel.entity_id = NEW.entity_id
+) = 0
+BEGIN
+    SELECT RAISE(ABORT, 'Imported claim caller is not an entity linked to this recording');
+END;
 -- ============================================================================
 -- 15. Analysis-ready views
 -- ============================================================================
@@ -3854,6 +3935,69 @@ FROM (
            g.member_count, g.extractor_count, g.onset_spread_s, g.offset_spread_s
     FROM group_context g JOIN extremes e USING(agreement_group_id)
 );
+
+-- One row per stored correspondence, carrying the two bases a reader must not
+-- confuse and the imported claims the correspondence reaches.
+--
+-- iou_basis says whether the IoU was computed on NATIVE or ALIGNED intervals.
+-- target_extent_basis says which of the five derivations supplied an agreement
+-- group's interval at all, and is NULL for a detection or consensus-event target
+-- because those carry their own. They are different facts: a reader who conflated
+-- them would read a drift artefact as an extent choice.
+--
+-- The extent basis is NOT stored on attribution_window_correspondences. It is
+-- already declared on attribution_targets, one join away and unambiguous, and a
+-- second copy would be a second place for one fact to be wrong. This view is that
+-- join, named once so no caller composes it by hand.
+--
+-- Claim columns are NULL when a window carried no claim resolving to a caller, and
+-- a NULL score is an absent number rather than a zero one.
+CREATE VIEW v_attribution_window_correspondences AS
+SELECT
+    c.attribution_window_correspondence_id,
+    iw.attribution_run_id,
+    iw.recording_id,
+    c.imported_attribution_window_id,
+    iw.native_window_id,
+    iw.start_time_native,
+    iw.end_time_native,
+    c.attribution_target_id,
+    CASE
+        WHEN t.detection_id IS NOT NULL THEN 'detection'
+        WHEN t.consensus_event_id IS NOT NULL THEN 'consensus_event'
+        WHEN t.agreement_group_id IS NOT NULL THEN 'agreement_group'
+    END                                     AS target_kind,
+    t.detection_id,
+    t.consensus_event_id,
+    t.agreement_group_id,
+    t.agreement_extent_method               AS target_extent_basis,
+    c.iou_basis,
+    c.temporal_overlap_s,
+    c.temporal_iou,
+    c.onset_difference_s,
+    c.offset_difference_s,
+    c.alignment_run_id,
+    c.aligned_start_s,
+    c.aligned_end_s,
+    c.start_extrapolated,
+    c.end_extrapolated,
+    c.eligibility_rule,
+    c.min_temporal_iou,
+    cl.imported_attribution_claim_id,
+    cl.claim_ordinal,
+    cl.source_caller_label,
+    cl.entity_id                            AS claimed_entity_id,
+    cl.score                                AS claim_score,
+    cl.score_semantics                      AS claim_score_semantics,
+    cl.probability                          AS claim_probability,
+    cl.probability_semantics                AS claim_probability_semantics
+FROM attribution_window_correspondences c
+JOIN imported_attribution_windows iw
+  ON iw.imported_attribution_window_id = c.imported_attribution_window_id
+JOIN attribution_targets t
+  ON t.attribution_target_id = c.attribution_target_id
+LEFT JOIN imported_attribution_claims cl
+  ON cl.imported_attribution_window_id = c.imported_attribution_window_id;
 -- ============================================================================
 -- 16. Indexes for expected prototype queries
 -- ============================================================================
@@ -4015,6 +4159,8 @@ CREATE INDEX idx_attribution_evidence_target ON attribution_evidence(attribution
 CREATE INDEX idx_attribution_evidence_candidate ON attribution_evidence(attribution_candidate_id);
 CREATE INDEX idx_attribution_decisions_target ON attribution_decisions(attribution_target_id);
 CREATE INDEX idx_imported_attribution_windows_run ON imported_attribution_windows(attribution_run_id);
+CREATE INDEX idx_imported_attribution_claims_window ON imported_attribution_claims(imported_attribution_window_id);
+CREATE INDEX idx_imported_attribution_claims_entity ON imported_attribution_claims(entity_id);
 CREATE INDEX idx_attribution_window_correspondences_target
     ON attribution_window_correspondences(attribution_target_id);
 

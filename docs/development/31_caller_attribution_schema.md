@@ -4,6 +4,10 @@ Introduced at schema version `0.9-draft` (`PRAGMA user_version = 9`). The `0.8`
 alignment slice is unchanged except for two corrections carried with this bump,
 described under "Phase 3 debts closed here".
 
+Added at schema version `0.10-draft`: `imported_attribution_claims` and
+`v_attribution_window_correspondences`, and the removal of
+`imported_attribution_windows.source_caller_label`.
+
 The design reasoning lives in
 [`../design/04_caller_attribution_contract.md`](../design/04_caller_attribution_contract.md).
 This document is the data dictionary: what each table holds, what the schema
@@ -49,7 +53,7 @@ their source analysis through `analysis_run_sources`. The attribution row remain
 `planned` and the analysis parent remains `started` until the later candidate and
 decision layers finish the run.
 
-Schema `0.9-draft` has no run-to-source-file, run-to-artifact,
+Schema `0.10-draft` has no run-to-source-file, run-to-artifact,
 run-to-external-stream, or run-to-participating-entity junction table. The public
 writer therefore retains those exact identifiers in `notes` as a canonical
 `vawlume.attribution.run_provenance.v1` JSON envelope, alongside the target-set
@@ -236,10 +240,49 @@ permit.
 
 ### `imported_attribution_windows`
 
-The imported system's own vocal windows. Times are **native and never
-overwritten**; expressing them on a VAWLUME clock produces a correspondence row,
-not an edit. `source_caller_label` is stored verbatim and resolved only by declared
-mapping.
+The imported system's own vocal windows, and **a statement about time only**. Times
+are **native and never overwritten**; expressing them on a VAWLUME clock produces a
+correspondence row, not an edit.
+
+Which caller was claimed over a window is `imported_attribution_claims`.
+
+### `imported_attribution_claims`
+
+One row per *(window, claimed caller)* — the shape the source has, since the
+generic profile declares a long table with one row per claim.
+
+| Column | Holds |
+|---|---|
+| `source_caller_label` | the label as the file spelled it, **one label per row** |
+| `entity_id` | the entity the profile's declared map resolved it to |
+| `score`, `score_semantics` | the exporter's number, and what it meant *there* |
+| `probability`, `probability_semantics` | same, bounded to `[0,1]` |
+| `claim_ordinal`, `source_locator` | where in the source the claim came from |
+
+The number discipline is `attribution_candidates`' discipline, deliberately
+identical: `score` unconstrained because it is somebody else's scale, `probability`
+bounded because the word means something, nothing converting between them, and a
+CHECK refusing either without its semantics.
+
+**Absence is NULL.** A claim whose source carried no number stores NULL for both,
+because a label with no number is a legitimate import and converting a name into
+certainty is the specific failure the profile's
+`require_one_of_score_or_probability: false` refuses.
+
+`entity_id` is nullable. Under the shipped `declared_only` /
+`unresolved_label_policy: refuse` policy intake resolves every label or refuses the
+import by name, so nothing writes NULL — but resolution is a *policy*, and a future
+profile permitting an unresolved label needs somewhere honest to put one rather
+than forcing the importer to invent an entity.
+
+`UNIQUE(window, source_caller_label)` — one caller claimed twice over one window is
+the same assertion twice, possibly with two different numbers, and keeping the
+first is how a score disappears silently.
+
+**A claim is not a candidate**, and correspondence does not promote it into one.
+That would require deciding which correspondence is good enough to carry a claim
+onto a target — a policy question that would collapse preserved ambiguity if
+answered in storage.
 
 ### `attribution_window_correspondences`
 
@@ -252,6 +295,27 @@ IoU of the native ones when a breakpoint falls between them.
 
 Ambiguity is preserved — one window may correspond to several targets, and nothing
 here chooses.
+
+## `v_attribution_window_correspondences`
+
+One row per stored correspondence, joined to the window, the target, and the claims
+the window carries. It exists so no caller composes that join by hand.
+
+It carries **two bases that must not be confused**:
+
+| Column | Says |
+|---|---|
+| `iou_basis` | whether the IoU was computed on `native` or `aligned` intervals |
+| `target_extent_basis` | which of the five derivations supplied an agreement group's interval — NULL for a detection or consensus event, which carry their own |
+
+A reader who conflated them would read a drift artefact as an extent choice.
+
+The extent basis is **not** stored on `attribution_window_correspondences`. It is
+already declared on `attribution_targets`, one join away and unambiguous, and a
+second copy would be a second place for one fact to be wrong.
+
+Claim columns are NULL where a window carries no claim, and a NULL `claim_score` is
+an absent number rather than a zero one.
 
 ## `v_agreement_group_extent`
 

@@ -25,6 +25,8 @@ tests = functiontests({ ...
     @testMissingTransformIsRefused, ...
     @testRunWithNoImportedWindowsIsRefused, ...
     @testPlanningWritesNothing, ...
+    @testViewShowsTheImportedClaimBesideItsCorrespondence, ...
+    @testViewNamesTheExtentBasisOnlyWhereOneApplies, ...
     @testMatchingPackageIsUntouched});
 end
 
@@ -308,7 +310,103 @@ verifyTrue(testCase, contains(correspondenceSource, ...
 clear cleanup
 end
 
+% --- the read surface (4.9a) ---------------------------------------------
+
+function testViewShowsTheImportedClaimBesideItsCorrespondence(testCase)
+% The join 4.10 depends on: the exporter's caller claim and its number, beside
+% the correspondence that reaches a VAWLUME event. Before the claims table this
+% was unaskable -- the number was parsed at intake and discarded.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+importWindows(fixture, "w1,9.9,10.6,A,0.9137,0.8812");
+vawlume.attribution.correspondWindows(fixture.conn, runRef(fixture), ...
+    SameClock=true, Apply=true);
+
+rows = fetch(fixture.conn, "SELECT native_window_id AS w, target_kind AS kind, " + ...
+    "iou_basis, source_caller_label AS label, claim_score AS score, " + ...
+    "claim_score_semantics AS semantics, claim_probability AS probability " + ...
+    "FROM v_attribution_window_correspondences");
+
+verifyEqual(testCase, height(rows), 1);
+verifyEqual(testCase, presentText(rows.w(1)), "w1");
+verifyEqual(testCase, presentText(rows.kind(1)), "detection");
+verifyEqual(testCase, presentText(rows.iou_basis(1)), "native");
+% The claim arrives whole: label, number, and the sentence that interprets it.
+verifyEqual(testCase, presentText(rows.label(1)), "A");
+verifyEqual(testCase, double(rows.score(1)), 0.9137);
+verifyEqual(testCase, double(rows.probability(1)), 0.8812);
+verifyTrue(testCase, contains(presentText(rows.semantics(1)), "uncalibrated"));
+clear cleanup
+end
+
+function testViewNamesTheExtentBasisOnlyWhereOneApplies(testCase)
+% target_extent_basis says which derivation supplied an agreement group's
+% interval. A detection carries its own, so the column is NULL there rather than
+% carrying a basis that would imply a choice nobody made.
+%
+% It is a different fact from iou_basis, which says whether the IoU was computed
+% on native or aligned intervals. Both appear; neither is the other.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+importWindows(fixture, "w1,9.9,10.6,A,0.9,0.9");
+vawlume.attribution.correspondWindows(fixture.conn, runRef(fixture), ...
+    SameClock=true, Apply=true);
+
+groupRunId = addAgreementGroupRun(fixture);
+importWindowsForRun(fixture, groupRunId, "g1,9.9,11.1,A,0.7,0.7");
+vawlume.attribution.correspondWindows(fixture.conn, ...
+    struct(attribution_run_id=groupRunId), SameClock=true, Apply=true);
+
+rows = fetch(fixture.conn, "SELECT target_kind AS kind, " + ...
+    "IFNULL(target_extent_basis,'') AS basis, iou_basis " + ...
+    "FROM v_attribution_window_correspondences ORDER BY target_kind");
+
+verifyEqual(testCase, height(rows), 2);
+verifyEqual(testCase, presentText(rows.kind)', ["agreement_group" "detection"]);
+verifyEqual(testCase, presentText(rows.basis)', ["union_boundary_of_members" ""]);
+% Both bases are present and distinct; nothing collapses them into one column.
+verifyEqual(testCase, presentText(rows.iou_basis)', ["native" "native"]);
+clear cleanup
+end
+
 % ---------------------------------------------------------------- helpers ---
+
+function runId = addAgreementGroupRun(fixture)
+% A second attribution run over the same recording, targeting an agreement group
+% under a named extent. The group spans both detections, so its union extent is
+% [10.0, 11.0] and a window bracketing both plausibly refers to it.
+conn = fixture.conn;
+execute(conn, "INSERT INTO analysis_runs(analysis_run_id,project_id,run_type," + ...
+    "run_key) VALUES(11,1,'multi_extractor_agreement','agree-1')");
+execute(conn, "INSERT INTO analysis_run_extraction_inputs(analysis_run_id," + ...
+    "extraction_run_id) VALUES(11,1)");
+execute(conn, "INSERT INTO agreement_groups(agreement_group_id,analysis_run_id," + ...
+    "recording_id,group_key,derivation_method) " + ...
+    "VALUES(1,11,1,'g1','connected_component')");
+execute(conn, "INSERT INTO agreement_group_members(agreement_group_id,detection_id) " + ...
+    "VALUES(1,1),(1,2)");
+run = vawlume.attribution.createRun(conn, struct(recording_id=1), ...
+    struct(run_key="phase49a-group", attribution_path="imported", ...
+        method="External Caller 2.0", settings_profile_version_id=1, ...
+        target_set=struct(agreement_group_ids=1, ...
+            agreement_extent_method="union_boundary_of_members"), ...
+        participating_entity_ids=[1 2], ...
+        sources=struct(source_file_ids=1), ...
+        notes="Agreement-group target for the extent-basis read surface."), ...
+    Apply=true);
+runId = run.run.attribution_run_id;
+end
+
+function importWindowsForRun(fixture, runId, rows)
+path = fullfile(fixture.workspace, "caller_" + ...
+    string(java.util.UUID.randomUUID) + ".csv");
+fileId = fopen(path, "w");
+fprintf(fileId, "window_id,start_s,end_s,caller,score,probability\n");
+for index = 1:numel(rows)
+    fprintf(fileId, "%s\n", rows(index));
+end
+fclose(fileId);
+vawlume.ingest.attribution(fixture.conn, ...
+    struct(attribution_run_id=runId), path, Apply=true);
+end
 
 function verifyRefused(testCase, action, identifier)
 refused = false;

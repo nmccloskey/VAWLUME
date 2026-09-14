@@ -8,8 +8,8 @@ function result = attribution(conn, runRef, sourcePath, options)
 %
 % RESULT = vawlume.ingest.attribution(..., Apply=true) commits a conflict-free
 % plan in one transaction covering the source-file and profile-version
-% provenance, the imported windows, and the candidate callers and evidence they
-% imply.
+% provenance, the imported windows, and the imported caller claims made over
+% them.
 %
 % RUNREF contains attribution_run_id, or project_key and run_key. The run must be
 % `planned` with attribution_path `imported`.
@@ -32,12 +32,19 @@ function result = attribution(conn, runRef, sourcePath, options)
 % with a detection or consensus event is correspondence work with its own
 % eligibility rule and its own explicit transform.
 %
+% **Each claim is stored with its number and that number's declared semantics**,
+% one row per (window, claimed caller) in `imported_attribution_claims`. A claim
+% whose source carried no score stores NULL for both value columns: a label with
+% no number is a legitimate import, and turning a name into certainty is the
+% failure that refuses.
+%
 % **No candidate or evidence row is written.** A candidate belongs to
 % (target, entity); an imported claim belongs to (window, entity). Mapping one
 % onto the other requires knowing which window refers to which event, which is
-% correspondence and has not happened. The claims come back in RESULT.claims
-% with their values intact; they have nowhere to be stored until correspondence
-% exists, which is recorded as a finding rather than worked around.
+% correspondence and has not happened. Nor does correspondence later promote a
+% claim to a candidate: deciding which correspondence is good enough to carry a
+% claim onto a target is a policy question, and answering it in storage would
+% collapse the ambiguity correspondence preserves.
 %
 % **An import applies once per run.** Evidence is append-only and a second apply
 % would duplicate rather than reconcile, so a run already carrying imported

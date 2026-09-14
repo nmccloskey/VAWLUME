@@ -94,40 +94,73 @@ transaction:
 - the source file with its **SHA-256 of the exact bytes**;
 - the mapping profile version with its checksum;
 - one `imported_attribution_windows` row per window, carrying native start and
-  end, every caller label claimed over it verbatim, and pointers to the file and
-  profile version.
+  end and pointers to the file and profile version;
+- one `imported_attribution_claims` row per claim, carrying the caller label
+  verbatim, the entity it resolved to, the exporter's score and probability, and
+  the semantics declared for each.
+
+The two tables mirror the IR's split, and for the same reason: a window is a
+statement about **time**, a claim is a statement about an **animal**, and one
+window may carry several claims.
 
 An import applies **once per run**. Evidence is append-only and a second apply
 would duplicate rather than reconcile, so a run already carrying imported windows
 raises `vawlume:attribution:ImportAlreadyApplied`.
 
-## What the schema cannot yet hold (P4-5)
+## The claim, and its number
 
-This is the imported path doing its job, and it is the most useful thing this
-itinerary produced.
+A claim row is *this exporting system said this caller produced the vocalization
+in this window, with this number*.
 
-**An imported claim's score has nowhere to be stored before correspondence
-exists.**
+| Column | Holds |
+|---|---|
+| `source_caller_label` | the label as the file spelled it, one label per row |
+| `entity_id` | the entity the profile's declared map resolved it to |
+| `score`, `score_semantics` | the exporter's number and what it meant *there* |
+| `probability`, `probability_semantics` | same, bounded to `[0,1]` |
+| `claim_ordinal`, `source_locator` | where in the source the claim came from |
+
+`score` is unconstrained because it is somebody else's scale and VAWLUME does not
+know its range; `probability` is bounded because the word means something. Nothing
+converts between them in either direction. A stored number without its semantics
+is refused by CHECK — the rule `attribution_candidates` follows, applied here
+identically, because P3-1 exists from a time when it was applied unevenly.
+
+**A claim with no number stores NULL, never a substitute.** The profile's
+`validation.require_one_of_score_or_probability` is `false` precisely so a label
+with no number is a legitimate import, and turning a name into certainty is the
+failure that setting refuses. Nothing writes `1.0`, `0.0`, or a sentinel.
+
+**One caller may not be claimed twice over one window.** Two such rows assert the
+same thing twice, possibly with two different numbers, and keeping whichever
+arrived first is how a score disappears without a symptom.
+
+### A claim is not a candidate, and never becomes one implicitly
 
 - a **candidate** belongs to `(target, entity)`;
 - an imported **claim** belongs to `(window, entity)`;
 - mapping one onto the other requires knowing which window refers to which event.
 
 Writing a candidate on every target of the run would assert that every window's
-claim applies to every event, and would silently collapse two different scores for
-one entity into whichever row happened to be written first. `imported_attribution_windows`
-carries no `score` or `probability` column, and `attribution_evidence` requires a
-target, so there is no third place to put it.
+claim applies to every event. So intake writes none, and **correspondence does not
+promote one later either**: deciding which correspondence is good enough to carry a
+claim onto a target is a policy question, and answering it in storage would
+collapse the ambiguity the correspondence layer exists to preserve.
+`vawlume.attribution.addCandidates` stays the explicit path.
 
-Intake therefore returns the claims in `result.claims` with their values intact
-and stores none of them. The claims are not lost — they are re-derivable from the
-source file, whose checksum is recorded — but they are not queryable until
-correspondence runs.
+To read a claim beside the VAWLUME event it reaches, join through correspondence —
+`v_attribution_window_correspondences` is that join, and it also names the
+agreement-group extent basis where one applies.
 
-The fix is either `score`/`probability`/`*_semantics` columns on
-`imported_attribution_windows` keyed per caller, or a small
-`imported_attribution_claims` table. Both need DDL, and the schema is at
-`0.9-draft` with Phase 4's single bump spent.
+### Historical note (P4-5)
+
+Added at schema version `0.10-draft` (`PRAGMA user_version = 10`). Through
+`0.9-draft` the importer parsed the exporter's score and probability and then
+discarded both: `imported_attribution_windows` had no column for a number, and
+`attribution_evidence` requires a target that correspondence had not yet found.
+The window instead carried a `source_caller_label` holding every claimed label
+joined by `|` — a string no source file contained, and one that made a score
+unassignable to the caller it belonged to. That column is gone.
 
 ## Refusals
 
@@ -153,6 +186,9 @@ It proves nothing about whether any claimed caller called, whether the exporting
 system's numbers are calibrated, or whether these windows refer to calls VAWLUME
 detected. The last of those is the question the correspondence layer asks, and it
 has not been asked yet.
+
+Storing a score is not endorsing it. The number is retrievable and attributable;
+whether it means anything is the exporting system's claim, recorded as such.
 
 ## Related documents
 

@@ -35,9 +35,9 @@ end
 function testSchemaVersionIsCurrent(testCase)
 conn = testCase.TestData.conn;
 version = fetch(conn, "SELECT schema_version FROM schema_info");
-verifyEqual(testCase, string(version{1,1}), "0.9-draft");
+verifyEqual(testCase, string(version{1,1}), "0.10-draft");
 userVersion = fetch(conn, "PRAGMA user_version");
-verifyEqual(testCase, double(userVersion{1,1}), 9);
+verifyEqual(testCase, double(userVersion{1,1}), 10);
 end
 
 % --- targets name exactly one event set ----------------------------------
@@ -358,6 +358,91 @@ end
 verifyRefused(testCase, ...
     "INSERT INTO alignment_anchor_observations(alignment_anchor_id,timebase_id," + ...
     "observed_time_native,uncertainty_s) VALUES(1,1,0.5,0.01)", "uncertainty_semantics");
+end
+
+% --- imported claims (P4-5) ----------------------------------------------
+
+function testClaimScoreWithoutSemanticsIsRefused(testCase)
+% The same rule attribution_candidates applies, applied here for the same
+% reason: a number without stated semantics is not interpretable evidence.
+verifyRefused(testCase, ...
+    "INSERT INTO imported_attribution_claims(imported_attribution_window_id," + ...
+    "claim_ordinal,source_caller_label,score) VALUES(1,1,'A',0.91)", ...
+    "score_semantics");
+end
+
+function testClaimProbabilityWithoutSemanticsIsRefused(testCase)
+verifyRefused(testCase, ...
+    "INSERT INTO imported_attribution_claims(imported_attribution_window_id," + ...
+    "claim_ordinal,source_caller_label,probability) VALUES(1,1,'A',0.5)", ...
+    "probability_semantics");
+end
+
+function testClaimProbabilityOutsideUnitIntervalIsRefused(testCase)
+% probability is bounded because the word means something.
+verifyRefused(testCase, ...
+    "INSERT INTO imported_attribution_claims(imported_attribution_window_id," + ...
+    "claim_ordinal,source_caller_label,probability,probability_semantics) " + ...
+    "VALUES(1,1,'A',1.7,'exporter probability')", "probability >= 0");
+end
+
+function testClaimScoreIsNotBoundedToAnyRange(testCase)
+% score is somebody else's scale and VAWLUME does not know its range. A value
+% far outside [0,1] and a negative one are both legitimate.
+conn = testCase.TestData.conn;
+execute(conn, "INSERT INTO imported_attribution_claims(" + ...
+    "imported_attribution_window_id,claim_ordinal,source_caller_label," + ...
+    "score,score_semantics) VALUES(1,1,'A',1234.56789,'exporter score')," + ...
+    "(1,2,'B',-0.0001,'exporter score')");
+stored = fetch(conn, "SELECT score FROM imported_attribution_claims " + ...
+    "ORDER BY claim_ordinal");
+verifyEqual(testCase, double(stored.score)', [1234.56789 -0.0001]);
+end
+
+function testAClaimWithNoNumberIsAccepted(testCase)
+% A label with no number is a legitimate import. Nothing here requires a value,
+% because a NOT NULL would force the importer to invent one.
+conn = testCase.TestData.conn;
+execute(conn, "INSERT INTO imported_attribution_claims(" + ...
+    "imported_attribution_window_id,claim_ordinal,source_caller_label,entity_id) " + ...
+    "VALUES(1,1,'A',1)");
+stored = fetch(conn, "SELECT COUNT(*) AS n FROM imported_attribution_claims " + ...
+    "WHERE score IS NULL AND probability IS NULL");
+verifyEqual(testCase, double(stored.n(1)), 1);
+end
+
+function testOneWindowMayCarrySeveralClaims(testCase)
+% The source shape is one row per (window, caller). Several callers claimed over
+% one window is the ordinary case, not an error.
+conn = testCase.TestData.conn;
+execute(conn, "INSERT INTO imported_attribution_claims(" + ...
+    "imported_attribution_window_id,claim_ordinal,source_caller_label,entity_id," + ...
+    "score,score_semantics) VALUES(1,1,'A',1,0.9,'s'),(1,2,'B',2,0.4,'s')");
+stored = fetch(conn, "SELECT COUNT(*) AS n FROM imported_attribution_claims " + ...
+    "WHERE imported_attribution_window_id=1");
+verifyEqual(testCase, double(stored.n(1)), 2);
+end
+
+function testRepeatingOneLabelOverOneWindowIsRefused(testCase)
+% Two rows for one caller over one window assert the same thing twice, possibly
+% with two different numbers. Keeping whichever was written first is how a score
+% goes missing without a symptom.
+conn = testCase.TestData.conn;
+execute(conn, "INSERT INTO imported_attribution_claims(" + ...
+    "imported_attribution_window_id,claim_ordinal,source_caller_label) VALUES(1,1,'A')");
+verifyRefused(testCase, ...
+    "INSERT INTO imported_attribution_claims(imported_attribution_window_id," + ...
+    "claim_ordinal,source_caller_label) VALUES(1,2,'A')", "UNIQUE");
+end
+
+function testClaimedCallerOutsideTheRecordingIsRefused(testCase)
+% Entity 4 exists but is not linked to the recording. An imported label
+% resolving to an animal that was never there is a surfaced problem, not a new
+% participant -- the rule candidates already follow.
+verifyRefused(testCase, ...
+    "INSERT INTO imported_attribution_claims(imported_attribution_window_id," + ...
+    "claim_ordinal,source_caller_label,entity_id) VALUES(1,1,'Z',4)", ...
+    "not an entity linked to this recording");
 end
 
 % --- helpers --------------------------------------------------------------

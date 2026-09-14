@@ -5,7 +5,7 @@
 > planned functionality. Where this guide and an older design document disagree,
 > the repository is the authority.
 >
-> **Status.** Early prototype. The schema (`0.9-draft`, `PRAGMA user_version = 9`),
+> **Status.** Early prototype. The schema (`0.10-draft`, `PRAGMA user_version = 10`),
 > the configuration contracts, and the `vawlume.*` package API are working design
 > hypotheses and may change before any public release. Every numeric threshold
 > shipped with the prototype is an illustrative demonstration value, not a
@@ -1134,12 +1134,24 @@ never in the recording is refused by name, with every offending label listed.
 caller, an undeclared label and an out-of-range probability each appear in
 `plan.issues` with the row number and the reason.
 
+**Each claimed caller becomes its own row**, in `imported_attribution_claims`, with
+its label exactly as the file spelled it, the entity it resolved to, and the
+exporter's score and probability beside the semantics declared for each. One window
+claimed by two callers is two rows with two numbers, not one row with the labels
+run together.
+
+**A claim with no number keeps no number.** Both value columns are NULL. Nothing
+substitutes `1.0` for a caller the exporter named without scoring — turning a name
+into certainty is the specific thing this refuses.
+
 **Intake relates imported windows to no VAWLUME event.** They land with their
 native timing intact, on the exporting system's own clock. Because of that, an
-import stores windows and provenance but **no candidate rows**: a candidate
+import stores windows, claims and provenance but **no candidate rows**: a candidate
 belongs to a target, an imported claim belongs to a window, and mapping one onto
-the other requires a correspondence that has not been established. The claims come
-back in `result.claims` with their values intact. See
+the other requires a correspondence that has not been established. Correspondence
+does not later promote a claim into a candidate either — which correspondence is
+good enough to carry a claim onto an event is your judgement, not the importer's.
+See
 [`../development/32_imported_attribution_intake.md`](../development/32_imported_attribution_intake.md)
 for what that means in practice.
 
@@ -1181,6 +1193,26 @@ Each correspondence records whether its IoU was computed on `native` or `aligned
 intervals, because **aligned duration is not native duration** under a piecewise
 clock, and whether either endpoint fell outside the transform's anchored range.
 See [`../development/33_attribution_correspondence.md`](../development/33_attribution_correspondence.md).
+
+To read a correspondence together with the imported claim behind it:
+
+```matlab
+rows = fetch(conn, "SELECT native_window_id, source_caller_label, " + ...
+    "claim_score, claim_score_semantics, target_kind, target_extent_basis, " + ...
+    "iou_basis, temporal_iou " + ...
+    "FROM v_attribution_window_correspondences " + ...
+    "WHERE attribution_run_id = 1");
+```
+
+**`iou_basis` and `target_extent_basis` are different facts.** The first says
+whether the IoU was computed on native or aligned intervals. The second says which
+of the five derived extents supplied an agreement group's interval at all, and is
+NULL for a detection or consensus event, which carry their own. Reading one as the
+other would attribute a clock-drift artefact to a choice about group boundaries.
+
+A NULL `claim_score` means the exporter supplied no number for that caller. It does
+not mean zero.
+
 Applying a declared policy turns those candidates into one decision per target,
 and completes the run:
 

@@ -7,9 +7,14 @@ imported path**. Written by itinerary 4.1 before any Phase 4 code exists, so tha
 the decisions below are made once rather than negotiated by each later itinerary.
 
 Written against schema `0.8-draft` (`PRAGMA user_version = 8`). Itinerary 4.2
-applied Phase 4's single bump, so the live schema is now `0.9-draft`
-(`PRAGMA user_version = 9`). D1 was revised at 4.2 on user direction; the revision
+applied Phase 4's planned bump, to `0.9-draft`; itinerary 4.9a applied a second
+and final one to close P4-5, so the live schema is now `0.10-draft`
+(`PRAGMA user_version = 10`). D1 was revised at 4.2 on user direction; the revision
 is marked where it appears.
+
+The contract clauses below are frozen as written. This status block is not: it
+names the live schema, and 4.2 set the precedent of moving it when the version
+moves rather than leaving a stale claim in the sentence that advertises currency.
 
 This contract governs what caller attribution **means** in VAWLUME and what its
 representation must keep distinguishable. It does not describe an estimator.

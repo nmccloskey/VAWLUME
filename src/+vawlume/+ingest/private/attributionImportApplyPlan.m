@@ -6,7 +6,7 @@ function [plan, counts] = attributionImportApplyPlan(conn, plan)
 % open; an explicit BEGIN is refused.
 
 counts = struct(source_files=0, config_profiles=0, config_profile_versions=0, ...
-    imported_attribution_windows=0);
+    imported_attribution_windows=0, imported_attribution_claims=0);
 
 previousAutoCommit = conn.AutoCommit;
 conn.AutoCommit = "off";
@@ -27,7 +27,6 @@ try
             native_window_id=string(row.native_window_id), ...
             start_time_native=double(row.start_time_native), ...
             end_time_native=double(row.end_time_native), ...
-            source_caller_label=callerLabelsFor(plan, string(row.window_key)), ...
             source_file_id=sourceFileId, ...
             mapping_profile_version_id=profileVersionId, ...
             source_locator=string(row.source_locator)), ...
@@ -37,8 +36,12 @@ try
     end
     plan.window_ids = windowIds;
 
-    % NO CANDIDATE OR EVIDENCE ROW IS WRITTEN HERE, and that is the pass's main
-    % finding rather than an omission.
+    % The claims, with the exporter's numbers and the semantics the profile
+    % declared for them. P4-5 closed at 0.10-draft: before that table existed the
+    % values were parsed here and discarded, because a window had no column for a
+    % number and a candidate needs a target that correspondence has not yet found.
+    %
+    % NO CANDIDATE OR EVIDENCE ROW IS WRITTEN HERE, and that is still true.
     %
     % A candidate belongs to (target, entity). An imported claim belongs to
     % (window, entity). Mapping one onto the other requires knowing which window
@@ -47,10 +50,11 @@ try
     % applies to every event, and would silently collapse two different scores
     % for one entity into whichever row was written first.
     %
-    % The claims are returned in the plan with their values intact. They have
-    % nowhere to be stored until correspondence exists: imported_attribution_windows
-    % carries no score or probability column, and attribution_evidence requires a
-    % target. Recorded as P4-5.
+    % Nor does a claim become a candidate once correspondence exists. Deciding
+    % which correspondence is good enough to carry a claim onto a target is a
+    % policy question, and answering it in storage would collapse the ambiguity
+    % correspondence preserves. vawlume.attribution.addCandidates stays explicit.
+    [plan, counts] = writeClaims(conn, plan, counts);
 
     commit(conn);
 catch exception
@@ -65,11 +69,41 @@ end
 
 % ---------------------------------------------------------------- helpers ---
 
-function label = callerLabelsFor(plan, windowKey)
-% The window records which labels were claimed over it, verbatim, so the imported
-% representation is readable without joining to candidates.
-matching = plan.claims(string(plan.claims.window_key) == windowKey, :);
-label = strjoin(unique(string(matching.caller_label), "stable"), "|");
+function [plan, counts] = writeClaims(conn, plan, counts)
+% One row per claim, in source order, each carrying its own verbatim label.
+%
+% The window used to carry a '|'-joined synthesis of these labels. That string was
+% in no source file, and it made a score unassignable to the caller it belonged
+% to. The claims are the source's own shape: one row per (window, caller).
+%
+% Absent values are left absent. attributionImportInsertRow drops a NaN number and
+% an empty string before writing, so an unscored claim stores SQL NULL rather than
+% a substitute -- which is the whole point of the profile's
+% require_one_of_score_or_probability=false.
+claimIds = NaN(height(plan.claims), 1);
+ordinals = containers.Map("KeyType", "char", "ValueType", "double");
+for index = 1:height(plan.claims)
+    claim = plan.claims(index, :);
+    windowKey = char(string(claim.window_key));
+    if isKey(ordinals, windowKey)
+        ordinals(windowKey) = ordinals(windowKey) + 1;
+    else
+        ordinals(windowKey) = 1;
+    end
+    claimIds(index) = attributionImportInsertRow(conn, "imported_attribution_claims", struct( ...
+        imported_attribution_window_id=plan.window_ids(windowKey), ...
+        claim_ordinal=ordinals(windowKey), ...
+        source_caller_label=string(claim.caller_label), ...
+        entity_id=double(claim.entity_id), ...
+        score=double(claim.score), ...
+        score_semantics=string(claim.score_semantics), ...
+        probability=double(claim.probability), ...
+        probability_semantics=string(claim.probability_semantics), ...
+        source_locator=string(claim.source_locator)), ...
+        "imported_attribution_claim_id");
+    counts.imported_attribution_claims = counts.imported_attribution_claims + 1;
+end
+plan.claim_ids = claimIds;
 end
 
 function [sourceFileId, counts] = registerSourceFile(conn, plan, counts)
