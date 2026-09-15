@@ -1044,8 +1044,32 @@ runs sections 7.5 and 7.6 together on a synthetic session.
 
 Caller attribution begins by fixing the run's provenance and denominator, not
 by choosing a caller. Register the settings profile version and direct sources
-first, then identify exactly one event set. This example targets two native
-detections from one extraction run:
+first, then identify exactly one event set.
+
+A run cites the settings it ran under by profile *version*, and that version is
+checksum-bearing so the citation still means something later. Register the file
+you actually used:
+
+```matlab
+settings = vawlume.db.registerProfileVersion(conn, ...
+    struct(project_key="my_project"), struct( ...
+    profile_key="session01-import-settings", ...
+    profile_name="Imported attribution run settings", ...
+    version_label="1.0.0", ...
+    content_path="my_project/session01_attribution_settings.json"));
+```
+
+VAWLUME hashes the file and records the path; it never copies the bytes. A file
+under the repository root is stored with a repository-relative `content_uri` so
+the citation resolves on another machine; one outside it keeps its absolute path,
+which is honest rather than portable. Re-registering the same version over
+*different* bytes is refused (`vawlume:db:ProfileVersionConflict`) — decisions
+and imported windows already cite the version by ID, so rewriting what it denotes
+would silently re-point stored evidence. Publish a new `version_label` instead.
+`profile_kind` defaults to `analysis_settings` and is checked against the
+schema's own vocabulary.
+
+This example then targets two native detections from one extraction run:
 
 ```matlab
 targetSet = struct(detection_ids=[101 102]);
@@ -1055,7 +1079,7 @@ runSpec = struct( ...
     run_key="session01-imported-caller-v1", ...
     attribution_path="imported", ...
     method="External caller system 2.0", ...
-    settings_profile_version_id=12, ... % registered, checksum-bearing snapshot
+    settings_profile_version_id=settings.profile_version_id, ...
     target_set=targetSet, ...
     participating_entity_ids=[3 4 5], ...
     sources=sources);
@@ -1166,6 +1190,22 @@ value can be traced back to the bytes it came from.
 No rescaling, no renormalization, no clamping, and no promotion of a score to a
 probability because it happened to fall in `[0,1]`. Each number carries the
 profile's declared semantics, saying what it meant *where it came from*.
+
+**And the stored semantics names the system that produced the number.** Write
+`{producer}` wherever you want it in your profile's `value_semantics` strings and
+it is substituted from `context.exporting_system`, joined with
+`exporting_system_version` when you declare one that is not `unknown`. A profile
+that never uses the placeholder still gets `; producer=<name>` appended, because
+the point is that a reader holding only the database can tell whose number this
+was. No column records the exporting system, so without this the semantics string
+would be the only place it appears.
+
+**What is not recorded is which evidence the exporter used.** An imported score is
+somebody else's combination and nothing says what went into it. You can see the
+score, and separately whichever of the four dimensions this run holds; you cannot
+tell which of them the exporter had already used. Take that into account before
+putting an imported score beside VAWLUME evidence and reading them as
+independent.
 
 **Caller labels resolve only as the profile declares.** A label is a string in
 somebody else's file. Nothing infers which entity it denotes, and nothing creates
@@ -1705,6 +1745,8 @@ ambiguity, unresolved statements, and declared value semantics; acoustic-
 reference registration and query; bounded local-audio reads; deterministic
 per-reference, per-channel response measurements with QC; per-family,
 per-channel response/QC estimates with restrictive supporting lineage;
+checksum-bearing registration of configuration profile versions with
+repository-relative citation and conflict refusal;
 plan-then-apply creation of attribution runs over explicit, single-kind target
 sets with settings, direct-source, participant, and event-set provenance;
 atomic multi-candidate and long-form attribution-evidence batches whose stored
@@ -1837,9 +1879,20 @@ memberships and observed ranges as its only QC.
   no paging, filtering or projection. It has been exercised at synthetic-fixture
   scale only; whether it is usable over a session with thousands of
   claim-correspondence rows is untested.
-- No public function registers an analysis-settings profile version, so the
-  checksum-bearing `config_profile_versions` row that `createRun` requires must
-  currently be written by hand.
+- **Nothing records which evidence an exporting system used.** An imported score
+  is a combination somebody else already performed, and no column or profile
+  field says which modalities went into it. VAWLUME's own four dimensions sit
+  beside it unmerged, but you cannot tell which of them the exporter had already
+  consumed — so an imported score and a VAWLUME dimension are not safely
+  independent evidence.
+- The exporting system's identity lives in the rendered semantics string and in
+  `attribution_runs.method`, not in a column of its own. Recording it
+  relationally on `imported_attribution_windows` would be cleaner and costs a
+  schema version bump; it is deferred, not rejected.
+- `vawlume.db.registerProfileVersion` registers a profile version and validates
+  nothing about the file's contents. Each consuming layer still validates its own
+  profile grammar, and the existing registrars inside the matching, agreement and
+  attribution-policy paths have not been refactored onto it.
 
 ### Representable in the schema but unimplemented
 

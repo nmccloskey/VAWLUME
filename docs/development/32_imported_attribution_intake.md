@@ -131,6 +131,31 @@ identically, because P3-1 exists from a time when it was applied unevenly.
 with no number is a legitimate import, and turning a name into certainty is the
 failure that setting refuses. Nothing writes `1.0`, `0.0`, or a sentinel.
 
+**A stored semantics string names the system that produced the number.** The
+profile's declared string is *rendered*, not copied: `{producer}` is substituted
+from `context.exporting_system`, joined with `context.exporting_system_version`
+when one is declared and is not `unknown`. A profile that never uses the
+placeholder still gets `; producer=<name>` appended, because the guarantee is
+about what is stored and not about how a profile happens to be worded.
+
+This exists because of what it replaced. Through 4.11 the shipped profile read
+*"producer declared in `context.exporting_system`"* and that string was stored
+verbatim, so a reader holding only the database was handed a pointer into a file
+they might not have — and no column in `imported_attribution_claims`,
+`imported_attribution_windows` or `attribution_runs` names the exporting system
+either. Composing the name into the semantics is not VAWLUME editing somebody's
+declaration: the string is **prose VAWLUME composes from declared facts**, and
+the system name is declared in the same profile. The rule that forbids
+recomputation governs the *number*, which nothing here touches.
+
+**What is still not recorded is which evidence the exporter used.** An imported
+score is somebody else's combination, and nothing says which modalities went into
+it. A reader can see the score and, separately, whichever of VAWLUME's four
+dimensions this run happens to hold; they cannot tell which of them the exporter
+had already consumed. An optional declared field for it was considered at 4.12a
+and declined because nothing would read it — Phase 5's backend path meets the
+same question with a real consumer.
+
 **One caller may not be claimed twice over one window.** Two such rows assert the
 same thing twice, possibly with two different numbers, and keeping whichever
 arrived first is how a score disappears without a symptom.

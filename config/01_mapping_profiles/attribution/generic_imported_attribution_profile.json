@@ -54,9 +54,10 @@
       },
 
       "value_semantics": {
-        "score": "Exporting-system caller score; producer declared in context.exporting_system; range as the exporter defines it; uncalibrated; not a probability and not comparable across exporting systems",
-        "probability": "Exporting-system caller probability; producer declared in context.exporting_system; range=[0,1]; calibration is the exporter's claim and is not validated by VAWLUME",
-        "semantics_note": "These strings travel with every stored number. They say what the number meant WHERE IT CAME FROM. VAWLUME neither recomputes nor re-normalizes them, because a rescaled imported score is unauditable forever: the original is gone."
+        "score": "Exporting-system caller score; producer={producer}; range as the exporter defines it; uncalibrated; not a probability and not comparable across exporting systems",
+        "probability": "Exporting-system caller probability; producer={producer}; range=[0,1]; calibration is the exporter's claim and is not validated by VAWLUME",
+        "semantics_note": "These strings travel with every stored number. They say what the number meant WHERE IT CAME FROM. VAWLUME neither recomputes nor re-normalizes them, because a rescaled imported score is unauditable forever: the original is gone.",
+        "producer_placeholder_note": "{producer} is substituted at import time from context.exporting_system and, when one is declared and is not 'unknown', context.exporting_system_version. It exists because a stored semantics string must NAME the system that produced the number rather than point at a file the reader may not have. A profile that omits the placeholder is not penalised: VAWLUME appends '; producer=<name>' when the rendered string does not already contain it."
       },
 
       "caller_label_resolution": {

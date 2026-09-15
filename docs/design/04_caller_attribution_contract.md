@@ -440,11 +440,34 @@ The reason is specific to the imported path. An imported score is somebody else'
 combination, already performed, by a method VAWLUME did not run and cannot inspect.
 Recomputing or re-weighting it would destroy the only property that makes an imported
 result auditable — that it is still the number the exporting system produced. Storing
-it beside VAWLUME's own four dimensions, unmerged, lets a reader see exactly which
-evidence the exporter used and which VAWLUME merely has.
+it beside VAWLUME's own four dimensions, unmerged, keeps the two legible as separate
+things: the exporter's number stays the exporter's, and VAWLUME's dimensions stay
+VAWLUME's.
+
+**Corrected at 4.12a.** This paragraph originally ended *"lets a reader see exactly
+which evidence the exporter used and which VAWLUME merely has."* The second half is
+true; the first is not, and was not true when it was written. **Nothing records which
+of the four dimensions an exporting system used** — there is no column, no profile
+field, and no convention. A reader sees the imported score and, separately, whichever
+dimensions VAWLUME happens to hold; they cannot tell which of them the exporter had
+already consumed. 4.12's sweep found this by probing an imported-only run, which
+returns an imported score and **zero** evidence rows.
+
+The correction is left visible rather than rewritten away, following D1's precedent.
+A contract that is quietly wrong in one sentence is worse than one that shows where it
+was wrong, and this particular sentence matters to Phase 7: comparing an imported
+attribution against a native one will want to know whether the two used the same
+evidence, and that question is currently unanswerable.
+
+An optional declared field naming the exporter's input modalities was considered at
+4.12a and **declined**, because nothing would read it and plan §4.7 is explicit that a
+derivation with no defensible consumer *"is not an additional option; it is noise with
+a column name."* Phase 5's backend path meets the same question with a real consumer
+and should design it once for both.
 
 So a Phase 4 attribution result carries **both**: the imported score with its
-provenance, and the four dimensions separately. Neither is derived from the other.
+provenance, and the four dimensions separately. Neither is derived from the other, and
+neither says anything about the other's inputs.
 
 ### What a later phase must state to exercise the permission
 

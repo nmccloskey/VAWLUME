@@ -119,6 +119,30 @@ The matching layer contains legal candidate pairs, one-to-one and split/merge
 match groups, unmatched groups, consensus events that retain native detections
 as members, and consilience assessment rows.
 
+### `match_score` and `confidence_score` are fixture values, not analysis output
+
+This fixture populates `match_groups.match_score` (0.95, 0, 0, 0.72) and
+`consensus_events.confidence_score` (0.94, 0.72). **No analysis path writes
+either column.** `vawlume.matching.compare` writes NULL for both, deliberately
+and by regression test — a topology-derived group is not a calibrated score, and
+`consilience_assessments.score` is left NULL for the same reason. Neither column
+has a declared-semantics companion, so a number in them means whatever the writer
+meant and nothing states it.
+
+They are populated here because the fixture exercises the schema's nullable
+columns, and because
+[`phase1_acceptance_queries.sql`](phase1_acceptance_queries.sql) selects
+`mg.match_score` without an `IFNULL` guard — the MATLAB Database Toolbox raises
+on any SQL NULL in a result set, so emptying the column breaks that query.
+**Verified at 4.12a** by removing the writes: `test_phase1_fixture` still passed
+and `test_phase1_acceptance_queries` errored in `fetch`.
+
+Two consequences worth knowing before reusing that query. It would fail the same
+way against a database built by the matching layer rather than by this fixture,
+because that database leaves the column NULL. And a reader exploring the fixture
+should not read either number as an example of what VAWLUME computes: nothing
+does.
+
 An external behavioral event stream uses a controller timebase aligned to the
 shared recording timebase with `target_time = source_time + 0.55`. Two external
 events are materialized in aligned recording-relative seconds.

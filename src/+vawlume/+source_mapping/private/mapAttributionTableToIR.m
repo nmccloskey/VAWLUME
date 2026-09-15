@@ -14,7 +14,6 @@ function result = mapAttributionTableToIR(tbl, result, profileEntry, profileLoca
 
 context = profileEntry.context;
 columns = profileEntry.columns;
-semantics = valueSemantics(profileEntry);
 resolution = callerLabelMap(profileEntry);
 
 sourceKey = options.SourceKey;
@@ -22,6 +21,9 @@ timebaseKey = string(context.window_timebase_key);
 nativeUnit = string(context.native_time_unit);
 exportingSystem = string(context.exporting_system);
 exportingVersion = optionalContextText(context, "exporting_system_version");
+% Rendered, not copied: a stored semantics string names its producer. F4-1.
+semantics = valueSemantics(profileEntry, ...
+    producerLabel(exportingSystem, exportingVersion));
 
 windows = result.attribution_windows;
 claims = result.attribution_claims;
@@ -167,16 +169,65 @@ issue = table("issue:" + string(height(result.issues) + 1), "error", ...
 result.issues = [result.issues; issue];
 end
 
-function semantics = valueSemantics(profileEntry)
+function semantics = valueSemantics(profileEntry, producer)
+%VALUESEMANTICS Render the declared semantics; do not merely copy them.
+%
+% A stored semantics string must NAME the system that produced the number. The
+% shipped profile used to say "producer declared in context.exporting_system",
+% which is a pointer into a file rather than a value: a reader holding only the
+% database got a sentence that referred to something they could not see. F4-1.
+%
+% Two mechanisms, because a profile VAWLUME did not ship cannot be relied on to
+% cooperate:
+%
+%   1. {producer} is substituted wherever the profile declares it, so an author
+%      controls where the name appears in their own sentence.
+%   2. If the rendered string still does not contain the exporting system's name,
+%      "; producer=<name>" is appended.
+%
+% The append looks like VAWLUME editing somebody's declaration and is not. This
+% string is PROSE VAWLUME COMPOSES from facts the profile declared -- the system
+% name is `context.exporting_system`, in the same file. Composing two
+% declarations is not inventing one. The rule that forbids recomputation governs
+% the NUMBER, and no number is touched here or anywhere in this function.
 semantics = struct(score="", probability="");
-if isfield(profileEntry, "value_semantics")
-    declared = profileEntry.value_semantics;
-    if isfield(declared, "score")
-        semantics.score = string(declared.score);
+if ~isfield(profileEntry, "value_semantics")
+    return
+end
+declared = profileEntry.value_semantics;
+for field = ["score", "probability"]
+    if isfield(declared, field)
+        semantics.(field) = renderSemantics(string(declared.(field)), producer);
     end
-    if isfield(declared, "probability")
-        semantics.probability = string(declared.probability);
-    end
+end
+end
+
+function value = renderSemantics(declared, producer)
+value = strtrim(declared);
+if strlength(value) == 0 || strlength(producer) == 0
+    return
+end
+value = replace(value, "{producer}", producer);
+if ~contains(value, producer)
+    value = value + "; producer=" + producer;
+end
+end
+
+function value = producerLabel(exportingSystem, exportingVersion)
+%PRODUCERLABEL How the exporting system is named inside a semantics string.
+%
+% The version joins the name only when one was actually declared. The shipped
+% template's default is the literal "unknown", and rendering "Example System
+% unknown" would put a disclaimer where a reader expects a version -- worse than
+% emitting nothing, because it reads like a version somebody chose.
+value = strtrim(string(exportingSystem));
+version = strtrim(string(exportingVersion));
+if strlength(value) == 0
+    value = "";
+    return
+end
+if strlength(version) > 0 && lower(version) ~= "unknown"
+    value = value + " " + version;
 end
 end
 

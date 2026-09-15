@@ -19,6 +19,10 @@ tests = functiontests({ ...
     @testClaimValuesAreBitIdenticalToTheSourceFile, ...
     @testALabelWithNoNumberStaysAbsentRatherThanBecomingOne, ...
     @testScoreAndProbabilityKeepSeparateSemantics, ...
+    @testStoredSemanticsNamesTheExportingSystem, ...
+    @testSemanticsNamesTheProducerEvenWhenTheProfileNeverMentionsIt, ...
+    @testAnUnknownExporterVersionIsOmittedRatherThanRendered, ...
+    @testRenderingTheSemanticsChangesNoStoredNumber, ...
     @testUndeclaredCallerLabelIsRefusedByName, ...
     @testLabelResolvingOutsideTheParticipantSetIsRefused, ...
     @testProbabilityOutsideUnitIntervalIsReportedNotClamped, ...
@@ -211,6 +215,92 @@ verifyTrue(testCase, contains(probabilitySemantics, "not validated by VAWLUME"))
 clear cleanup
 end
 
+% --- the stored semantics names its producer (F4-1) ------------------------
+
+function testStoredSemanticsNamesTheExportingSystem(testCase)
+% Before 4.12a the shipped profile said "producer declared in
+% context.exporting_system" and that string was stored verbatim, so a reader
+% holding only the database got a pointer into a file they might not have.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+source = writeSource(fixture, "w1,10.0,10.4,A,0.91,0.87");
+result = vawlume.ingest.attribution(fixture.conn, runRef(fixture), source, Apply=true);
+
+producer = "Example Caller Attribution System";
+verifyTrue(testCase, contains(presentText(result.claims.score_semantics(1)), ...
+    "producer=" + producer));
+verifyTrue(testCase, contains(presentText(result.claims.probability_semantics(1)), ...
+    "producer=" + producer));
+% And the pointer it replaced is gone from what was stored.
+verifyFalse(testCase, contains(presentText(result.claims.score_semantics(1)), ...
+    "declared in context"));
+% Read back from the database rather than from the plan: this is what a later
+% reader actually gets.
+stored = fetch(fixture.conn, "SELECT score_semantics FROM " + ...
+    "imported_attribution_claims ORDER BY imported_attribution_claim_id");
+verifyTrue(testCase, contains(string(stored.score_semantics(1)), producer));
+clear cleanup
+end
+
+function testSemanticsNamesTheProducerEvenWhenTheProfileNeverMentionsIt(testCase)
+% The load-bearing half. The test above passes for a profile whose wording
+% happens to be right; this one proves the guarantee holds for a profile VAWLUME
+% did not ship, which is the case the invariant exists for.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+profile = semanticsProfile(fixture, struct( ...
+    score="A number. Nothing else is claimed about it.", ...
+    probability="Another number."), "Somebody Else's Tool", "3.1");
+source = writeSource(fixture, "w1,10.0,10.4,A,0.91,0.87");
+result = vawlume.ingest.attribution(fixture.conn, runRef(fixture), source, ...
+    ProfilePath=profile, Apply=true);
+
+scoreSemantics = presentText(result.claims.score_semantics(1));
+verifyTrue(testCase, startsWith(scoreSemantics, "A number."));
+verifyTrue(testCase, endsWith(scoreSemantics, "; producer=Somebody Else's Tool 3.1"));
+verifyTrue(testCase, contains(presentText(result.claims.probability_semantics(1)), ...
+    "producer=Somebody Else's Tool 3.1"));
+clear cleanup
+end
+
+function testAnUnknownExporterVersionIsOmittedRatherThanRendered(testCase)
+% The shipped template's default version is the literal "unknown". Rendering
+% "Example System unknown" would put a disclaimer where a reader expects a
+% version, which reads like a version somebody chose.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+profile = semanticsProfile(fixture, struct(score="Score from {producer}.", ...
+    probability="Probability from {producer}."), "Nameless Tool", "unknown");
+source = writeSource(fixture, "w1,10.0,10.4,A,0.91,0.87");
+result = vawlume.ingest.attribution(fixture.conn, runRef(fixture), source, ...
+    ProfilePath=profile, Apply=true);
+
+verifyEqual(testCase, presentText(result.claims.score_semantics(1)), ...
+    "Score from Nameless Tool.");
+verifyFalse(testCase, contains(presentText(result.claims.score_semantics(1)), ...
+    "unknown"));
+clear cleanup
+end
+
+function testRenderingTheSemanticsChangesNoStoredNumber(testCase)
+% 4.12a's tripwire. This pass edits prose; if an imported number moved, something
+% recomputed it. Awkward values chosen so a rescale could not hide.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+source = writeSource(fixture, [ ...
+    "w1,10.123456789,10.987654321,A,1234.56789,0.8812"; ...
+    "w1,10.123456789,10.987654321,B,-0.0001,0.1188"]);
+vawlume.ingest.attribution(fixture.conn, runRef(fixture), source, Apply=true);
+
+% Read from the database, not the plan: a rescale between plan and write would
+% be invisible to a check that only inspected the returned struct.
+stored = fetch(fixture.conn, "SELECT score, probability FROM " + ...
+    "imported_attribution_claims ORDER BY imported_attribution_claim_id");
+verifyEqual(testCase, double(stored.score)', [1234.56789 -0.0001]);
+verifyEqual(testCase, double(stored.probability)', [0.8812 0.1188]);
+times = fetch(fixture.conn, "SELECT start_time_native AS s, end_time_native AS e " + ...
+    "FROM imported_attribution_windows");
+verifyEqual(testCase, double(times.s(1)), 10.123456789);
+verifyEqual(testCase, double(times.e(1)), 10.987654321);
+clear cleanup
+end
+
 % --- refusals -------------------------------------------------------------
 
 function testUndeclaredCallerLabelIsRefusedByName(testCase)
@@ -385,6 +475,26 @@ fprintf(fileId, "window_id,start_s,end_s,caller,score,probability\n");
 for index = 1:numel(rows)
     fprintf(fileId, "%s\n", rows(index));
 end
+fclose(fileId);
+end
+
+function path = semanticsProfile(fixture, semantics, exportingSystem, version)
+%SEMANTICSPROFILE A profile whose declared semantics say whatever a test needs.
+%
+% Written so the producer guarantee can be tested against wording VAWLUME did
+% not choose. A guarantee only ever tested against the shipped profile is a
+% guarantee about that profile, not about the rule.
+document = jsondecode(fileread(fullfile(fixture.repo_root, "config", ...
+    "01_mapping_profiles", "attribution", ...
+    "generic_imported_attribution_profile.json")));
+document.profiles.value_semantics.score = semantics.score;
+document.profiles.value_semantics.probability = semantics.probability;
+document.profiles.context.exporting_system = exportingSystem;
+document.profiles.context.exporting_system_version = version;
+path = fullfile(fixture.workspace, "semantics_profile_" + ...
+    string(java.util.UUID.randomUUID) + ".json");
+fileId = fopen(path, "w");
+fwrite(fileId, jsonencode(document, PrettyPrint=true));
 fclose(fileId);
 end
 
