@@ -59,12 +59,30 @@ Concretely, the prototype can today:
 - **append** several candidate callers per target with distinct score and
   probability semantics, plus separately readable temporal-alignment,
   pose/localization, visual-identity, acoustic, correspondence, or imported
-  composite evidence.
+  composite evidence;
+- **import** an external caller-attribution table through a versioned mapping
+  profile, storing every number exactly as the file carried it beside the
+  semantics that say what it meant there, resolving caller labels only as the
+  profile declares, and reporting every row it could not map;
+- **relate** those imported windows to a run's VAWLUME events under an explicitly
+  declared clock relationship and the profile's own eligibility rule, preserving
+  ambiguity, naming the interval basis each score rests on, and counting rather
+  than resolving the windows that match nothing or match several events;
+- **decide** one status per target from stored candidates under a versioned,
+  checksummed policy that keeps `ambiguous` and `simultaneous` apart, and retains
+  the threshold that bound each decision; and
+- **read back** a whole attribution run through one function, with QC that is
+  counts, memberships and observed ranges and contains no quality score,
+  threshold or verdict.
 
 [`../../examples/multimodal_integration_demo.m`](../../examples/multimodal_integration_demo.m)
 runs the whole multimodal layer as one synthetic workflow, including an
-ambiguous visual crossing. It assigns no caller, and neither does anything else
-in the prototype.
+ambiguous visual crossing; it assigns no caller.
+[`../../examples/caller_attribution_demo.m`](../../examples/caller_attribution_demo.m)
+runs the whole imported attribution path, and what it does with a caller is
+narrower than it may look: it stores what an external system claimed, relates
+those claims to VAWLUME events, and applies a policy you declared. Nothing in
+this prototype estimates who called.
 
 ### Important limitations
 
@@ -96,12 +114,22 @@ in the prototype.
   but the result is uncalibrated response/QC evidence about the channels. It is
   not a gain correction, not a normalized call amplitude, not a preferred
   channel, and not a probability that any animal called.
-- **No caller-attribution decision yet.** A run, explicit targets, several
-  candidate callers, and long-form evidence can now be stored, but no public
-  path chooses among the candidates. Nothing combines pose, visual-identity,
-  alignment, and acoustic evidence into a claim about who vocalized. Those
-  components remain separate precisely so a later declared method can combine
-  them deliberately.
+- **VAWLUME estimates no caller.** The only implemented attribution path is the
+  imported one: it stores what an external system claimed, relates those claims
+  to VAWLUME events, and applies a policy you supplied. The backend/localization
+  path and the VAWLUME-native estimator are later phases.
+- **A decision is not a combination of the evidence.** The shipped policy reads
+  one candidate column and no evidence row, so nothing combines pose,
+  visual-identity, alignment, and acoustic evidence into a claim about who
+  vocalized. Those components remain separate precisely so a later declared
+  method can combine them deliberately. A decision is also not a probability,
+  and no status means `validated`.
+- **Every attribution threshold that ships is illustrative.** The mapping
+  profile's correspondence floor and the decision policy's selection, separation
+  and co-occurrence thresholds are demonstration values chosen to exercise
+  behaviour on synthetic data. Calibrating them needs output from a real
+  attribution system plus an independent ground truth for who called, and
+  neither exists.
 - **No image-based re-identification.** VAWLUME consumes whatever identity
   evidence an upstream tool supplies and performs no pixel processing of its
   own. A native track label is never treated as canonical animal identity.
@@ -397,13 +425,14 @@ multi_extractor_agreement_demo % + three extractors, arbitrary-N agreement, exac
 agreement_filter_demo          % + agreement populations joined to context and features
 temporal_alignment_demo        % + manifest registration, transform fitting, common time
 multimodal_integration_demo    % geometry, tracking, visual identity, acoustic response
+caller_attribution_demo        % + imported caller attribution, correspondence, decisions
 ```
 
 Each returns a struct and prints a compact report; pass `Print=false` to
 suppress the printing. Every one is covered by an integration test, so the
 numbers they print are asserted rather than merely observed.
 
-Three are worth reading first. `matching_consensus_demo` is the complete
+Four are worth reading first. `matching_consensus_demo` is the complete
 **pairwise** path, including consilience and threshold sensitivity.
 `multi_extractor_agreement_demo` is the complete **three-extractor** path:
 it imports all three extractors onto one recording, runs all three pairwise
@@ -420,6 +449,19 @@ bounded audio reads, and aggregates one response/QC profile with exact lineage.
 It keeps pose confidence, visual-identity evidence, clock residual, and acoustic
 response as four separate numbers and combines none of them. See
 [`../development/29_integrated_multimodal_demonstration.md`](../development/29_integrated_multimodal_demonstration.md).
+
+`caller_attribution_demo` is the complete **imported caller-attribution** path,
+and it is the one to read if you want to know what this prototype will and will
+not tell you about who called. It imports an external export on the exporting
+system's own clock, fits a piecewise-affine transform relating that clock to the
+recording's, corresponds the imported windows to VAWLUME detections across it,
+and then does the whole thing again over VAWLUME consensus events. One target
+carries three candidate callers and one carries none, one window plausibly refers
+to two events, one window refers to nothing, and one claim carries no number and
+keeps none. It decides the same candidates twice under different thresholds, so
+you can see the decision move while the candidates do not, and it demonstrates
+four named refusals beside the successes. See
+[`../development/34_integrated_caller_attribution_demonstration.md`](../development/34_integrated_caller_attribution_demonstration.md).
 
 To explore the relational model without running a workflow at all, build the
 deterministic Phase 1 synthetic fixture — one study, several subjects, a dyadic
@@ -1664,9 +1706,16 @@ reference registration and query; bounded local-audio reads; deterministic
 per-reference, per-channel response measurements with QC; per-family,
 per-channel response/QC estimates with restrictive supporting lineage;
 plan-then-apply creation of attribution runs over explicit, single-kind target
-sets with settings, direct-source, participant, and event-set provenance; and
+sets with settings, direct-source, participant, and event-set provenance;
 atomic multi-candidate and long-form attribution-evidence batches whose stored
-numbers retain separate declared semantics.
+numbers retain separate declared semantics; profile-driven import of external
+caller-attribution tables with verbatim source values, declared-only label
+resolution, and per-row issue reporting; correspondence of imported windows to
+detection, consensus-event, and multi-basis agreement-group targets under an
+explicitly declared clock with preserved ambiguity and extrapolation flags;
+policy-governed decisions carrying the versioned policy and the threshold that
+bound each one; and one read-only report returning the whole run with counts,
+memberships and observed ranges as its only QC.
 
 ### Implemented but explicitly uncalibrated or narrow
 
@@ -1755,19 +1804,57 @@ numbers retain separate declared semantics.
 - Median is the only channel-response aggregation method, a response profile is
   scoped to one recording, and the caller supplies exact measurement identifiers
   because no discovery or selection helper exists.
+- **`imported` is the only attribution path.** The backend/localization path and
+  the VAWLUME-native estimator are later phases, so nothing in this prototype
+  estimates a caller — it imports, relates, and decides over what somebody else
+  estimated.
+- The imported table must be long, one row per (window, claimed caller). A
+  system emitting one row per window with several caller columns needs its own
+  profile; no universal reshaper is attempted, because guessing would
+  mis-associate scores with callers silently.
+- **Every caller label must be declared in the profile.** Nothing infers which
+  entity a label denotes and nothing creates an entity to accommodate one. An
+  undeclared label is reported as a row issue; a declared label resolving outside
+  the run's participating entities refuses the whole import by name.
+- An import applies once per run and a correspondence applies once per run, both
+  refused by name on a second apply, because attribution evidence is append-only
+  and a second apply would duplicate rather than reconcile. To work under
+  different terms, create a new run.
+- Correspondence compares **intervals only**. No frequency, spectral, channel, or
+  caller-label evidence enters the eligibility rule, and its `min_temporal_iou`
+  is an illustrative value independent of the matching specification's floor.
+- The clock relationship is a caller declaration — `AlignmentRun` or
+  `SameClock` — and is never inferred. A correspondence computed on incomparable
+  clocks would be a plausible number and a wrong one.
+- **The shipped decision policy reads one candidate column and no evidence row.**
+  It is not a combination of the four uncertainty dimensions, not a probability
+  that the selected entity called, and not calibrated. No status means validated
+  and the vocabulary does not contain the word.
+- A target with no candidates is refused rather than decided, so a run whose
+  every target must reach a decision needs candidates on all of them. Completion
+  freezes candidates and evidence but deliberately not the decision set.
+- `vawlume.attribution.report` fetches every row of every table for a run, with
+  no paging, filtering or projection. It has been exercised at synthetic-fixture
+  scale only; whether it is usable over a session with thousands of
+  claim-correspondence rows is untested.
+- No public function registers an analysis-settings profile version, so the
+  checksum-bearing `config_profile_versions` row that `createRun` requires must
+  currently be written by hand.
 
 ### Representable in the schema but unimplemented
 
-`attribution_decisions`, `attribution_decision_candidates`,
-`imported_attribution_windows`, and `attribution_window_correspondences` are
-written by no public code path yet.
-Likewise, `sequences`, `sequence_members`, `bouts`, and `bout_members` are written
+`sequences`, `sequence_members`, `bouts`, and `bout_members` are written
 by no code path at all. `recording_epochs` is written only by the Phase 1 synthetic fixture builder
 — no ingest or analysis path populates it. `metric_definitions` and
 `derived_measurements` are now written, but only by the acoustic
 reference-response path: the shipped metric definitions are the three acoustic
 ones registered by `vawlume.db.registerBuiltinSemantics`, and no other analysis
 writes a derived measurement.
+
+Every caller-attribution table is now written by a public code path. What the
+schema still represents and no code produces is a **non-imported** attribution
+path: `attribution_runs.attribution_path` admits `backend` and `native_estimate`
+for Phases 5 and 6, and only `imported` is reachable today.
 
 ### Deliberately deferred
 
@@ -1787,7 +1874,7 @@ extractor-native classes; publication artefacts.
 - [`../design/01_prototype_development_outline.md`](../design/01_prototype_development_outline.md) — prototype development plan and completion criteria
 - [`../design/02_temporal_alignment_contract.md`](../design/02_temporal_alignment_contract.md) — alignment design contract, exit criteria, known limitations
 - [`../design/03_multimodal_input_contract.md`](../design/03_multimodal_input_contract.md) — multimodal input design contract. Spatial geometry, tracking input/identity, and acoustic response/QC estimation are implemented without caller attribution.
-- [`../design/04_caller_attribution_contract.md`](../design/04_caller_attribution_contract.md) — caller-attribution design contract: what a candidate, a decision, and an imported claim each mean, and why a detection is not an attribution claim. Run, target, candidate, and evidence writes are implemented; decision and import paths are not yet.
+- [`../design/04_caller_attribution_contract.md`](../design/04_caller_attribution_contract.md) — caller-attribution design contract: what a candidate, a decision, and an imported claim each mean, and why a detection is not an attribution claim. The whole imported path is implemented — run, target, candidate, evidence, import, correspondence, decision, and read-back; the backend and native-estimator paths are not.
 
 ### Contracts per stage
 
@@ -1814,6 +1901,10 @@ extractor-native classes; publication artefacts.
 - [`../development/27_audio_window_and_response_measurement.md`](../development/27_audio_window_and_response_measurement.md) — bounded local-audio reads, deterministic response metrics, QC, and persistence
 - [`../development/28_channel_response_estimates.md`](../development/28_channel_response_estimates.md) — per-family/channel aggregation, divergence policy, settings provenance, and exact source lineage
 - [`../development/29_integrated_multimodal_demonstration.md`](../development/29_integrated_multimodal_demonstration.md) — the integrated multimodal example, its synthetic session, the ambiguous crossing, and the four uncertainty components it keeps apart
+- [`../development/31_caller_attribution_schema.md`](../development/31_caller_attribution_schema.md) — the attribution data dictionary: run, target, candidate, evidence, decision
+- [`../development/32_imported_attribution_intake.md`](../development/32_imported_attribution_intake.md) — the imported path, declared-only label resolution, and why intake relates a window to no event
+- [`../development/33_attribution_correspondence.md`](../development/33_attribution_correspondence.md) — the declared clock, the eligibility rule, the two bases, and preserved ambiguity
+- [`../development/34_integrated_caller_attribution_demonstration.md`](../development/34_integrated_caller_attribution_demonstration.md) — the integrated caller-attribution example, its two target kinds, the refusals it demonstrates, and what it cannot show
 
 ### Configuration and schema
 

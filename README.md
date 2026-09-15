@@ -69,6 +69,7 @@ addpath("examples")
 matching_consensus_demo          % the full pairwise cross-extractor path
 multi_extractor_agreement_demo   % all three extractors, end to end
 multimodal_integration_demo      % geometry, tracking, identity, acoustic response
+caller_attribution_demo          % imported caller attribution, end to end
 ```
 
 The demonstrations under [`examples/`](examples/) create every input they
@@ -412,6 +413,21 @@ stay four separate numbers; none is derived from another and no caller is
 assigned. See
 [`docs/development/29_integrated_multimodal_demonstration.md`](docs/development/29_integrated_multimodal_demonstration.md).
 
+The caller-attribution demonstration at
+[`examples/caller_attribution_demo.m`](examples/caller_attribution_demo.m) is the
+integrated Phase 4 proof. It imports an external attribution export on the
+exporting system's own clock through a versioned mapping profile, fits a
+piecewise-affine transform relating that clock to the recording's, relates the
+imported windows to VAWLUME detections across it, and repeats the whole
+representation over VAWLUME consensus events. One target carries three candidate
+callers and one carries none; one window plausibly refers to two events and both
+correspondences are kept; one window refers to nothing and is counted; one claim
+carries no number and keeps none. Evidence in all four dimensions sits beside one
+candidate with no combined value anywhere, and the same candidates are decided
+twice under different thresholds, so the decisions move while the candidate rows
+stay byte-identical. Four refusals are demonstrated beside the successes. See
+[`docs/development/34_integrated_caller_attribution_demonstration.md`](docs/development/34_integrated_caller_attribution_demonstration.md).
+
 From the repository root:
 
 ```matlab
@@ -425,6 +441,7 @@ multi_extractor_agreement_demo
 agreement_filter_demo
 temporal_alignment_demo
 multimodal_integration_demo
+caller_attribution_demo
 ```
 
 Each creates every input it needs under the system temporary directory and
@@ -660,6 +677,10 @@ metric identity is never asserted.
 - [`docs/development/28_channel_response_estimates.md`](docs/development/28_channel_response_estimates.md) — reproducible cross-reference aggregation, divergence/QC policy, settings provenance, and restrictive measurement lineage
 - [`docs/development/29_integrated_multimodal_demonstration.md`](docs/development/29_integrated_multimodal_demonstration.md) — the integrated multimodal example: its synthetic session, the ambiguous visual crossing, the four uncertainty components kept apart, and the boundaries it does not cross
 - [`docs/development/30_repository_self_description.md`](docs/development/30_repository_self_description.md) — how the repository's claims about itself are kept true: derived facts, current-state versus historical claims, and what the inventory check verifies
+- [`docs/development/31_caller_attribution_schema.md`](docs/development/31_caller_attribution_schema.md) — the attribution data dictionary: run, target, candidate, evidence and decision, and why each is a separate concept
+- [`docs/development/32_imported_attribution_intake.md`](docs/development/32_imported_attribution_intake.md) — the imported path: label resolution, preserved source values, and why intake relates a window to no event
+- [`docs/development/33_attribution_correspondence.md`](docs/development/33_attribution_correspondence.md) — relating imported windows to VAWLUME events: the declared clock, the eligibility rule, and preserved ambiguity
+- [`docs/development/34_integrated_caller_attribution_demonstration.md`](docs/development/34_integrated_caller_attribution_demonstration.md) — the integrated caller-attribution example: its synthetic session, the two target kinds, the refusals it demonstrates, and the boundaries it does not cross
 
 Extractor-specific design references should live under:
 
