@@ -427,20 +427,29 @@ namespace, and these are not tests of behaviour, so they belong in neither
 ```text
 tools/
 ├── repository_inventory.m
-└── check_repository_self_description.m
+├── check_repository_self_description.m
+└── schema_documentation.m
 ```
 
 `repository_inventory` discovers what the repository currently holds — the
 schema version, the size of the suite, the shipped demonstrations, the
 configuration tree. `check_repository_self_description` verifies that the
-README and the usage guide still describe that accurately.
+README and the usage guide still describe that accurately. Both are
+non-executing: they discover tests without running them, open no database, and
+write nothing. `tests/unit/test_repository_self_description.m` wraps the check
+so it also runs inside the full gate.
 
-Both are non-executing: they discover tests without running them, open no
-database, and write nothing. `tests/unit/test_repository_self_description.m`
-wraps the check so it also runs inside the full gate.
+`schema_documentation` generates the repository's committed schema
+representation from `schema/schema.sql`, by way of a clean temporary database
+it creates and removes itself. It is the one tool here that executes: it opens
+a database and writes a file, and it shells out to `tbls`, a development
+dependency that VAWLUME's runtime never needs. It belongs beside the other
+repository-level tools rather than under `src/` because it operates on the
+repository's own description of itself and never on user data.
 
-Keep this directory small. A file here must be a check or an inventory over the
-repository itself; anything that operates on user data belongs under `src/`.
+Keep this directory small. A file here must be a check, an inventory, or a
+generated description of the repository itself; anything that operates on user
+data belongs under `src/`.
 See [`30_repository_self_description.md`](30_repository_self_description.md).
 
 ## 13. Files to defer
