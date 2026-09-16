@@ -31,3 +31,6 @@
 *.pdf binary
 *.png binary
 *.xlsx binary
+
+## Generated schema representation: byte-compared by the freshness check
+/schema/schema.json -text
