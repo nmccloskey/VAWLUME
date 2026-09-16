@@ -292,6 +292,7 @@ Checks run at the level the change surface justifies, not reflexively.
 |---|---|---|
 | Focused | The nearest unit tests, plus the integration tests exercising the changed workflow | During and before the end of every itinerary |
 | Self-description | `tests/unit/test_repository_self_description.m`, or `check_repository_self_description` directly | **Every itinerary.** Non-executing; finishes in seconds |
+| Schema freshness | `tests/unit/test_schema_documentation.m`, or `schema_documentation(Mode="check")` directly | **Every itinerary that touches `schema/schema.sql`.** Needs tbls; skips with an actionable message when tbls is absent |
 | Full gate | `runtests("tests", IncludeSubfolders=true)` | Cross-cutting change, integration or phase boundary, release or closure verification |
 
 The self-description tier exists because the full gate is the wrong instrument
@@ -309,6 +310,15 @@ What it verifies, and the claim semantics behind it, are in
 [`30_repository_self_description.md`](30_repository_self_description.md). The
 short version: the software state is authoritative, and a published literal
 about the repository is either machine-verified or written qualitatively.
+
+The schema-freshness tier applies the same principle to a generated file rather
+than to a sentence. `schema/schema.json` is a machine-readable representation of
+`schema/schema.sql`, and the check rebuilds it from the authoritative schema and
+compares byte for byte, so the two cannot drift apart unnoticed. It is a
+separate tier from self-description because it is the one check that executes:
+it builds a throwaway database and shells out to tbls, which takes seconds
+rather than milliseconds and is pointless when the schema has not changed. See
+[§12](#12-generated-artifacts) for the obligation and the two commands.
 
 The current checkpoint has completed source mapping, transactional project
 intake, and all three extractor importers, each through atomic apply and each
@@ -425,6 +435,29 @@ Normally ignore:
 - compiled/codegen/build artifacts.
 
 For poster reproducibility, retain the script/config/seed sources necessary to regenerate the outputs.
+
+### The committed schema representation
+
+[`schema/schema.json`](../../schema/schema.json) is the exception: it is generated output and it is tracked anyway. It is what `schema/schema.sql` looks like to anything that is not SQLite, and committing it means a reader or a documentation renderer can consume the schema without a database and without the toolchain that produced it.
+
+Being tracked is exactly what creates the risk, so one rule carries it:
+
+> When an itinerary changes the database schema, regenerate the committed schema JSON and run the schema-documentation freshness check before handoff.
+
+```matlab
+addpath("tools"); schema_documentation                 % regenerate
+addpath("tools"); schema_documentation(Mode="check")   % verify
+```
+
+Both commands run [`tools/schema_documentation.m`](../../tools/schema_documentation.m), and the check regenerates through the same code path the generator uses. A check that regenerated differently would not be a check; it would be a second generator that agrees with the first by coincidence until it does not.
+
+Three properties are worth knowing before the first surprising diff:
+
+- `schema/schema.sql` is authoritative. `schema/schema.json` is **never hand-edited** — if the generated file is wrong, the generator is wrong.
+- `schema/schema.json` is marked `-text` in `.gitattributes`, so git stores and checks it out verbatim. The generator writes LF; without that attribute a fresh clone would receive CRLF and fail the byte-for-byte comparison permanently, for a reason that has nothing to do with the schema.
+- the export's `driver.database_version` reports the SQLite version bundled inside the tbls binary, not VAWLUME's and not the schema's. A diff that is only that line means tbls changed; regenerating and committing resolves it.
+
+tbls is a development dependency and no runtime path calls it, so an ordinary user analyzing data never needs it installed. When it is missing the tool says so, naming the pinned version and where to get it, and the tests skip rather than pass.
 
 ## 13. Provenance rule for implementation
 

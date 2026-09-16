@@ -7,6 +7,17 @@ function tests = test_schema_documentation
 % here, and the second is asserted by injecting each failure rather than by
 % confirming the happy path.
 %
+% It also guards the freshness check, which is what keeps the committed
+% schema/schema.json from drifting away from schema/schema.sql. That check is
+% only worth anything if it can fail, so the stale case is injected from a
+% fixture and the failure is required to name what changed. A freshness check
+% that passes because it compared a file with itself would pass every test
+% written to confirm it works.
+%
+% The stale fixture is a COPY. This phase's tripwire is that schema/schema.sql
+% stays byte-identical, and a test that edits the authoritative schema even
+% temporarily is one interrupted run away from leaving it modified.
+%
 % tbls is a development dependency. When it is absent these tests SKIP with an
 % actionable message; they never pass silently, because a test that reports
 % success for work it could not do is worse than one that fails.
@@ -21,7 +32,12 @@ tests = functiontests({ ...
     @testAPartialExportIsRefusedAndNamesWhatIsMissing, ...
     @testAnUnparsableExportIsRefused, ...
     @testACgoLessTblsIsReportedAsIncapable, ...
-    @testCheckModeIsNotImplementedYet});
+    @testTheCommittedArtifactIsFresh, ...
+    @testAStaleArtifactFailsTheCheckAndNamesEveryChange, ...
+    @testRegenerationResolvesAStaleArtifact, ...
+    @testALineEndingDifferenceIsDiagnosedRatherThanLeftMysterious, ...
+    @testAMissingArtifactIsRefusedRatherThanCalledStale, ...
+    @testANoOpRegenerationLeavesTheWorkingTreeClean});
 end
 
 % ---------------------------------------------------------------------------
@@ -266,12 +282,151 @@ verifyTrue(testCase, contains(message, "cgo"), message);
 verifyTrue(testCase, contains(message, "official release binary"), message);
 end
 
-function testCheckModeIsNotImplementedYet(testCase)
-addToolsPath(testCase, repoRootForTest());
-% The freshness check regenerates through this same function rather than
-% reimplementing generation. Until it exists, asking for it must say so.
-verifyError(testCase, @() schema_documentation(Mode="check"), ...
-    "vawlume:schema:ModeNotImplemented");
+% ---------------------------------------------------------------------------
+% The freshness check
+% ---------------------------------------------------------------------------
+
+function testTheCommittedArtifactIsFresh(testCase)
+repoRoot = repoRootForTest();
+addToolsPath(testCase, repoRoot);
+
+% This is the check joining the repository's ordinary validation path. It is
+% the assertion that a schema change cannot land with schema/schema.json left
+% behind -- provided somebody runs the suite.
+report = checkOrSkip(testCase, RepoRoot=repoRoot, Print=false);
+
+% Name every difference, not just the first, so one run names all the work.
+for k = 1:numel(report.differences)
+    verifyFail(testCase, "Stale schema representation: " + report.differences(k));
+end
+
+verifyTrue(testCase, report.fresh, ...
+    "schema/schema.json is not what schema/schema.sql generates. Run `" + ...
+    report.remedy + "` and commit the result.");
+verifyEqual(testCase, report.mode, "check");
+verifyFalse(testCase, report.written, "A check wrote something.");
+end
+
+function testAStaleArtifactFailsTheCheckAndNamesEveryChange(testCase)
+repoRoot = repoRootForTest();
+addToolsPath(testCase, repoRoot);
+addSourcePath(testCase, repoRoot);
+workspace = workspaceForTest(testCase);
+
+% Two objects renamed, because "reports every difference it finds, not the
+% first" is a property that a single-difference fixture cannot distinguish from
+% "reports the first difference it finds".
+objects = databaseObjectNames(testCase, repoRoot, workspace);
+renamed = [objects(1), objects(end)];
+fixture = staleFixture(testCase, repoRoot, workspace, renamed);
+
+report = checkOrSkip(testCase, RepoRoot=repoRoot, OutputPath=fixture, Print=false);
+
+verifyFalse(testCase, report.fresh, ...
+    "A deliberately altered artifact passed the freshness check. The check " + ...
+    "cannot fail, so it proves nothing when it passes.");
+
+% And it must fail for its own reason. A count that merely disagreed would be
+% satisfied by any mutation at all, including one the check misunderstood.
+differences = strjoin(report.differences, " | ");
+for k = 1:numel(renamed)
+    verifyTrue(testCase, contains(differences, renamed(k)), ...
+        "The check did not name " + renamed(k) + ": " + differences);
+    verifyTrue(testCase, contains(differences, renamed(k) + "_stale_fixture"), ...
+        "The check did not name the altered object: " + differences);
+end
+
+% Called as a command rather than for a value, a stale artifact is an error
+% carrying the remedy, so the check is usable as a check.
+exception = captureError(testCase, ...
+    @() schema_documentation(RepoRoot=repoRoot, Mode="check", ...
+        OutputPath=fixture, Print=false), ...
+    "vawlume:schema:ArtifactStale");
+message = string(exception.message);
+verifyTrue(testCase, contains(message, "schema_documentation"), message);
+verifyTrue(testCase, contains(message, renamed(1)), message);
+end
+
+function testRegenerationResolvesAStaleArtifact(testCase)
+repoRoot = repoRootForTest();
+addToolsPath(testCase, repoRoot);
+addSourcePath(testCase, repoRoot);
+workspace = workspaceForTest(testCase);
+
+objects = databaseObjectNames(testCase, repoRoot, workspace);
+fixture = staleFixture(testCase, repoRoot, workspace, objects(1));
+
+stale = checkOrSkip(testCase, RepoRoot=repoRoot, OutputPath=fixture, Print=false);
+verifyFalse(testCase, stale.fresh, "The fixture was not detected as stale.");
+
+% The remedy the failure names must actually be the remedy.
+generateOrSkip(testCase, RepoRoot=repoRoot, OutputPath=fixture, Print=false);
+
+resolved = checkOrSkip(testCase, RepoRoot=repoRoot, OutputPath=fixture, Print=false);
+verifyTrue(testCase, resolved.fresh, ...
+    "Regenerating did not resolve the failure: " + ...
+    strjoin(resolved.differences, "; "));
+verifyEmpty(testCase, resolved.differences);
+end
+
+function testALineEndingDifferenceIsDiagnosedRatherThanLeftMysterious(testCase)
+repoRoot = repoRootForTest();
+addToolsPath(testCase, repoRoot);
+workspace = workspaceForTest(testCase);
+
+% The comparison is byte-for-byte on purpose, so a CRLF checkout of an LF
+% artifact is a real failure and must stay one. But a whole-file diff whose
+% cause is git's line-ending conversion would send a reader looking at the
+% schema, so the cause is named.
+fixture = fullfile(workspace, "crlf.json");
+committed = readAllBytesForTest(fullfile(repoRoot, "schema", "schema.json"));
+assumeFalse(testCase, isempty(committed), ...
+    "Skipped: schema/schema.json does not exist yet.");
+writeBytesForTest(fixture, toCarriageReturnLineFeed(committed));
+
+report = checkOrSkip(testCase, RepoRoot=repoRoot, OutputPath=fixture, Print=false);
+
+verifyFalse(testCase, report.fresh, ...
+    "A CRLF copy passed a comparison that is supposed to be byte-for-byte.");
+differences = strjoin(report.differences, " | ");
+verifyTrue(testCase, contains(differences, "line endings"), differences);
+verifyTrue(testCase, contains(differences, ".gitattributes"), differences);
+end
+
+function testAMissingArtifactIsRefusedRatherThanCalledStale(testCase)
+repoRoot = repoRootForTest();
+addToolsPath(testCase, repoRoot);
+workspace = workspaceForTest(testCase);
+
+% "Stale" would be the wrong word and the wrong remedy. Nothing was compared.
+% This resolves before tbls does, so it holds with or without a toolchain.
+exception = captureError(testCase, ...
+    @() schema_documentation(RepoRoot=repoRoot, Mode="check", ...
+        OutputPath=fullfile(workspace, "absent.json"), Print=false), ...
+    "vawlume:schema:ArtifactMissing");
+verifyTrue(testCase, contains(string(exception.message), "schema_documentation"), ...
+    exception.message);
+end
+
+function testANoOpRegenerationLeavesTheWorkingTreeClean(testCase)
+repoRoot = repoRootForTest();
+addToolsPath(testCase, repoRoot);
+
+% Asserted against git rather than inferred from the tool agreeing with itself.
+% The comparison is working tree against index rather than `git status`,
+% because until the artifact is first committed `git status` legitimately
+% reports it as an addition -- which is not dirt caused by regenerating.
+assumeTrue(testCase, isTracked(repoRoot, "schema/schema.json"), ...
+    "Skipped: schema/schema.json is not tracked yet, so a clean working " + ...
+    "tree would be asserted vacuously.");
+
+before = readAllBytesForTest(fullfile(repoRoot, "schema", "schema.json"));
+generateOrSkip(testCase, RepoRoot=repoRoot, Print=false);
+after = readAllBytesForTest(fullfile(repoRoot, "schema", "schema.json"));
+
+verifyEqual(testCase, after, before, "Regenerating changed the committed artifact.");
+verifyEqual(testCase, gitOutput(repoRoot, "diff --name-only -- schema/schema.json"), "", ...
+    "Regenerating left schema/schema.json modified in the working tree.");
 end
 
 % ---------------------------------------------------------------------------
@@ -285,6 +440,76 @@ catch exception
     skipIfToolchainAbsent(testCase, exception);
     rethrow(exception);
 end
+end
+
+function report = checkOrSkip(testCase, varargin)
+% The check regenerates through the same code path, so it needs tbls and skips
+% for the same reason when tbls is not there.
+report = generateOrSkip(testCase, varargin{:}, "Mode", "check");
+end
+
+function fixture = staleFixture(testCase, repoRoot, workspace, names)
+% A COPY of the committed artifact with objects renamed -- the shape a real
+% schema change takes, without going anywhere near schema/schema.sql.
+artifactPath = fullfile(repoRoot, "schema", "schema.json");
+assumeTrue(testCase, isfile(artifactPath), ...
+    "Skipped: schema/schema.json does not exist yet, so there is nothing " + ...
+    "to make stale.");
+
+text = string(fileread(artifactPath));
+for k = 1:numel(names)
+    quoted = """" + names(k) + """";
+    verifyTrue(testCase, contains(text, quoted), ...
+        "The fixture could not alter " + names(k) + ", so it is no fixture.");
+    text = replace(text, quoted, """" + names(k) + "_stale_fixture""");
+end
+
+fixture = fullfile(workspace, "stale.json");
+writeTextFile(fixture, text);
+end
+
+function converted = toCarriageReturnLineFeed(bytes)
+% What a git checkout would write if schema.json were not marked `-text`. The
+% artifact is verified to contain no CR today, so this cannot double one up.
+text = char(reshape(bytes, 1, []));
+converted = uint8(strrep(text, newline, char([13 10])))';
+end
+
+function tracked = isTracked(repoRoot, relativePath)
+[status, output] = gitCommand(repoRoot, ...
+    "ls-files --error-unmatch -- """ + relativePath + """");
+tracked = (status == 0) && strlength(strtrim(string(output))) > 0;
+end
+
+function output = gitOutput(repoRoot, gitArguments)
+[status, raw] = gitCommand(repoRoot, gitArguments);
+if status ~= 0
+    output = "";
+    return
+end
+output = strtrim(string(raw));
+end
+
+function [status, output] = gitCommand(repoRoot, gitArguments)
+[status, output] = system("git -C """ + repoRoot + """ " + gitArguments);
+end
+
+function bytes = readAllBytesForTest(filePath)
+bytes = zeros(0, 1, "uint8");
+if ~isfile(filePath)
+    return
+end
+fileId = fopen(filePath, "r");
+closer = onCleanup(@() fclose(fileId));
+bytes = fread(fileId, Inf, "*uint8");
+clear closer
+end
+
+function writeBytesForTest(filePath, bytes)
+fileId = fopen(filePath, "w");
+closer = onCleanup(@() fclose(fileId));
+fwrite(fileId, bytes, "uint8");
+clear closer
 end
 
 function exception = captureError(testCase, fcn, identifier, skipIfAbsent)
