@@ -79,7 +79,11 @@ for index = 1:numel(extractorProfiles)
     verifyEqual(testCase, loaded.profile_count, 1);
     verifyEqual(testCase, loaded.profile_kinds, "extractor_output");
     verifyEqual(testCase, loaded.profile_schema_versions, "0.2-draft");
-    verifyEqual(testCase, loaded.profile_version_labels, "0.1.0");
+    expectedVersion = "0.1.0";
+    if contains(extractorProfiles(index), "/mupet/")
+        expectedVersion = "0.1.1";
+    end
+    verifyEqual(testCase, loaded.profile_version_labels, expectedVersion);
     verifyEqual(testCase, loaded.relative_path, replace(extractorProfiles(index), filesep, "/"));
     verifyEqual(testCase, strlength(loaded.checksum_sha256), 64);
     verifyGreaterThan(testCase, numel(loaded.field_mappings), 0);

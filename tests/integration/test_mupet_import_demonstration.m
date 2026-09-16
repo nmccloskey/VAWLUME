@@ -20,7 +20,7 @@ verifyEqual(testCase, demonstration.project_intake.preview_verdict, "READY FOR I
 verifyGreaterThan(testCase, demonstration.project_intake.recording_id, 0);
 
 % The adapter reads the CSV without database access, keeps the interval column
-% lexical so its NA survives, and accepts the declared v2.1 version.
+% lexical so its native sentinel survives, and accepts the declared v2.1 version.
 adapter = demonstration.adapter_summary;
 verifyEqual(testCase, adapter.row_count, 4);
 verifyEqual(testCase, adapter.column_count, 13);
@@ -114,7 +114,7 @@ verifyEqual(testCase, string(mupetRun.recording_source(1)), "001_baseline_1.wav"
 verifyEqual(testCase, string(mupetRun.extractor_version(1)), "2.1");
 verifyEqual(testCase, string(mupetRun.output_mapping_profile(1)), ...
     "vawlume.mupet.output.v2_1");
-verifyEqual(testCase, string(mupetRun.profile_version(1)), "0.1.0");
+verifyEqual(testCase, string(mupetRun.profile_version(1)), "0.1.1");
 verifyMatches(testCase, string(mupetRun.profile_checksum(1)), "^[0-9a-f]{12}$");
 
 % MUPET's settings live as the registered native artifact rather than a
@@ -193,12 +193,12 @@ verifyEqual(testCase, string(intervals.native_value_type(1:3)), ...
 verifyEqual(testCase, string(intervals.canonical_value(1:3)), ...
     ["0.15"; "0.26"; "0.24"]);
 
-% The terminal syllable has no following syllable. Its NA is kept as the raw
+% The terminal syllable has no following syllable. Its `_` is kept as the raw
 % token with no typed value, and never becomes a zero interval.
 terminal = intervals(4, :);
 verifyEqual(testCase, string(terminal.native_event_id), "4");
 verifyEqual(testCase, string(terminal.native_value_type), "missing");
-verifyEqual(testCase, string(terminal.native_raw_token), "NA");
+verifyEqual(testCase, string(terminal.native_raw_token), "_");
 verifyEqual(testCase, string(terminal.native_value), "<missing>");
 verifyEqual(testCase, string(terminal.canonical_value), "<missing>");
 end

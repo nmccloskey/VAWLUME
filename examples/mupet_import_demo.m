@@ -6,7 +6,8 @@ function demonstration = mupet_import_demo(options)
 % native config.csv, maps and previews the CSV, plans and applies the import with
 % the public MUPET importer, and returns relational read-back tables covering run
 % and artifact provenance, captured settings, syllable detections, native and
-% canonical measurements, and the preserved terminal inter-syllable NA. It then
+% canonical measurements, and the preserved terminal inter-syllable missing
+% sentinel. It then
 % reruns the identical import, relocates the artifacts under a second absolute
 % root, and imports a small DeepSqueak export onto the same recording to show the
 % two extractors coexisting.
@@ -278,9 +279,9 @@ function cells = demonstrationExport()
 % Syllables 1, 3, and 4 export a duration that agrees with their boundaries;
 % syllable 2 exports 38 ms against a 40 ms boundary span, which is what a
 % pre-noise-reduction duration legitimately does and is stored as exported.
-% Syllable 4 carries the terminal inter-syllable NA. Each bandwidth equals that
-% syllable's own maximum minus its own minimum, so the profile's consistency
-% check has something real to evaluate.
+% Syllable 4 carries the real-world terminal inter-syllable `_` sentinel. Each
+% bandwidth equals that syllable's own maximum minus its own minimum, so the
+% profile's consistency check has something real to evaluate.
 headers = {'Syllable number', 'Syllable start time (sec)', ...
     'Syllable end time (sec)', 'inter-syllable interval (sec)', ...
     'syllable duration (msec)', 'starting frequency (kHz)', ...
@@ -293,7 +294,7 @@ cells = [
     {1, 10.000, 10.050, 0.150, 50, 55, 70, 50, 80, 65, 30, 12.0, -18}
     {2, 10.200, 10.240, 0.260, 38, 54, 69, 52, 78, 64, 26, 11.0, -19}
     {3, 10.500, 10.560, 0.240, 60, 56, 71, 48, 82, 66, 34, 10.0, -20}
-    {4, 10.800, 10.835, 'NA',  35, 53, 68, 51, 79, 63, 28,  9.0, -21}
+    {4, 10.800, 10.835, '_',   35, 53, 68, 51, 79, 63, 28,  9.0, -21}
 ];
 end
 
@@ -336,7 +337,7 @@ value = [ ...
     "Contract, not omission: settings provenance is required to apply."; ...
     "Contract, not omission: zero curation rows and zero classification assignments."; ...
     "The exported duration is pre-noise-reduction and is never recomputed from the boundaries."; ...
-    "The terminal inter-syllable NA is stored as missing and never becomes zero."];
+    "The terminal inter-syllable native sentinel is stored as missing and never becomes zero."];
 end
 
 % ------------------------------------------------- DeepSqueak co-residence ---
@@ -528,9 +529,9 @@ end
 function rows = intervalRows(conn)
 %INTERVALROWS The exported inter-syllable interval for every syllable.
 %
-% The terminal syllable has no following syllable. Its exported NA is kept as
-% the raw token with no typed value, rather than becoming a zero interval or a
-% VAWLUME-computed substitute.
+% The terminal syllable has no following syllable. Its exported sentinel is
+% kept as the raw token with no typed value, rather than becoming a zero
+% interval or a VAWLUME-computed substitute.
 rows = fetch(conn, ...
     "SELECT d.native_event_id, em.native_value_type, " + ...
     "IFNULL(em.native_raw_token,'') AS native_raw_token, " + ...
@@ -664,7 +665,7 @@ disp("MUPET syllables (exported duration beside the boundary span):")
 disp(value.detections)
 disp("Selected measurements (native evidence beside canonical form):")
 disp(value.measurements)
-disp("Inter-syllable interval, including the terminal NA:")
+disp("Inter-syllable interval, including the terminal native sentinel:")
 disp(value.interval_evidence)
 fprintf("MUPET curation rows: %d\nMUPET classification assignments: %d\n", ...
     value.capability_absence.mupet_curation_rows, ...

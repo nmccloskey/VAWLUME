@@ -2,6 +2,8 @@ function tests = test_mupet_export_adapter
 tests = functiontests({ ...
     @testNominalCsvProducesValidExtractorOutputIR, ...
     @testNativeHeadersAndLexicalMissingTokenSurvive, ...
+    @testUnderscoreTerminalSentinelProducesIngestibleMissingValue, ...
+    @testUnexpectedTextAndUnrelatedUnderscoreStillFailCoercion, ...
     @testDurationAndFrequencyTransformsStayInSourceMapping, ...
     @testMissingHeaderIsNotRepaired, ...
     @testAdapterRejectsMissingWrongFormatEmptyAndWrongDelimiter, ...
@@ -28,7 +30,7 @@ verifyEqual(testCase, result.artifact.row_count, 4);
 verifyEqual(testCase, result.artifact.column_count, 13);
 verifyMatches(testCase, result.artifact.checksum_sha256, "^[0-9a-f]{64}$");
 verifyEqual(testCase, result.ir.profile.profile_key, "vawlume.mupet.output.v2_1");
-verifyEqual(testCase, result.ir.profile.profile_version, "0.1.0");
+verifyEqual(testCase, result.ir.profile.profile_version, "0.1.1");
 verifyEqual(testCase, result.ir.profile.profile_schema_version, "0.2-draft");
 verifyEqual(testCase, result.ir.profile.extractor_name, "MUPET");
 verifyEqual(testCase, height(result.ir.records), 4);
@@ -40,6 +42,60 @@ preview = vawlume.source_mapping.preview(result.ir);
 verifyEqual(testCase, preview.verdict, "READY FOR INGEST");
 
 clear cleanupFiles
+end
+
+function testUnderscoreTerminalSentinelProducesIngestibleMissingValue(testCase)
+[repoRoot, cleanupPath] = setUpPath(); %#ok<ASGLU>
+cells = nominalExport();
+cells{5, 4} = '_';
+csvPath = writeCsv(tempname + ".csv", cells);
+cleanupFile = onCleanup(@() deleteIfExists(csvPath)); %#ok<NASGU>
+
+result = vawlume.ingest.mupetExport(csvPath, RepoRoot=repoRoot, ...
+    ExtractorVersion="2.1");
+
+verifyTrue(testCase, result.valid_for_ingest);
+preview = vawlume.source_mapping.preview(result.ir);
+verifyEqual(testCase, preview.verdict, "READY FOR INGEST");
+for sourceRow = 1:3
+    interval = valueFor(result.ir, sourceRow, "inter-syllable interval (sec)");
+    verifyEqual(testCase, interval.native_value_type, "real");
+    verifyEqual(testCase, interval.native_value_real, double(cells{sourceRow + 1, 4}), ...
+        AbsTol=1e-12);
+end
+terminal = valueFor(result.ir, 4, "inter-syllable interval (sec)");
+verifyEqual(testCase, terminal.raw_value, "_");
+verifyEqual(testCase, terminal.native_value_type, "missing");
+verifyEqual(testCase, terminal.normalized_value_type, "missing");
+verifyTrue(testCase, isnan(terminal.native_value_real));
+verifyFalse(testCase, terminal.raw_value == "0");
+end
+
+function testUnexpectedTextAndUnrelatedUnderscoreStillFailCoercion(testCase)
+[repoRoot, cleanupPath] = setUpPath(); %#ok<ASGLU>
+
+garbage = nominalExport();
+garbage{5, 4} = 'garbage';
+garbagePath = writeCsv(tempname + ".csv", garbage);
+cleanupGarbage = onCleanup(@() deleteIfExists(garbagePath)); %#ok<NASGU>
+garbageResult = vawlume.ingest.mupetExport(garbagePath, RepoRoot=repoRoot, ...
+    ExtractorVersion="2.1");
+verifyFalse(testCase, garbageResult.valid_for_ingest);
+garbageInterval = valueFor(garbageResult.ir, 4, ...
+    "inter-syllable interval (sec)");
+verifyEqual(testCase, garbageInterval.raw_value, "garbage");
+verifyEqual(testCase, garbageInterval.status, "invalid");
+verifyTrue(testCase, any(garbageResult.ir.issues.code == "TYPE_COERCION_FAILED"));
+
+profile = garbageResult.profile_document;
+profile.field_mappings = {fieldMapping(profile, "syllable duration (msec)")};
+unrelated = vawlume.source_mapping.mapTableFields( ...
+    table("_", VariableNames="syllable duration (msec)"), profile);
+verifyFalse(testCase, unrelated.is_valid);
+verifyEqual(testCase, unrelated.records(1).native_raw_token, "_");
+verifyEqual(testCase, unrelated.records(1).status, "invalid");
+verifyEqual(testCase, string(unrelated.issue_table.code), ...
+    "FIELD_VALUE_COERCION_FAILED");
 end
 
 function testNativeHeadersAndLexicalMissingTokenSurvive(testCase)
@@ -370,6 +426,21 @@ function value = valueFor(ir, sourceRow, nativeField)
 matches = ir.values.source_row == sourceRow & ir.values.native_field == nativeField;
 assert(nnz(matches) == 1);
 value = table2struct(ir.values(matches,:));
+end
+
+function mapping = fieldMapping(profile, sourceField)
+mappings = profile.field_mappings;
+if isstruct(mappings)
+    mappings = num2cell(mappings(:));
+end
+for index = 1:numel(mappings)
+    candidate = mappings{index};
+    if string(candidate.source_field) == sourceField
+        mapping = candidate;
+        return
+    end
+end
+error("Test fixture mapping not found: %s", sourceField);
 end
 
 function writeText(path, text)

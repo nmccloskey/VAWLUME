@@ -629,7 +629,10 @@ VAWLUME should require explicit feature definitions before assigning strong equi
 
 ## 18. Inter-syllable interval
 
-MUPET exports an inter-syllable interval and uses a special/missing representation for the final syllable where no subsequent interval exists.
+MUPET exports an inter-syllable interval and uses a special/missing
+representation for the final syllable where no subsequent interval exists.
+VAWLUME's tested v2.1 contract recognizes both `NA` and `_` while preserving the
+exact source token.
 
 This highlights two schema requirements:
 

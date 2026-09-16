@@ -56,7 +56,11 @@ for index = find([profiles.executable])
     verifyEqual(testCase, loaded.relative_path, profiles(index).relative_path);
     verifyEqual(testCase, loaded.checksum_sha256, repeated.checksum_sha256);
     verifyEqual(testCase, strlength(loaded.checksum_sha256), 64);
-    verifyTrue(testCase, all(loaded.profile_version_labels == "0.1.0"));
+    expectedVersion = "0.1.0";
+    if contains(profiles(index).relative_path, "/mupet/")
+        expectedVersion = "0.1.1";
+    end
+    verifyTrue(testCase, all(loaded.profile_version_labels == expectedVersion));
 end
 
 clear cleanupPath
@@ -82,7 +86,7 @@ verifyEqual(testCase, string({profileEnvelopes.profile_schema_version})', ...
 deepSqueak = jsondecode(fileread(profiles(2).json_path));
 mupet = jsondecode(fileread(profiles(3).json_path));
 verifyEqual(testCase, string(deepSqueak.profile.profile_version), "0.1.0");
-verifyEqual(testCase, string(mupet.profile.profile_version), "0.1.0");
+verifyEqual(testCase, string(mupet.profile.profile_version), "0.1.1");
 verifyEqual(testCase, string(deepSqueak.profile.profile_schema_version), "0.2-draft");
 verifyEqual(testCase, string(mupet.profile.profile_schema_version), "0.2-draft");
 verifyEqual(testCase, string(deepSqueak.extractor.version_scope.preferred), "3.2.x");
@@ -109,7 +113,7 @@ interval = mappingBySourceField(mupet.field_mappings, ...
 verifyEqual(testCase, string(interval.data_type), "float_or_missing");
 verifyTrue(testCase, isfield(interval, "missing_value_policy"));
 verifyEqual(testCase, normalizeTextSequence( ...
-    interval.missing_value_policy.missing_tokens), "NA");
+    interval.missing_value_policy.missing_tokens), ["NA"; "_"]);
 verifyFalse(testCase, logical(interval.missing_value_policy.case_sensitive));
 verifyFalse(testCase, logical(interval.missing_value_policy.blank_is_missing));
 verifyTrue(testCase, logical(interval.missing_value_policy.preserve_raw_token));

@@ -374,9 +374,10 @@ and a literal dot as `\\.`.
 
 Value normalization uses order-insensitive `value_map` records with explicit
 `native_value` and `canonical_value` fields. Lexical missing tokens are declared
-in `missing_value_policy` rather than handled in code — the MUPET profile, for
-example, declares `NA` as a missing token for the inter-syllable interval while
-preserving the raw token, so a terminal `NA` never silently becomes `0`.
+in `missing_value_policy` rather than handled in code — the MUPET v2.1 profile,
+for example, declares `NA` and `_` as missing tokens for the inter-syllable
+interval while preserving the raw token, so a terminal sentinel never silently
+becomes `0`.
 
 ### 5.5 Feature semantics
 

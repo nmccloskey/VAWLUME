@@ -5,7 +5,7 @@
     "kind": "extractor_output",
     "profile_schema_version": "0.2-draft",
     "status": "built_in_template_draft",
-    "profile_version": "0.1.0"
+    "profile_version": "0.1.1"
   },
   "extractor": {
     "name": "MUPET",
@@ -409,7 +409,8 @@
       "missing_value_policy": {
         "semantic_reason": "final_event_no_following_syllable",
         "missing_tokens": [
-          "NA"
+          "NA",
+          "_"
         ],
         "case_sensitive": false,
         "blank_is_missing": false,

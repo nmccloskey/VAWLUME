@@ -430,7 +430,7 @@ end
 function profiles = lookupOutputMappingProfiles(conn)
 profiles = struct();
 profiles.deepsqueak = lookupConfigProfileVersion(conn, "vawlume.deepsqueak.output.v3_2", "0.1.0");
-profiles.mupet = lookupConfigProfileVersion(conn, "vawlume.mupet.output.v2_1", "0.1.0");
+profiles.mupet = lookupConfigProfileVersion(conn, "vawlume.mupet.output.v2_1", "0.1.1");
 profiles.usvseg = lookupConfigProfileVersion(conn, "vawlume.usvseg.output.v0_9r2", "0.1.0");
 end
 

@@ -243,8 +243,9 @@ and
 
 MUPET's differences from DeepSqueak are preserved rather than smoothed over. The
 exported duration keeps its pre-noise-reduction operational variant and is never
-recomputed from the boundaries; the terminal inter-syllable interval keeps its
-exported `NA` token as explicit missingness rather than becoming zero; and
+recomputed from the boundaries; the terminal inter-syllable interval preserves
+MUPET's native missing-value sentinel (`NA` or `_` in the supported v2.1 forms)
+as explicit missingness rather than becoming zero; and
 because the per-syllable CSV exports no review state, no class label, and no
 detector score, a MUPET import creates no curation or classification rows and no
 detection score. All three importers share one extractor-neutral core for
@@ -337,9 +338,9 @@ A third covers the MUPET path at
 one project recording, generates a small synthetic per-syllable CSV and its
 native `config.csv`, previews the mapped IR before any write, imports it, and
 reads back run, artifact, and settings provenance, syllable detections, native
-and canonical measurements, and the terminal inter-syllable `NA` preserved as
-explicit missingness. It shows an unchanged rerun and a relocation of all three
-artifacts, states the zero curation and zero classification counts positively,
+and canonical measurements, and the terminal inter-syllable native sentinel
+preserved as explicit missingness. It shows an unchanged rerun and a relocation
+of all three artifacts, states the zero curation and zero classification counts positively,
 and closes with a short appendix importing DeepSqueak onto the same recording so
 the two populations can be seen coexisting. That appendix computes no
 correspondence between them, and the run ends with zero candidate pairs, match

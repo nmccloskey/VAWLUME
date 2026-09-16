@@ -170,10 +170,10 @@ threshold. A profile that declares a numeric `tolerance` on a check is honoured.
 
 `inter-syllable interval (sec)` is imported as extractor-native
 sequence-derived evidence with `derivation_stage = native_sequence_derived`. The
-terminal syllable has no following syllable, so its exported `NA` sentinel is
-stored as `native_value_type = 'missing'` with `native_raw_token = 'NA'` and no
-typed value. It never becomes zero, and no VAWLUME-derived interval is computed
-or substituted during import.
+terminal syllable has no following syllable, so its exported native sentinel is
+stored as `native_value_type = 'missing'` with the exact `native_raw_token` and
+no typed value. The supported MUPET v2.1 forms are `NA` and `_`. Neither becomes
+zero, and no VAWLUME-derived interval is computed or substituted during import.
 
 ## Deliberate absences
 
@@ -280,10 +280,10 @@ It establishes one project recording through the real intake path, generates a
 four-syllable CSV and a complete native `config.csv`, previews the mapped IR
 before any write, plans, applies, and then reads back run/artifact/settings
 provenance, the syllables with their exported duration beside the boundary span,
-representative measurements, the terminal `NA`, the two zero capability counts,
-an unchanged rerun, a relocation of all three artifacts, and a short DeepSqueak
-co-residence appendix. Every input is created under the system temporary
-directory and removed before the function returns.
+representative measurements, the terminal native sentinel, the two zero
+capability counts, an unchanged rerun, a relocation of all three artifacts, and
+a short DeepSqueak co-residence appendix. Every input is created under the
+system temporary directory and removed before the function returns.
 
 Two of its outputs are worth reading closely because they are contract rather
 than noise. The demonstration reports one `duration_consistency` warning, for

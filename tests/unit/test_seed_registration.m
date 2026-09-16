@@ -172,7 +172,11 @@ for index = 1:size(profiles, 1)
         "JOIN config_profiles cp ON cp.profile_id = cpv.profile_id " + ...
         "WHERE cp.profile_key = " + sqlText(profileKey));
     verifyEqual(testCase, height(rows), 1);
-    verifyEqual(testCase, string(rows.version_label(1)), "0.1.0");
+    expectedVersion = "0.1.0";
+    if profileKey == "vawlume.mupet.output.v2_1"
+        expectedVersion = "0.1.1";
+    end
+    verifyEqual(testCase, string(rows.version_label(1)), expectedVersion);
     verifyEqual(testCase, string(rows.profile_schema_version(1)), "0.2-draft");
     verifyEqual(testCase, string(rows.content_format(1)), "json");
     verifyEqual(testCase, string(rows.content_uri(1)), relativePath);
