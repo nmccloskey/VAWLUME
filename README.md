@@ -642,6 +642,25 @@ metric identity is never asserted.
 
 ## Documentation
 
+### The database schema
+
+VAWLUME stores everything it ingests and everything it derives in one relational
+SQLite database, and [`schema/schema.sql`](schema/schema.sql) is that model.
+
+**[Explore the VAWLUME database schema interactively](https://liambx.com/erd/p/github.com/nmccloskey/VAWLUME/blob/main/schema/schema.json?format=tbls)**
+— pan, zoom, search for a table, and follow its foreign keys in the browser,
+with nothing to install.
+
+The diagram is **generated from VAWLUME's actual SQLite model rather than
+manually maintained**: [`schema/schema.json`](schema/schema.json) is exported
+from a clean database built out of `schema.sql`, and a check in the test suite
+fails if the two ever drift apart. [`schema/README.md`](schema/README.md)
+explains which file is authoritative, how to regenerate the export, and what an
+ERD does and does not show — triggers and CHECK constraints carry invariants no
+diagram can draw.
+
+### Documents
+
 - [`docs/usage/01_prototype_usage_guide.md`](docs/usage/01_prototype_usage_guide.md) — **start here**: requirements, configuration, a minimal end-to-end example, using your own data, outputs, troubleshooting, and current limitations
 - [`docs/design/01_prototype_development_outline.md`](docs/design/01_prototype_development_outline.md) — current prototype development plan
 - [`docs/design/02_temporal_alignment_contract.md`](docs/design/02_temporal_alignment_contract.md) — Phase 7 temporal-alignment design contract, exit criteria, inherited-schema audit, and current implementation boundary
