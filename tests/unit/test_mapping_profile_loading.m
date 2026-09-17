@@ -80,7 +80,8 @@ for index = 1:numel(extractorProfiles)
     verifyEqual(testCase, loaded.profile_kinds, "extractor_output");
     verifyEqual(testCase, loaded.profile_schema_versions, "0.2-draft");
     expectedVersion = "0.1.0";
-    if contains(extractorProfiles(index), "/mupet/")
+    if contains(extractorProfiles(index), "/mupet/") || ...
+            contains(extractorProfiles(index), "/usvseg/")
         expectedVersion = "0.1.1";
     end
     verifyEqual(testCase, loaded.profile_version_labels, expectedVersion);
@@ -143,7 +144,7 @@ profilePath = fullfile(repoRoot, "config", "01_mapping_profiles", ...
 verifyTrue(testCase, report.is_valid);
 verifyEmpty(testCase, loaded.warnings);
 verifyEqual(testCase, loaded.profile_ids, "vawlume.usvseg.output.v0_9r2");
-verifyEqual(testCase, loaded.profile_version_labels, "0.1.0");
+verifyEqual(testCase, loaded.profile_version_labels, "0.1.1");
 verifyEqual(testCase, string(loaded.document.extractor.name), "USVSEG");
 verifyEqual(testCase, string(loaded.document.extractor.version_scope.preferred), "0.9r2");
 
@@ -175,6 +176,22 @@ verifyEqual(testCase, string(mappingFor(loaded, "start").canonical_field), ...
     "call_start_time");
 verifyEqual(testCase, string(mappingFor(loaded, "end").canonical_field), ...
     "call_end_time");
+
+% USVSEG 0.9r2 serializes an unavailable spectral result as literal NaN only
+% in its four acoustic-feature columns. Required identity/timing stays strict.
+for feature = ["maxfreq", "maxamp", "meanfreq", "cvfreq"]
+    mapping = mappingFor(loaded, feature);
+    verifyEqual(testCase, string(mapping.data_type), "float_or_missing");
+    policy = mapping.missing_value_policy;
+    verifyEqual(testCase, string(policy.missing_tokens), "NaN");
+    verifyTrue(testCase, policy.case_sensitive);
+    verifyFalse(testCase, policy.blank_is_missing);
+    verifyTrue(testCase, policy.preserve_raw_token);
+end
+for required = ["#", "start", "end", "duration"]
+    mapping = mappingFor(loaded, required);
+    verifyFalse(testCase, isfield(mapping, "missing_value_policy"));
+end
 
 % Duration is exported in milliseconds and needs the registered conversion.
 duration = mappingFor(loaded, "duration");

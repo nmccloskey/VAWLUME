@@ -135,7 +135,23 @@ allow combined print rounding rather than demand exact equality. This is a
 milder version of the MUPET situation, where the two durations are genuinely
 different quantities; here they are the same quantity printed twice. **[VAWLUME]**
 
-### 4.4 A zero-detection run still writes a CSV
+### 4.4 Acoustic features can be unavailable for a valid detection
+
+`specpeaktracking` initializes `maxampval`, `maxampfreq`, `meanfreq`, and
+`cvfreq` as `NaN` and populates them only when qualifying spectral peak evidence
+survives peak tracking and segregation. `maxfreq` is derived from
+`maxampfreq`. The CSV writer prints these arrays directly, so USVSEG 0.9r2
+serializes an unresolved value as literal `NaN`. Onset/offset segmentation is
+separate, and a row can therefore retain valid `#`, `start`, `end`, and
+`duration` while all four acoustic features are unavailable. **[SOURCE]**
+
+The profile accepts literal `NaN` as explicit missingness only for `maxfreq`,
+`maxamp`, `meanfreq`, and `cvfreq`. It preserves the raw token, applies no
+numeric transform, and invents no value. Identifier and timing fields remain
+required; arbitrary text and undeclared sentinels remain invalid; `Inf` and
+`-Inf` are not treated as missing. **[VAWLUME]**
+
+### 4.5 A zero-detection run still writes a CSV
 
 When no syllables are found the file is written with the header row and no data
 rows. **[SOURCE]** That is a valid result — an extraction run with zero
@@ -366,21 +382,13 @@ eight columns, with nothing dropped and nothing invented.
 
 ## 12. Open items
 
-Genuinely unresolved without a representative USVSEG artifact, and therefore
-deliberately not mapped: **[OPEN]**
+Remaining format questions that are deliberately not generalized: **[OPEN]**
 
-1. **Non-finite tokens.** The exporter prints every column unconditionally with a
-   numeric format and declares no missing-value sentinel, so the profile declares
-   no `missing_value_policy`. The internal mean and standard deviation both omit
-   NaNs, which makes a non-finite `meanfreq` or `cvfreq` unlikely but not
-   provably impossible for a degenerate single-frame syllable. The profile
-   surfaces this through a warning-severity `numeric_column_completeness` check
-   instead of guessing either answer. Settle it in pass 1.3 against a real file.
-2. **Save-dialog relocation.** The summary CSV path is user-redirectable, so the
+1. **Save-dialog relocation.** The summary CSV path is user-redirectable, so the
    stem-based recording linkage can be weakened by an unusual save location. The
    discovery regex matches `<stem>_dat.csv` anywhere; whether real workflows
    relocate it is unknown.
-3. **Locale and delimiter.** The writer emits comma-separated output with a
+2. **Locale and delimiter.** The writer emits comma-separated output with a
    period decimal separator unconditionally. Whether any user workflow
    post-processes this into another delimiter is unknown and out of contract.
 

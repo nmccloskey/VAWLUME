@@ -440,8 +440,9 @@ content_uri
 checksum_sha256
 ```
 
-`profile_version` is the authored VAWLUME mapping contract version, currently
-`0.1.0` for the shipped executable source-mapping profiles.
+`profile_version` is the authored VAWLUME mapping contract version. Most
+shipped executable source-mapping profiles are currently `0.1.0`; the MUPET
+v2.1 and USVSEG 0.9r2 extractor-output profiles are `0.1.1`.
 `profile_schema_version` is the VAWLUME profile-language version. Existing
 project-input and extractor-output profiles remain `0.2-draft`; external-stream
 and alignment-anchor profiles use the additive `0.3-draft` language. Recording-device and
@@ -456,7 +457,9 @@ Profile value maps use ordered-insensitive `value_map` records with explicit
 `native_value` and `canonical_value` fields. Source-specific lexical
 missing-token behavior is declared in `missing_value_policy` rather than in
 runtime code. For example, the current MUPET inter-syllable interval mapping
-declares `NA` as an explicit missing token while preserving the raw token.
+declares `NA`/`_` as explicit missing tokens, while the USVSEG 0.9r2 profile
+declares literal `NaN` only for four acoustic-feature mappings. Both preserve
+the raw token.
 
 The database can store profile identity/version/checksum while the JSON remains the detailed source representation.
 

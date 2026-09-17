@@ -146,8 +146,8 @@ SQLite surrogate ID.
 | `extractor_version_scope_compatible_family` | Broader compatible extractor family when declared. |
 
 Most initial executable JSON profiles declare `profile.profile_version =
-0.1.0`; the MUPET v2.1 extractor-output profile is `0.1.1`. Project/extractor
-profiles declare language version `0.2-draft`; the newer external-stream and
+0.1.0`; the MUPET v2.1 and USVSEG 0.9r2 extractor-output profiles are `0.1.1`.
+Project/extractor profiles declare language version `0.2-draft`; the newer external-stream and
 anchor shapes declare `0.3-draft`. Extractor compatibility remains separate
 under `extractor.version_scope`.
 

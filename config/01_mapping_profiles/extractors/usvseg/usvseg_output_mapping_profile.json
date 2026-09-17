@@ -5,7 +5,7 @@
     "kind": "extractor_output",
     "profile_schema_version": "0.2-draft",
     "status": "built_in_template_draft",
-    "profile_version": "0.1.0"
+    "profile_version": "0.1.1"
   },
   "extractor": {
     "name": "USVSEG",
@@ -341,7 +341,7 @@
       "source_field": "maxfreq",
       "target_level": "event_measurement",
       "canonical_field": "peak_frequency",
-      "data_type": "float",
+      "data_type": "float_or_missing",
       "native_unit": "kHz",
       "canonical_unit": "Hz",
       "transform": "kHz_to_Hz",
@@ -351,13 +351,22 @@
       "equivalence_class": "vocalization_peak_frequency",
       "cross_extractor_relationship": "comparable_method_specific_no_MUPET_export_equivalent",
       "consilience_role": "supporting",
+      "missing_value_policy": {
+        "semantic_reason": "spectral_peak_evidence_unavailable",
+        "missing_tokens": [
+          "NaN"
+        ],
+        "case_sensitive": true,
+        "blank_is_missing": false,
+        "preserve_raw_token": true
+      },
       "preserve_raw": true
     },
     {
       "source_field": "maxamp",
       "target_level": "event_measurement",
       "canonical_field": "peak_amplitude",
-      "data_type": "float",
+      "data_type": "float_or_missing",
       "native_unit": "dB",
       "canonical_unit": "dB",
       "transform": "identity",
@@ -367,6 +376,15 @@
       "equivalence_class": "vocalization_amplitude_like_quantity",
       "cross_extractor_relationship": "related_not_equivalent_to_MUPET_peak_syllable_amplitude_no_shared_reference_level",
       "consilience_role": "none_by_default",
+      "missing_value_policy": {
+        "semantic_reason": "spectral_peak_evidence_unavailable",
+        "missing_tokens": [
+          "NaN"
+        ],
+        "case_sensitive": true,
+        "blank_is_missing": false,
+        "preserve_raw_token": true
+      },
       "preserve_raw": true,
       "notes": [
         "Decibels relative to an arbitrary internal scale, read from the unflattened multitaper spectrogram. It has no calibrated reference and no shared zero with any other extractor's amplitude measure."
@@ -376,7 +394,7 @@
       "source_field": "meanfreq",
       "target_level": "event_measurement",
       "canonical_field": "frequency_center",
-      "data_type": "float",
+      "data_type": "float_or_missing",
       "native_unit": "kHz",
       "canonical_unit": "Hz",
       "transform": "kHz_to_Hz",
@@ -386,6 +404,15 @@
       "equivalence_class": "vocalization_frequency_center",
       "cross_extractor_relationship": "comparable_not_equivalent_to_MUPET_filterbank_mean_or_DeepSqueak_contour_median",
       "consilience_role": "supporting",
+      "missing_value_policy": {
+        "semantic_reason": "spectral_peak_evidence_unavailable",
+        "missing_tokens": [
+          "NaN"
+        ],
+        "case_sensitive": true,
+        "blank_is_missing": false,
+        "preserve_raw_token": true
+      },
       "preserve_raw": true,
       "notes": [
         "Shares the central-frequency equivalence class with MUPET mean frequency and DeepSqueak principal frequency, and is method-equivalent to neither. It averages a discrete peak track; MUPET averages a filterbank representation and DeepSqueak takes a contour median.",
@@ -396,7 +423,7 @@
       "source_field": "cvfreq",
       "target_level": "event_measurement",
       "canonical_field": "frequency_cv",
-      "data_type": "float",
+      "data_type": "float_or_missing",
       "native_unit": "ratio",
       "canonical_unit": "ratio",
       "transform": "identity",
@@ -406,6 +433,15 @@
       "equivalence_class": "vocalization_frequency_cv",
       "cross_extractor_relationship": "no_DeepSqueak_or_MUPET_export_equivalent",
       "consilience_role": "none_by_default",
+      "missing_value_policy": {
+        "semantic_reason": "spectral_peak_evidence_unavailable",
+        "missing_tokens": [
+          "NaN"
+        ],
+        "case_sensitive": true,
+        "blank_is_missing": false,
+        "preserve_raw_token": true
+      },
       "preserve_raw": true,
       "notes": [
         "Dimensionless and normalized by the mean. It is not the DeepSqueak frequency standard deviation, which is an absolute spread in frequency units, so the two must not share an equivalence class.",
@@ -587,11 +623,11 @@
       },
       {
         "id": "numeric_column_completeness",
-        "requirement": "all_eight_columns_parse_as_finite_numbers",
+        "requirement": "identifier_and_timing_columns_parse_as_finite_numbers_and_acoustic_features_are_finite_or_declared_missing",
         "severity": "warning",
         "notes": [
-          "The exporter prints every column unconditionally with a numeric format and declares no missing-value sentinel, so no missing_value_policy is declared here.",
-          "Whether a degenerate syllable can print a non-finite token for meanfreq or cvfreq is unresolved without a representative artifact. This check surfaces it instead of assuming either answer."
+          "USVSEG 0.9r2 can print literal NaN for maxfreq, maxamp, meanfreq, and cvfreq when a temporally detected syllable has no qualifying spectral peak evidence.",
+          "Only that exact extractor-evidenced token in those four feature mappings is normalized as missing; identifiers, timing fields, other tokens, and other non-finite values retain their stricter handling."
         ]
       },
       {

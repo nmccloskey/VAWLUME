@@ -86,6 +86,14 @@ per detection:
 | `meanfreq` | `frequency_center` | kHz | Hz |
 | `cvfreq` | `frequency_cv` | ratio | ratio |
 
+For USVSEG 0.9r2, literal `NaN` in the four acoustic-feature columns is an
+extractor-evidenced unavailable measurement. The importer retains the
+detection and stores an explicit `missing` event-measurement row whose
+`native_raw_token` is `NaN` and whose native/canonical payload columns are
+NULL. It does not insert zero and does not apply `identity` or `kHz_to_Hz` to
+the missing value. This does not extend to `#`, `start`, `end`, or `duration`,
+to other textual tokens, or to `Inf`/`-Inf`.
+
 `duration` is exactly the printed onset/offset difference, so it is redundant
 with `start` and `end` up to two different print precisions. It is preserved as
 a native measurement rather than dropped, and it is never the timing authority.

@@ -2,9 +2,11 @@ function tests = test_usvseg_export_adapter
 tests = functiontests({ ...
     @testNominalExportProducesValidatedExtractorIR, ...
     @testLiteralHeaderAndLexicalTokensSurvive, ...
+    @testNaNAcousticFeaturesAreExplicitMissingValues, ...
     @testHeaderOnlyExportIsValidZeroDetectionResult, ...
     @testMissingRequiredFieldIsNotRepaired, ...
     @testUndeclaredMissingTokenIsPreservedAndRejected, ...
+    @testNaNInRequiredIdentityOrTimingIsRejected, ...
     @testNonfiniteNumericTokenIsPreservedAndWarned, ...
     @testVersionScopeComesFromProfile, ...
     @testExtraColumnRemainsRecoverableAndWarns, ...
@@ -27,7 +29,7 @@ verifyEqual(testCase, result.artifact.column_count, 8);
 verifyMatches(testCase, result.artifact.checksum_sha256, "^[0-9a-f]{64}$");
 verifyEqual(testCase, result.ir.profile.profile_key, ...
     "vawlume.usvseg.output.v0_9r2");
-verifyEqual(testCase, result.ir.profile.profile_version, "0.1.0");
+verifyEqual(testCase, result.ir.profile.profile_version, "0.1.1");
 verifyEqual(testCase, result.ir.profile.extractor_name, "USVSEG");
 verifyEqual(testCase, height(result.ir.records), 2);
 verifyEqual(testCase, string(result.ir.records.native_identifier), ["1"; "2"]);
@@ -51,6 +53,44 @@ verifyEqual(testCase, peak.normalized_value_real, 72500, AbsTol=1e-9);
 verifyEqual(testCase, peak.transform_key, "kHz_to_Hz");
 verifyEqual(testCase, vawlume.source_mapping.preview(result.ir).verdict, ...
     "READY FOR INGEST");
+end
+
+function testNaNAcousticFeaturesAreExplicitMissingValues(testCase)
+[repoRoot, cleanupPath] = setUpPath(); %#ok<ASGLU>
+csvPath = temporaryExportPath();
+writeText(csvPath, strjoin(nanFeatureLines(), newline) + newline);
+cleanupFile = onCleanup(@() deleteIfExists(csvPath)); %#ok<NASGU>
+
+result = vawlume.ingest.usvsegExport(csvPath, RepoRoot=repoRoot, ...
+    ExtractorVersion="0.9r2");
+
+verifyTrue(testCase, result.valid_for_ingest);
+verifyEqual(testCase, vawlume.source_mapping.preview(result.ir).verdict, ...
+    "READY FOR INGEST");
+verifyEqual(testCase, result.table.maxfreq(2), "NaN");
+verifyEqual(testCase, result.adapter_warning_count, 0);
+verifyFalse(testCase, any(result.ir.issues.code == "TYPE_COERCION_FAILED"));
+
+for nativeField = ["maxfreq", "maxamp", "meanfreq", "cvfreq"]
+    value = valueFor(result.ir, 2, nativeField);
+    verifyEqual(testCase, value.raw_value, "NaN");
+    verifyEqual(testCase, value.native_value_type, "missing");
+    verifyEqual(testCase, value.normalized_value_type, "missing");
+    verifyEqual(testCase, value.status, "missing");
+    verifyTrue(testCase, isnan(value.native_value_real));
+    verifyTrue(testCase, isnan(value.normalized_value_real));
+end
+verifyEqual(testCase, valueFor(result.ir, 2, "#").normalized_value_integer, 2);
+verifyEqual(testCase, valueFor(result.ir, 2, "start").normalized_value_real, ...
+    0.3000, AbsTol=1e-12);
+verifyEqual(testCase, valueFor(result.ir, 2, "end").normalized_value_real, ...
+    0.3325, AbsTol=1e-12);
+verifyEqual(testCase, valueFor(result.ir, 2, "duration").normalized_value_real, ...
+    0.0325, AbsTol=1e-12);
+
+finitePeak = valueFor(result.ir, 1, "maxfreq");
+verifyEqual(testCase, finitePeak.raw_value, "72.500");
+verifyEqual(testCase, finitePeak.normalized_value_real, 72500, AbsTol=1e-9);
 end
 
 function testLiteralHeaderAndLexicalTokensSurvive(testCase)
@@ -110,7 +150,7 @@ end
 function testUndeclaredMissingTokenIsPreservedAndRejected(testCase)
 [repoRoot, cleanupPath] = setUpPath(); %#ok<ASGLU>
 lines = nominalLines();
-lines(2) = replace(lines(2), ",0.1234", ",NA");
+lines(2) = replace(lines(2), ",0.1234", ",banana");
 csvPath = temporaryExportPath();
 writeText(csvPath, strjoin(lines, newline) + newline);
 cleanupFile = onCleanup(@() deleteIfExists(csvPath));
@@ -118,12 +158,35 @@ cleanupFile = onCleanup(@() deleteIfExists(csvPath));
 result = vawlume.ingest.usvsegExport(csvPath, RepoRoot=repoRoot, ...
     ExtractorVersion="0.9r2");
 value = valueFor(result.ir, 1, "cvfreq");
-verifyEqual(testCase, value.raw_value, "NA");
+verifyEqual(testCase, value.raw_value, "banana");
 verifyEqual(testCase, value.native_value_type, "invalid");
 verifyEqual(testCase, value.normalized_value_type, "invalid");
 verifyFalse(testCase, result.valid_for_ingest);
 verifyTrue(testCase, any(result.ir.issues.code == "TYPE_COERCION_FAILED"));
 verifyTrue(testCase, any(result.issues.code == "USVSEG_NUMERIC_TOKEN_NONFINITE"));
+end
+
+function testNaNInRequiredIdentityOrTimingIsRejected(testCase)
+[repoRoot, cleanupPath] = setUpPath(); %#ok<ASGLU>
+for nativeField = ["#", "start", "end", "duration"]
+    lines = nominalLines();
+    column = find(headerNames() == nativeField);
+    tokens = split(lines(2), ",");
+    tokens(column) = "NaN";
+    lines(2) = strjoin(tokens, ",");
+    csvPath = temporaryExportPath();
+    writeText(csvPath, strjoin(lines, newline) + newline);
+    cleanupFile = onCleanup(@() deleteIfExists(csvPath));
+
+    result = vawlume.ingest.usvsegExport(csvPath, RepoRoot=repoRoot, ...
+        ExtractorVersion="0.9r2");
+    value = valueFor(result.ir, 1, nativeField);
+    verifyEqual(testCase, value.raw_value, "NaN");
+    verifyEqual(testCase, value.native_value_type, "invalid");
+    verifyFalse(testCase, result.valid_for_ingest);
+    verifyTrue(testCase, any(result.ir.issues.code == "TYPE_COERCION_FAILED"));
+    clear cleanupFile
+end
 end
 
 function testNonfiniteNumericTokenIsPreservedAndWarned(testCase)
@@ -139,6 +202,8 @@ result = vawlume.ingest.usvsegExport(csvPath, RepoRoot=repoRoot, ...
 value = valueFor(result.ir, 1, "meanfreq");
 verifyEqual(testCase, value.raw_value, "Inf");
 verifyEqual(testCase, value.native_value_real, Inf);
+verifyEqual(testCase, value.native_value_type, "real");
+verifyNotEqual(testCase, value.status, "missing");
 verifyTrue(testCase, result.valid_for_ingest);
 verifyTrue(testCase, any(result.issues.code == "USVSEG_NUMERIC_TOKEN_NONFINITE"));
 verifyEqual(testCase, result.adapter_warning_count, 1);
@@ -294,6 +359,11 @@ lines = [
     "1,0.1000,0.1450,45.0,72.500,-18.25,61.250,0.1234"
     "2,0.3000,0.3325,32.5,75.125,-20.50,63.125,0.0875"
     ];
+end
+
+function lines = nanFeatureLines()
+lines = nominalLines();
+lines(3) = "2,0.3000,0.3325,32.5,NaN,NaN,NaN,NaN";
 end
 
 function path = temporaryExportPath()

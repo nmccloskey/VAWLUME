@@ -41,6 +41,56 @@ verifyEqual(testCase,count(f.conn,"curation_events"),0); verifyEqual(testCase,co
 verifyEqual(testCase,height(fetch(f.conn,"PRAGMA foreign_key_check")),0); clear c
 end
 
+function testNaNAcousticFeaturesPlanAndApplyAsExplicitMissing(testCase)
+[f,c]=fixture(); %#ok<ASGLU>
+writeLines(f.export_path,[header(false); ...
+    "1,0.1000,0.1450,45.0,72.500,-18.2,61.250,0.1234"; ...
+    "2,0.2500,0.3010,51.0,NaN,NaN,NaN,NaN"]);
+
+planned=plan(f,defaultSpec());
+verifyEqual(testCase,planned.status,"planned");
+verifyFalse(testCase,planned.has_conflicts);
+verifyEqual(testCase,planned.event_population.planned_detection_count,2);
+verifyEqual(testCase,string(planned.events.native_event_id),["1";"2"]);
+verifyEqual(testCase,planned.events.measurement_count,[7;7]);
+verifyEqual(testCase,planned.output_profile.version_label,"0.1.1");
+
+result=apply(f,defaultSpec());
+verifyTrue(testCase,result.committed);
+verifyEqual(testCase,result.applied_counts.detections,2);
+verifyEqual(testCase,result.applied_counts.event_measurements,14);
+verifyEqual(testCase,count(f.conn,"detections"),2);
+
+missing=fetch(f.conn,"SELECT COUNT(*) AS n FROM event_measurements em " + ...
+    "JOIN detections d ON d.detection_id=em.detection_id " + ...
+    "JOIN extractor_features xf ON xf.extractor_feature_id=em.extractor_feature_id " + ...
+    "WHERE d.native_event_id='2' " + ...
+    "AND xf.native_name IN ('maxfreq','maxamp','meanfreq','cvfreq') " + ...
+    "AND em.native_value_type='missing' AND em.native_raw_token='NaN' " + ...
+    "AND em.native_value_real IS NULL AND em.native_value_integer IS NULL " + ...
+    "AND em.native_value_text IS NULL AND em.canonical_value_real IS NULL " + ...
+    "AND em.canonical_value_integer IS NULL AND em.canonical_value_text IS NULL");
+verifyEqual(testCase,double(missing.n(1)),4);
+
+zeroes=fetch(f.conn,"SELECT COUNT(*) AS n FROM event_measurements em " + ...
+    "JOIN detections d ON d.detection_id=em.detection_id " + ...
+    "WHERE d.native_event_id='2' " + ...
+    "AND (em.native_value_real=0 OR em.canonical_value_real=0)");
+verifyEqual(testCase,double(zeroes.n(1)),0);
+
+detection=fetch(f.conn,"SELECT native_event_id,start_time_s,end_time_s " + ...
+    "FROM detections WHERE native_event_id='2'");
+verifyEqual(testCase,string(detection.native_event_id),"2");
+verifyEqual(testCase,double(detection.start_time_s),.25,AbsTol=1e-12);
+verifyEqual(testCase,double(detection.end_time_s),.301,AbsTol=1e-12);
+finite=measurement(f.conn,"1","maxfreq");
+verifyEqual(testCase,string(finite.native_raw_token),"72.500");
+verifyEqual(testCase,double(finite.native_value_real),72.5,AbsTol=1e-12);
+verifyEqual(testCase,double(finite.canonical_value_real),72500,AbsTol=1e-9);
+verifyEqual(testCase,height(fetch(f.conn,"PRAGMA foreign_key_check")),0);
+clear c
+end
+
 function testOptionalSettingsArtifactIsWeakEvidenceNotRunProfile(testCase)
 [f,c]=fixture(); %#ok<ASGLU>
 prm=struct(fftsize=512,freqmin=30); settingsPath=fullfile(f.scratch,"settings","usvseg_prm.mat");

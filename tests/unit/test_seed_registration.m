@@ -173,7 +173,8 @@ for index = 1:size(profiles, 1)
         "WHERE cp.profile_key = " + sqlText(profileKey));
     verifyEqual(testCase, height(rows), 1);
     expectedVersion = "0.1.0";
-    if profileKey == "vawlume.mupet.output.v2_1"
+    if profileKey == "vawlume.mupet.output.v2_1" || ...
+            profileKey == "vawlume.usvseg.output.v0_9r2"
         expectedVersion = "0.1.1";
     end
     verifyEqual(testCase, string(rows.version_label(1)), expectedVersion);

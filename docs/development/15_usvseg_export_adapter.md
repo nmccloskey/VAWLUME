@@ -30,10 +30,18 @@ literal header:
 The reader preserves every variable name, including `#`, and imports every
 cell as a string before source mapping. This keeps the exact printed token
 recoverable while the profile-driven mapper performs numeric typing and unit
-transforms. A token such as `NA` is therefore not silently converted to a
-missing value: the profile declares no USVSEG sentinel, so the token remains
-visible and typed mapping reports an error. A parseable non-finite token such
-as `Inf` remains visible and produces the profile-required adapter warning.
+transforms. USVSEG 0.9r2 can emit literal `NaN` in `maxfreq`, `maxamp`,
+`meanfreq`, and `cvfreq` when a temporally detected syllable lacks the spectral
+peak evidence needed to calculate those features. Profile version `0.1.1`
+preserves that exact token and normalizes it to explicit missingness before
+numeric coercion or unit conversion; the detection remains valid when `#`,
+`start`, `end`, and `duration` are valid. The missing feature has no numeric
+native or canonical payload and is never replaced with zero.
+
+This allowance is field- and token-specific. `NaN` in identifier or timing
+fields still fails, as do undeclared tokens such as `NA`, `_`, or arbitrary
+text in an acoustic-feature field. `Inf` and `-Inf` are not reclassified as
+missing: they remain visible and retain the adapter's non-finite diagnostic.
 
 A file containing the header and no data rows is valid and produces one mapped
 source with zero event records and zero values. A zero-byte file is unreadable.

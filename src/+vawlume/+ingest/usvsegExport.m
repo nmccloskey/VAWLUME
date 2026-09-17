@@ -67,7 +67,7 @@ versionAssessment = extractorVersionCompatibility( ...
     profileDocument, options.ExtractorVersion);
 issues = appendIssue(issues, versionIssue(versionAssessment));
 issues = appendIssues(issues, numericCompletenessIssues( ...
-    readResult.table, profileDocument, artifactPath));
+    readResult.table, profileDocument, ir, artifactPath));
 
 result = struct();
 result.ir = ir;
@@ -169,7 +169,7 @@ if ~isempty(info)
 end
 end
 
-function issues = numericCompletenessIssues(tbl, document, artifactPath)
+function issues = numericCompletenessIssues(tbl, document, ir, artifactPath)
 issues = emptyAdapterIssues();
 columns = declaredNumericColumns(document);
 for column = columns(:)'
@@ -180,6 +180,12 @@ for column = columns(:)'
     values = str2double(tokens);
     badRows = find(strlength(strtrim(tokens)) == 0 | ~isfinite(values));
     for row = badRows(:)'
+        mappedMissing = ir.values.source_row == row & ...
+            ir.values.actual_source_field == column & ...
+            ir.values.status == "missing";
+        if any(mappedMissing)
+            continue
+        end
         issue = adapterIssue("warning", "USVSEG_NUMERIC_TOKEN_NONFINITE", ...
             artifactPath, "Row " + row + ", column '" + column + ...
             "' is not a finite numeric token; source token was preserved: '" + ...
