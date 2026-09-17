@@ -71,7 +71,7 @@ The arithmetic is provided by
 run-side meaning and retains its own eligibility rule; the interval primitive
 has no detection identifiers, thresholds, candidate status, or domain mode.
 
-The configured candidate rule is:
+The candidate rule always requires:
 
 ```text
 temporal_overlap_s > 0
@@ -81,6 +81,54 @@ AND temporal_iou >= min_temporal_iou
 Exact boundary contact is therefore not a candidate. Every qualifying edge is
 retained; there is no nearest-neighbour or best-IoU reduction. The result also
 returns detection IDs from each run with zero eligible edges.
+
+### Optional magnitude bounds
+
+`candidate_generation.plausibility_rule` may additionally declare any of:
+
+```text
+max_abs_onset_difference_s      admit iff abs(onset_difference_s)    <= value
+max_abs_offset_difference_s     admit iff abs(offset_difference_s)   <= value
+max_abs_duration_difference_s   admit iff abs(duration_difference_s) <= value
+```
+
+Each is a finite real scalar `>= 0` in seconds. Each is validated with its own
+error identifier — `vawlume:matching:MaxAbsOnsetDifferenceInvalid`,
+`...MaxAbsOffsetDifferenceInvalid`, `...MaxAbsDurationDifferenceInvalid`.
+
+**Absent means unconstrained.** A specification that declares none of them
+behaves exactly as before, down to the bytes of the evidence it stores. The
+fields are optional rather than defaulted because the specification checksum is
+taken over exact file bytes: a required field would change every tracked
+specification's checksum and so invalidate the identity of every matching
+analysis already recorded against one.
+
+**The semantics are magnitude, not signed.** The `max_abs_` prefix is part of
+the contract rather than a naming preference. `vawlume.interval.relation`
+returns signed differences directed as run B minus run A, so a bound of 0.05 s
+excludes a pair at −0.05 s exactly as it excludes one at +0.05 s. The comparison
+uses the same three evidence fields the candidate row stores; matching
+introduces no second definition of onset, offset, or duration difference.
+
+Each bound can only remove a pair the rule above already admits, so the
+start-ordered interval sweep's pruning remains correctness-preserving: a pair
+the sweep never examines has no positive overlap and was never admissible.
+
+There is no scale-free duration ratio. The duration dimension is an absolute
+difference in seconds, because that is the quantity
+`vawlume.interval.relation` computes and that primitive is shared with
+`vawlume.attribution`.
+
+### The recorded rule
+
+`candidate_pairs.details_json` states which gates actually admitted the row.
+`eligibility_rule` names the active gates joined by `_and_`, and each declared
+bound appears beside `min_temporal_iou` with its value. Under an IoU-only
+specification the rule reads `positive_overlap_and_min_temporal_iou` and no
+bound keys are written, so old and new rows remain directly comparable.
+
+The tracked `prototype_matching_consilience_spec.json` declares none of these
+dimensions.
 
 ## Planning, provenance, and apply
 

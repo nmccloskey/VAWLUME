@@ -1,10 +1,18 @@
-function [candidates, unmatched] = matchingGenerateCandidates(runA, runB, pair, minIou)
+function [candidates, unmatched] = matchingGenerateCandidates(runA, runB, pair, rule)
 %MATCHINGGENERATECANDIDATES Compute exhaustive transparent temporal evidence.
 %
 % Duration is the boundary-derived v_detection_core.duration_s surface. A
 % start-ordered interval sweep compares only pairs with positive temporal
 % overlap. Every qualifying edge survives; no best-candidate reduction occurs.
+%
+% RULE is the validated plausibility rule from matchingLoadSpec. Beyond positive
+% overlap and min_temporal_iou it may declare magnitude bounds on the signed
+% onset, offset, and duration differences. Each declared bound only removes
+% candidates the earlier rule admits, so the sweep's end_time_s > next_start
+% pruning remains correctness-preserving: a pair the sweep never examines has no
+% positive overlap and was never admissible under any of these dimensions.
 
+gates = plausibilityGates(rule);
 runA = sortrows(runA, ["start_time_s", "detection_id"]);
 runB = sortrows(runB, ["start_time_s", "detection_id"]);
 records = emptyRecords();
@@ -23,7 +31,7 @@ while aIndex <= height(runA) || bIndex <= height(runB)
         activeB = activeB(runB.end_time_s(activeB) > nextA);
         for activeIndex = activeB'
             record = candidateRecord(runA(aIndex, :), runB(activeIndex, :), ...
-                pair, minIou);
+                pair, gates);
             if ~isempty(record)
                 records(end + 1, 1) = record; %#ok<AGROW>
             end
@@ -34,7 +42,7 @@ while aIndex <= height(runA) || bIndex <= height(runB)
         activeA = activeA(runA.end_time_s(activeA) > nextB);
         for activeIndex = activeA'
             record = candidateRecord(runA(activeIndex, :), runB(bIndex, :), ...
-                pair, minIou);
+                pair, gates);
             if ~isempty(record)
                 records(end + 1, 1) = record; %#ok<AGROW>
             end
@@ -61,15 +69,59 @@ unmatched = struct( ...
     run_b_detection_ids=runB.detection_id(~ismember(runB.detection_id, matchedB)));
 end
 
-function record = candidateRecord(runA, runB, pair, minIou)
+function gates = plausibilityGates(rule)
+%PLAUSIBILITYGATES Reduce the validated rule to the bounds actually declared.
+%
+% An undeclared bound is NaN and leaves its dimension unconstrained, so it
+% contributes neither a gate nor a details_json key. A specification declaring
+% only min_temporal_iou therefore produces exactly the eligibility rule and
+% exactly the stored evidence the prior contract produced.
+names = ["max_abs_onset_difference_s"; "max_abs_offset_difference_s"; ...
+    "max_abs_duration_difference_s"];
+evidence = ["onset_difference_s"; "offset_difference_s"; ...
+    "duration_difference_s"];
+values = [rule.max_abs_onset_difference_s; rule.max_abs_offset_difference_s; ...
+    rule.max_abs_duration_difference_s];
+declared = ~isnan(values);
+gates = struct();
+gates.min_temporal_iou = rule.min_temporal_iou;
+gates.bound_names = names(declared);
+gates.evidence_names = evidence(declared);
+gates.bound_values = values(declared);
+gates.eligibility_rule = strjoin(["positive_overlap"; "min_temporal_iou"; ...
+    names(declared)], "_and_");
+end
+
+function record = candidateRecord(runA, runB, pair, gates)
 relation = vawlume.interval.relation(runA.start_time_s, runA.end_time_s, ...
     runB.start_time_s, runB.end_time_s);
-if relation.intersection_s <= 0 || relation.temporal_iou < minIou
+if relation.intersection_s <= 0 || relation.temporal_iou < gates.min_temporal_iou
     record = [];
     return
 end
+for index = 1:numel(gates.bound_values)
+    % Magnitude semantics: relation's differences are signed and directional
+    % (B minus A), so the bound is applied to abs() and excludes -0.05 s
+    % exactly as it excludes +0.05 s.
+    if abs(relation.(gates.evidence_names(index))) > gates.bound_values(index)
+        record = [];
+        return
+    end
+end
 runAId = runA.detection_id;
 runBId = runB.detection_id;
+details = struct( ...
+    evidence_direction="run_a_to_run_b", ...
+    run_a_extraction_run_id=pair.run_a.extraction_run_id, ...
+    run_b_extraction_run_id=pair.run_b.extraction_run_id, ...
+    run_a_detection_id=runAId, ...
+    run_b_detection_id=runBId, ...
+    schema_detection_order="ascending_detection_id", ...
+    eligibility_rule=gates.eligibility_rule, ...
+    min_temporal_iou=gates.min_temporal_iou);
+for index = 1:numel(gates.bound_names)
+    details.(gates.bound_names(index)) = gates.bound_values(index);
+end
 record = struct( ...
     run_a_detection_id=runAId, ...
     run_b_detection_id=runBId, ...
@@ -82,15 +134,7 @@ record = struct( ...
     duration_difference_s=relation.duration_difference_s, ...
     candidate_score=relation.temporal_iou, ...
     candidate_status="eligible", ...
-    details_json=jsonencode(struct( ...
-        evidence_direction="run_a_to_run_b", ...
-        run_a_extraction_run_id=pair.run_a.extraction_run_id, ...
-        run_b_extraction_run_id=pair.run_b.extraction_run_id, ...
-        run_a_detection_id=runAId, ...
-        run_b_detection_id=runBId, ...
-        schema_detection_order="ascending_detection_id", ...
-        eligibility_rule="positive_overlap_and_min_temporal_iou", ...
-        min_temporal_iou=minIou)));
+    details_json=jsonencode(details));
 end
 
 function records = emptyRecords()
