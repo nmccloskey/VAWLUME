@@ -386,6 +386,13 @@ tracked extractor profiles by `vawlume.db.registerBuiltinSemantics`. The tracked
 profile is the authoritative source; the seed registers it rather than
 maintaining a second copy.
 
+Run `vawlume.db.registerBuiltinSemantics(conn, repoRoot)` after opening an
+existing database as well as after creating a new one. The operation is
+idempotent and append-only for profile versions: it discovers every shipped
+extractor-output JSON profile, adds revisions that are not yet represented in
+the registry, and preserves older version rows for provenance. This step is
+especially important after updating the repository, before planning an import.
+
 One consequence matters when querying: **cross-extractor feature comparison goes
 through `extractor_features.equivalence_class` and `feature_relationships`, not
 through a shared canonical name.** DeepSqueak's contour median is registered

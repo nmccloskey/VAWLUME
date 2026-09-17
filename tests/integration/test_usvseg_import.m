@@ -91,6 +91,56 @@ verifyEqual(testCase,height(fetch(f.conn,"PRAGMA foreign_key_check")),0);
 clear c
 end
 
+function testRegistrySyncPreservesPriorVersionAndImportsNaN(testCase)
+root=repoRootPath(); addpath(fullfile(root,"src")); scratch=string(tempname); mkdir(scratch);
+db=fullfile(scratch,"usvseg_registry_sync.sqlite"); conn=sqlite(char(db),"create");
+cleanup=onCleanup(@() cleanupFixture(conn,scratch,root));
+vawlume.db.applySchema(conn,fullfile(root,"schema","schema.sql"));
+
+currentProfile=fullfile(root,"config","01_mapping_profiles","extractors", ...
+    "usvseg","usvseg_output_mapping_profile.json");
+priorRepo=fullfile(scratch,"prior_repo");
+priorProfile=fullfile(priorRepo,"config","01_mapping_profiles","extractors", ...
+    "usvseg","usvseg_output_mapping_profile.json");
+priorText=string(fileread(currentProfile));
+priorText=replace(priorText,'"profile_version": "0.1.1"', ...
+    '"profile_version": "0.1.0"');
+writeRawText(priorProfile,priorText);
+
+vawlume.db.registerBuiltinSemantics(conn,priorRepo,ProfilePaths=priorProfile);
+vawlume.db.registerBuiltinSemantics(conn,root);
+versions=fetch(conn,"SELECT cpv.profile_version_id,cpv.version_label " + ...
+    "FROM config_profile_versions cpv JOIN config_profiles cp " + ...
+    "ON cp.profile_id=cpv.profile_id " + ...
+    "WHERE cp.profile_key='vawlume.usvseg.output.v0_9r2' " + ...
+    "ORDER BY cpv.version_label");
+verifyEqual(testCase,string(versions.version_label),["0.1.0";"0.1.1"]);
+
+execute(conn,"INSERT INTO projects(project_key,project_name) VALUES('proj-a','Project A')");
+execute(conn,"INSERT INTO source_files(project_id,file_role,path_or_uri,relative_path,filename) VALUES(1,'recording_audio','audio/REC_A.wav','audio/REC_A.wav','REC_A.wav')");
+execute(conn,"INSERT INTO recordings(project_id,source_file_id,native_recording_id) VALUES(1,1,'REC_A')");
+exportPath=fullfile(scratch,"exports","REC_A_dat.csv");
+writeLines(exportPath,[header(false); ...
+    "1,0.1000,0.1450,45.0,72.500,-18.2,61.250,0.1234"; ...
+    "2,0.2500,0.3010,51.0,NaN,NaN,NaN,NaN"]);
+f=struct(conn=conn,repo_root=root,scratch=scratch,artifact_root=scratch,export_path=exportPath);
+
+planned=plan(f,defaultSpec());
+verifyEqual(testCase,planned.status,"planned");
+verifyFalse(testCase,planned.has_conflicts);
+verifyEqual(testCase,planned.output_profile.version_label,"0.1.1");
+verifyEqual(testCase,planned.output_profile.profile_version_id, ...
+    double(versions.profile_version_id(2)));
+result=apply(f,defaultSpec());
+verifyTrue(testCase,result.committed);
+verifyEqual(testCase,result.applied_counts.detections,2);
+missing=fetch(conn,"SELECT COUNT(*) AS n FROM event_measurements " + ...
+    "WHERE native_value_type='missing' AND native_raw_token='NaN'");
+verifyEqual(testCase,double(missing.n(1)),4);
+verifyEqual(testCase,height(fetch(conn,"PRAGMA foreign_key_check")),0);
+clear cleanup
+end
+
 function testOptionalSettingsArtifactIsWeakEvidenceNotRunProfile(testCase)
 [f,c]=fixture(); %#ok<ASGLU>
 prm=struct(fftsize=512,freqmin=30); settingsPath=fullfile(f.scratch,"settings","usvseg_prm.mat");
@@ -196,6 +246,7 @@ lines=header(withExtra); if withRows, suffix=""; if withExtra,suffix=",0007.50";
 end
 function value=header(extra), value="#,start,end,duration,maxfreq,maxamp,meanfreq,cvfreq"; if extra,value=value+",future_metric";end, end
 function writeLines(path,lines), makeParent(path); id=fopen(path,"w"); assert(id>=0); c=onCleanup(@() fclose(id)); fprintf(id,"%s\n",lines); delete(c); end
+function writeRawText(path,text), makeParent(path); id=fopen(path,"w"); assert(id>=0); c=onCleanup(@() fclose(id)); fprintf(id,"%s",text); delete(c); end
 function makeParent(path), parent=fileparts(path); if ~isfolder(parent),mkdir(parent);end, end
 function row=measurement(conn,id,name), row=fetch(conn,"SELECT em.native_raw_token,em.native_value_real,em.canonical_value_real FROM event_measurements em JOIN detections d ON d.detection_id=em.detection_id JOIN extractor_features xf ON xf.extractor_feature_id=em.extractor_feature_id WHERE d.native_event_id='"+id+"' AND xf.native_name='"+name+"'"); end
 function value=counts(conn), names=["artifacts","extraction_runs","extraction_run_inputs","extraction_run_artifacts","detections","event_measurements","unmapped_source_values"]; value=struct(); for name=names,value.(name)=count(conn,name);end, end

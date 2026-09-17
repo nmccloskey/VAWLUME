@@ -1,9 +1,11 @@
 function summary = registerBuiltinSemantics(conn, repoRoot, options)
 %REGISTERBUILTINSEMANTICS Register shipped prototype semantic vocabulary.
 %
-% The registration derives extractor feature definitions from tracked mapping
-% profiles. Existing rows are reused only when their projected definitions
-% match exactly; conflicting rows raise an error and the transaction rolls back.
+% The registration discovers every shipped extractor-output JSON profile and
+% derives extractor feature definitions from those tracked files. Re-running it
+% upgrades a persistent database by appending new profile-version rows. Existing
+% rows are reused only when their projected definitions match exactly;
+% conflicting rows raise an error and the transaction rolls back.
 
 arguments
     conn
@@ -19,16 +21,14 @@ end
 
 profilePaths = options.ProfilePaths;
 if isempty(profilePaths)
-    profilePaths = [
-        fullfile(repoRoot, "config", "01_mapping_profiles", "extractors", "deepsqueak", "deepsqueak_output_mapping_profile.json")
-        fullfile(repoRoot, "config", "01_mapping_profiles", "extractors", "mupet", "mupet_output_mapping_profile.json")
-        fullfile(repoRoot, "config", "01_mapping_profiles", "extractors", "usvseg", "usvseg_output_mapping_profile.json")
-    ];
+    profilePaths = shippedExtractorProfilePaths(repoRoot);
 end
 
 summary = emptySummary();
 summary.repo_root = repoRoot;
-summary.configuration_strategy = "Native MATLAB fileread plus jsondecode of tracked JSON profile files.";
+summary.profile_paths = profilePaths(:);
+summary.configuration_strategy = ...
+    "Discover every tracked extractor-output JSON profile, then use native MATLAB fileread plus jsondecode.";
 
 oldAutoCommit = conn.AutoCommit;
 conn.AutoCommit = "off";
@@ -63,6 +63,30 @@ catch exception
     rethrow(exception);
 end
 conn.AutoCommit = oldAutoCommit;
+end
+
+function paths = shippedExtractorProfilePaths(repoRoot)
+profileRoot = fullfile(repoRoot, "config", "01_mapping_profiles", "extractors");
+if ~isfolder(profileRoot)
+    error("vawlume:db:BuiltinProfileDirectoryNotFound", ...
+        "Built-in extractor profile directory does not exist: %s", profileRoot);
+end
+
+entries = dir(fullfile(profileRoot, "**", "*_output_mapping_profile.json"));
+entries = entries(~[entries.isdir]);
+if isempty(entries)
+    error("vawlume:db:BuiltinProfilesNotFound", ...
+        "No built-in extractor-output mapping profiles were found under %s.", profileRoot);
+end
+
+paths = strings(numel(entries), 1);
+portable = strings(numel(entries), 1);
+for index = 1:numel(entries)
+    paths(index) = fullfile(string(entries(index).folder), string(entries(index).name));
+    portable(index) = replace(paths(index), filesep, "/");
+end
+[~, order] = sort(lower(portable));
+paths = paths(order);
 end
 
 function summary = registerAcousticMetricDefinitions(conn, summary)

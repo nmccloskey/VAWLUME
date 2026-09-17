@@ -1,9 +1,53 @@
 function tests = test_seed_registration
 tests = functiontests({ ...
     @testRegisterBuiltinSemanticsIsIdempotent, ...
+    @testEveryShippedExtractorProfileVersionIsRegistered, ...
     @testRegisterBuiltinSemanticsRejectsConflicts, ...
     @testSameVersionChangedProfileBytesRejectAsConflict, ...
     @testDeliberateProfileVersionRevisionCanCoexist});
+end
+
+function testEveryShippedExtractorProfileVersionIsRegistered(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+
+[conn, dbFile] = createDisposableDatabase(repoRoot);
+cleanupDb = onCleanup(@() cleanupDatabase(conn, dbFile));
+summary = vawlume.db.registerBuiltinSemantics(conn, repoRoot);
+
+entries = dir(fullfile(repoRoot, "config", "01_mapping_profiles", ...
+    "extractors", "**", "*_output_mapping_profile.json"));
+entries = entries(~[entries.isdir]);
+verifyEqual(testCase, numel(summary.profile_paths), numel(entries));
+
+seen = strings(0, 1);
+for profilePath = summary.profile_paths(:)'
+    loaded = vawlume.source_mapping.loadProfile(profilePath, ...
+        ExpectedKind="extractor_output", RepoRoot=repoRoot);
+    identity = loaded.profile_ids(1) + "@" + loaded.profile_version_labels(1);
+    verifyFalse(testCase, ismember(identity, seen), ...
+        "Each shipped profile identity/version pair must be unique.");
+    seen(end + 1, 1) = identity; %#ok<AGROW>
+
+    rows = fetch(conn, ...
+        "SELECT cpv.profile_schema_version, cpv.content_format, " + ...
+        "cpv.content_uri, cpv.checksum_sha256 FROM config_profile_versions cpv " + ...
+        "JOIN config_profiles cp ON cp.profile_id=cpv.profile_id " + ...
+        "WHERE cp.project_id IS NULL AND cp.profile_key=" + ...
+        sqlText(loaded.profile_ids(1)) + " AND cpv.version_label=" + ...
+        sqlText(loaded.profile_version_labels(1)));
+    verifyEqual(testCase, height(rows), 1, ...
+        "Every shipped extractor mapping-profile version must be registered.");
+    verifyEqual(testCase, string(rows.profile_schema_version), ...
+        loaded.profile_schema_versions(1));
+    verifyEqual(testCase, string(rows.content_format), "json");
+    verifyEqual(testCase, string(rows.content_uri), loaded.relative_path);
+    verifyEqual(testCase, string(rows.checksum_sha256), loaded.checksum_sha256);
+end
+verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
+
+clear cleanupPath cleanupDb
 end
 
 function testRegisterBuiltinSemanticsIsIdempotent(testCase)
