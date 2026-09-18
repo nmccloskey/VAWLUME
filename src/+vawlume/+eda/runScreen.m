@@ -14,9 +14,10 @@ function result = runScreen(conn, dataset, materialized, options)
 %   Apply                   write, default false
 %   RepoRoot                repository root
 %   AgreementSpecPath       agreement policy; defaults to the tracked one
-%   ProbeRole               "whole_dataset" (default) or "subset". Tags this
-%                           probe in the provenance so the two probes of one
-%                           exploration run are distinguishable
+%   ProbeRole               "whole_dataset" (default), "subset", or
+%                           "reference". Tags this run in the provenance so the
+%                           two sensitivity probes and the reference-configuration
+%                           run of one exploration are distinguishable
 %   StopOnFailure           abandon the probe at the first failed unit,
 %                           default false
 %   WarnAtAnalyses / MaximumAnalyses / AllowExceedingMaximum
@@ -59,7 +60,8 @@ arguments
     options.RepoRoot (1,1) string = ""
     options.AgreementSpecPath (1,1) string = ""
     options.ProbeRole (1,1) string ...
-        {mustBeMember(options.ProbeRole, ["whole_dataset", "subset"])} = "whole_dataset"
+        {mustBeMember(options.ProbeRole, ["whole_dataset", "subset", ...
+        "reference"])} = "whole_dataset"
     options.StopOnFailure (1,1) logical = false
     options.WarnAtAnalyses (1,1) double {mustBePositive} = 250
     options.MaximumAnalyses (1,1) double {mustBePositive} = 2500
@@ -518,8 +520,36 @@ value = struct( ...
     caution=edaCautionNote());
 end
 
+function value = statusOf(resolution)
+value = "not_applicable";
+if isfield(resolution, "status")
+    value = string(resolution.status);
+end
+end
+
+function value = noteOf(resolution)
+value = "this design screens no factor, so no probe value was resolved";
+if isfield(resolution, "note")
+    value = string(resolution.note);
+end
+end
+
 function value = strippedResolution(resolution)
 %STRIPPEDRESOLUTION The resolver's choices, without the tables that repeat them.
+%
+% A design that screens no factor has no resolver choices to record. That is the
+% reference-configuration design: it varies nothing, so no probe value was chosen
+% and no seed was drawn. Recording "not applicable" is the honest entry;
+% fabricating an empty seed and an empty factor list would put a record in the
+% provenance that looks like a resolution nobody performed.
+if ~isfield(resolution, "seed")
+    value = struct( ...
+        status=statusOf(resolution), ...
+        note=noteOf(resolution), ...
+        active_factor_names=strings(1, 0), ...
+        inactive_factor_names=strings(1, 0));
+    return
+end
 value = struct( ...
     seed=resolution.seed, ...
     seed_source=resolution.seed_source, ...
