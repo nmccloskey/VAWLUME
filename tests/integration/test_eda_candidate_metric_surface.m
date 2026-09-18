@@ -432,6 +432,53 @@ end
 clear cleanup
 end
 
+% ------------------------------------------------- composition with Part 4 ---
+
+function testDependencyDiagnosticsComposeWithTheSurface(testCase)
+% The dependency layer is the surface's first real consumer. On real pilot data
+% the feature-discrepancy columns are sparse enough to force the pairwise
+% fallback, which is the behaviour the itinerary predicted and the reason the
+% Metrics option exists.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+applyAllPairs(fixture);
+surface = surfaceOf(fixture);
+
+whole = vawlume.eda.metricDependencies(surface);
+verifyEqual(testCase, whole.observation_policy.mode, "pairwise");
+verifyEqual(testCase, whole.partial.status, "undefined");
+verifyEqual(testCase, whole.partial.reason, "insufficient_observations");
+
+% The limiting metrics are the band-edge feature columns, which is exactly the
+% availability confounding the conceptual specification warns about, arriving
+% here as a named cause rather than an unexplained failure. They are absent on
+% the same rows as each other, so no one of them is uniquely to blame and only
+% the absence count names them - which is why three counts are reported.
+limiting = whole.observation_policy.limiting_metrics;
+verifyGreaterThan(testCase, limiting.non_finite_rows(1), 0);
+verifyTrue(testCase, startsWith(limiting.metric_name(1), "discrepancy_"));
+verifyEqual(testCase, limiting.non_finite_rows( ...
+    limiting.metric_name == "temporal_iou"), 0);
+
+% Restricting to the four screened factors' metrics, whose coverage is complete,
+% recovers a computable partial correlation.
+screened = ["temporal_iou", "abs_onset_difference_s", ...
+    "abs_offset_difference_s", "abs_duration_difference_s"];
+restricted = vawlume.eda.metricDependencies(surface, Metrics=screened, ...
+    ObservationMargin=0);
+verifyEqual(testCase, restricted.observation_policy.mode, "listwise");
+verifyEqual(testCase, restricted.observation_policy.complete_case_n, ...
+    height(surface.metrics));
+verifyEqual(testCase, restricted.metric_names, screened);
+verifyEqual(testCase, height(restricted.pairs), 6);
+verifyEqual(testCase, numel(restricted.caution), 4);
+
+% Whatever the outcome, nothing was pruned and no factor was removed.
+verifyTrue(testCase, any(contains(restricted.interpretation, ...
+    "Nothing was pruned")));
+
+clear cleanup
+end
+
 % ---------------------------------------------------------------- helpers ---
 
 function surface = surfaceOf(fixture)
