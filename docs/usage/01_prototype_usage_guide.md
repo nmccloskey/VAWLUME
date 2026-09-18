@@ -434,13 +434,14 @@ agreement_filter_demo          % + agreement populations joined to context and f
 temporal_alignment_demo        % + manifest registration, transform fitting, common time
 multimodal_integration_demo    % geometry, tracking, visual identity, acoustic response
 caller_attribution_demo        % + imported caller attribution, correspondence, decisions
+consilience_exploration_demo   % + diagnostics, threshold screen, subset probe, gallery
 ```
 
 Each returns a struct and prints a compact report; pass `Print=false` to
 suppress the printing. Every one is covered by an integration test, so the
 numbers they print are asserted rather than merely observed.
 
-Four are worth reading first. `matching_consensus_demo` is the complete
+Five are worth reading first. `matching_consensus_demo` is the complete
 **pairwise** path, including consilience and threshold sensitivity.
 `multi_extractor_agreement_demo` is the complete **three-extractor** path:
 it imports all three extractors onto one recording, runs all three pairwise
@@ -470,6 +471,19 @@ keeps none. It decides the same candidates twice under different thresholds, so
 you can see the decision move while the candidates do not, and it demonstrates
 four named refusals beside the successes. See
 [`../development/34_integrated_caller_attribution_demonstration.md`](../development/34_integrated_caller_attribution_demonstration.md).
+
+`consilience_exploration_demo` is the complete **extractor-consilience
+exploration** path, and it is the slowest of the set because it really executes
+two sensitivity probes. It applies the tracked reference configuration, diagnoses
+the candidate-metric space, decides for itself which matching thresholds to screen
+and at what values, screens them over the whole dataset, draws a seeded
+metadata-stratified subset and probes it harder, compares the two probes,
+characterizes every exact extractor-support pattern, renders a spectrogram
+gallery, and exports the tables, figures, example index and provenance. It
+deliberately shows thin data: a fractional screen that makes no leverage claim
+about any factor, three support patterns with no members at all, and six that
+cannot supply the number of examples requested. See §6.5 and
+[`../development/35_consilience_exploration_workflow.md`](../development/35_consilience_exploration_workflow.md).
 
 To explore the relational model without running a workflow at all, build the
 deterministic Phase 1 synthetic fixture — one study, several subjects, a dyadic
@@ -677,6 +691,145 @@ experimental context and long-form measurements.
 
 Agreement strength is methodological evidence about extractor convergence. It
 is not a calibrated confidence probability and not a biological truth label.
+
+### 6.5 Exploring extractor consilience
+
+Once a project carries runs from several extractors, you can ask a different
+kind of question: not *what did they agree on under this configuration*, but
+*how does their agreement respond to the configuration at all*, and *what kinds
+of detections occupy each support pattern*.
+
+That is one call.
+
+```matlab
+options = vawlume.eda.explorationOptions(struct(seed=20260918));
+
+exploration = vawlume.eda.runExploration(conn, ...
+    struct(project_key="my_project"), ...
+    Options=options, RepoRoot=repoRoot, ...
+    OutputRoot=fullfile(tempdir, "vawlume_exploration"), ...
+    SourceRoot="C:\path\to\audio_root");
+```
+
+[`../../examples/templates/consilience_exploration_workflow_template.m`](../../examples/templates/consilience_exploration_workflow_template.m)
+is a ten-section template to copy and edit: everything you choose is in section
+one, and the rest reads the results back.
+
+**You do not define a parameter grid.** Which matching dimensions are screened,
+at what low and high values, how large the subset is and which recording-level
+field it is stratified on are all decided by the workflow and written into its
+provenance record. A normal run configures a seed and nothing else.
+
+#### What it does, in order
+
+1. **Applies the tracked reference configuration** to every recording. The
+   diagnostics read stored candidate pairs and the probe values are anchored on
+   quantiles of those same observed metrics, so something has to have matched
+   first. This is also the run the support-pattern summaries and the gallery are
+   computed at.
+2. **Diagnoses the candidate-metric space** — distributions and robust
+   quantiles, Pearson and Spearman correlation, partial correlation, coverage in
+   five disjoint categories, and redundancy findings.
+3. **Resolves what to screen.** Up to four dimensions participate:
+   `min_temporal_iou` and the three `max_abs_{onset,offset,duration}_difference_s`
+   bounds. A dimension with too little coverage, or whose low and high values
+   resolve equal, is reported **inactive with its reason** rather than screened
+   at an arbitrary value.
+4. **Screens the whole dataset** under a bounded, interaction-aware design.
+5. **Draws a seeded subset of recordings**, stratified automatically when a
+   recording-level field qualifies, and probes it with a larger budget.
+6. **Compares the two probes**, per factor per response.
+7. **Characterizes every exact extractor-support pattern** at the reference
+   configuration, with coverage beside every feature summary.
+8. **Renders a representative spectrogram gallery** from the original audio.
+9. **Exports** tables, figures, the example index and a provenance record.
+
+Each stage can be run on its own. `Stages="diagnostics"` gives you the cheap
+first look without building a design or executing a probe, and `Apply=false`
+prices every probe without writing anything — worth doing before you commit to a
+long run.
+
+#### Know the cost before you start it
+
+For `C` configurations, `R` recordings and `N` extractors the work is
+
+```
+C × R × N(N−1)/2   matching analyses   +   C × R   agreement analyses
+```
+
+For three extractors that is **four analyses per configuration per recording**,
+so a configuration count understates the real work roughly fourfold. Eight
+configurations over twenty recordings is 640 analyses, not 8. The workflow
+prints this estimate before each probe, warns at 250 analyses, and refuses above
+2 500 unless you pass `AllowExceedingMaximum` deliberately. Setting
+`analysis_budget` in the configuration struct lowers that ceiling; a refusal then
+names the budget, the recordings and the design rather than truncating the probe
+to fit.
+
+#### Reading the output
+
+- **`exploration.probe.resolution.factors`** is the record of what the system
+  chose: each factor's interval, the quantile it came from, how many
+  observations supported it, which end is stricter, and whether the reference
+  configuration's own value falls inside the probed interval. It often does not,
+  and that matters: the screen then explores a neighbouring region rather than
+  the neighbourhood of the configuration the support summaries use.
+- **`exploration.screen.design.alias.alias_table`** says what the design can and
+  cannot separate. If the design is a fraction rather than a full factorial,
+  some effects are confounded. At resolution III every main effect is confounded
+  with a two-factor interaction, and the leverage report will then categorise
+  every factor as `interaction_suspected` and make **no leverage claim at all**.
+  That is the screen declining to say something its design cannot support, not a
+  failure.
+- **`exploration.concordance.comparison`** is a table, not a score. There is no
+  agreement percentage, and you should not compute one: the probes differ in
+  design *and* in dataset, so disagreement may mean the compact screen is
+  misleading, or that the subset is unrepresentative, or that an effect genuinely
+  varies between recordings. The output names those possibilities and chooses
+  between none of them.
+- **`exploration.support_patterns.primary.patterns`** has one row per exact
+  extractor set — for three extractors, each alone, each pair, and the triple —
+  including the ones nothing occupies. A zero row and an absent row mean
+  different things.
+- An **undefined value is a finding.** Undefined correlations carry a reason
+  (`constant_column`, `ill_conditioned`, `insufficient_observations`, …) rather
+  than being regularized into a plausible-looking number.
+
+#### Cautions you should not have to discover
+
+- **Agreement among extractors is methodological evidence, not ground truth.**
+  Extractors can share biases, and a detection reported by only one extractor may
+  still be a real vocalization.
+- **Non-agreement is not symmetric evidence.** One extractor failing to report an
+  event does not establish that the event is false. An extractor-unique detection
+  is a support pattern, not an error category.
+- **No threshold here is recommended, selected, or calibrated.** The reference
+  configuration's own status is `illustrative_prototype`. Screening around a
+  value does not calibrate it.
+- **Agreement between the two probes does not remove the need for calibration.**
+  They share every assumption of the matching and agreement layers and neither
+  observes ground truth.
+- **A fractional design aliases effects it cannot separate.** Read the alias
+  table before reading a main effect.
+- **The shared feature space across DeepSqueak, MUPET and USVSEG is two features
+  wide** — duration and centre frequency. Minimum, maximum and bandwidth
+  frequency are registered for DeepSqueak and MUPET only, so they can be reported
+  *within* those patterns and never across patterns: the difference would be the
+  extractor composition, not the calls. The workflow refuses such a request
+  rather than flagging it.
+- **USVSEG contributes no measured frequency band edges.** Its annotations show a
+  time extent and the frequency markers it did measure. No band is ever
+  synthesized from a centre value, a peak value, a coefficient of variation, or
+  assumed call shape, so a group containing a USVSEG detection shows rectangles
+  for DeepSqueak and MUPET beside full-height boundary lines and markers for
+  USVSEG. That mixture is the honest picture.
+- **The gallery is illustrative, not a review form.** There is no verdict column
+  and no re-import path, and a pattern with too few members yields what it has
+  plus a reported shortfall rather than being padded from a neighbour.
+
+[`../development/35_consilience_exploration_workflow.md`](../development/35_consilience_exploration_workflow.md)
+documents the stages, the designs, the coverage vocabulary, the provenance
+record, and the full list of what this workflow does not do.
 
 ---
 
@@ -1764,8 +1917,14 @@ resolution, and per-row issue reporting; correspondence of imported windows to
 detection, consensus-event, and multi-basis agreement-group targets under an
 explicitly declared clock with preserved ambiguity and extrapolation flags;
 policy-governed decisions carrying the versioned policy and the threshold that
-bound each one; and one read-only report returning the whole run with counts,
-memberships and observed ranges as its only QC.
+bound each one; one read-only report returning the whole run with counts,
+memberships and observed ranges as its only QC; and one automated
+extractor-consilience exploration carrying a dataset from candidate-metric
+diagnostics through a bounded whole-dataset threshold screen, a seeded
+metadata-stratified subset probe, a per-factor per-response probe comparison,
+exact extractor-support-pattern characterization with registered-only feature
+comparability and coverage, and a measured-geometry spectrogram gallery, to
+exported tables, figures, an example index and a provenance record.
 
 ### Implemented but explicitly uncalibrated or narrow
 
@@ -1774,6 +1933,25 @@ memberships and observed ranges as its only QC.
   genuine paired extractor session and an independent manually reviewed reference
   subset; neither exists yet. No configuration should be reported as optimal,
   validated, or recommended.
+- **The consilience exploration selects no threshold and recommends none.** It
+  reports how correspondence responds to matching assumptions in one dataset:
+  several transparent measures, never a single score, and no argmax over
+  configurations. Adding screenable dimensions and probing around a value does
+  not calibrate that value. Agreement between its two sensitivity probes is
+  informative and does not establish that manual calibration is unnecessary.
+- **A fractional screening design aliases effects it cannot separate**, and at
+  resolution III it can make no leverage claim about any factor at all. The alias
+  table is part of the result and should be read before any main effect.
+- **Only duration and centre frequency are registered as comparable across all
+  three pilot extractors.** Minimum, maximum and bandwidth frequency are
+  registered for DeepSqueak and MUPET only and are reportable within those
+  patterns alone; peak frequency is declared by two extractors and paired by no
+  relationship, so it is comparable nowhere. The shared space is thin, and that
+  thinness is a property of the extractor set and its registry rather than
+  something the prototype closed by harmonizing features itself.
+- **The support-pattern profile is per recording.** Agreement is
+  recording-scoped, so a reference run over several recordings yields one profile
+  each. They are reported separately and are not pooled.
 - A solved alignment fit is `estimated`, never `validated`. There is no
   calibrated acceptance threshold.
 - Anchor uncertainty is preserved, propagated as a stated uncalibrated bound,
@@ -1966,6 +2144,7 @@ extractor-native classes; publication artefacts.
 - [`../development/32_imported_attribution_intake.md`](../development/32_imported_attribution_intake.md) — the imported path, declared-only label resolution, and why intake relates a window to no event
 - [`../development/33_attribution_correspondence.md`](../development/33_attribution_correspondence.md) — the declared clock, the eligibility rule, the two bases, and preserved ambiguity
 - [`../development/34_integrated_caller_attribution_demonstration.md`](../development/34_integrated_caller_attribution_demonstration.md) — the integrated caller-attribution example, its two target kinds, the refusals it demonstrates, and what it cannot show
+- [`../development/35_consilience_exploration_workflow.md`](../development/35_consilience_exploration_workflow.md) — the exploratory workflow: its stages, the analysis-cost arithmetic, the diagnostic battery and what an undefined partial correlation means, fractional-factorial aliasing, subset sampling, the two support-pattern vocabularies, the thin shared feature space, the USVSEG frequency-extent limitation, and its explicit non-goals
 
 ### Configuration and schema
 

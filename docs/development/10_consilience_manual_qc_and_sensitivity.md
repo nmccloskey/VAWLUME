@@ -191,6 +191,16 @@ by construction rather than by filtering.
 
 ## Threshold sensitivity
 
+> **Two different sensitivity layers now exist, and they are not the same
+> thing.** The one described below reads back a small set of
+> **caller-authored** configuration files that differ in one parameter, for one
+> recording and one run pair. The exploratory workflow in
+> [`35_consilience_exploration_workflow.md`](35_consilience_exploration_workflow.md)
+> instead *constructs* a bounded interaction-aware design over several matching
+> dimensions, executes it across a whole dataset and a seeded recording subset,
+> and compares the two. Neither selects a threshold; they answer different
+> questions at different scales, and their outputs should not be pooled.
+
 ### Configurations
 
 Each configuration is a separate specification file with its own profile key,

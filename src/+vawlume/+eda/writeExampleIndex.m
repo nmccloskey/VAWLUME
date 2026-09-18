@@ -66,10 +66,41 @@ for name = string(left.Properties.VariableNames)
         a(ismissing(a)) = "";
         b = string(b);
         b(ismissing(b)) = "";
+        if ~isequaln(a, b)
+            tf = false;
+            return
+        end
+        continue
     end
-    if ~isequaln(a, b)
+    if ~numericallyEqual(a, b)
         tf = false;
         return
     end
 end
+end
+
+function tf = numericallyEqual(a, b)
+%NUMERICALLYEQUAL Equal to within the decimal round trip's representation error.
+%
+% `writetable` writes a double with 15 significant decimal digits, one short of
+% the 17 a double needs to survive a text round trip exactly. A snippet bound
+% such as 30.036 + 0.05 therefore reads back one unit in the last place away
+% from the value written, and bit equality would refuse an index that is
+% perfectly correct - on ordinary data, for a reason that has nothing to do with
+% the index.
+%
+% The check is therefore that every number returned within representation error.
+% That still catches everything this verification exists to catch: a shifted
+% column, a truncated field, a delimiter swallowed inside a value, or a number
+% that did not survive the write at all. Those are wrong by orders of magnitude,
+% not by an ulp.
+a = double(a(:));
+b = double(b(:));
+if numel(a) ~= numel(b)
+    tf = false;
+    return
+end
+bothMissing = isnan(a) & isnan(b);
+tolerance = 1e-12 * max(1, max(abs(a), abs(b)));
+tf = all(bothMissing | (~isnan(a) & ~isnan(b) & abs(a - b) <= tolerance));
 end

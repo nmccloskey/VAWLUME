@@ -300,6 +300,14 @@ end
 
 % Check the opposite call direction as well: computational entry points must
 % not acquire a dependency on the visualization layer.
+%
+% `runExploration.m` is exempt, and only it. It is the workflow orchestrator,
+% not a computational entry point: it defines no metric, estimates nothing and
+% computes no summary, so it cannot acquire the dependency this scan exists to
+% prevent — a calculation that cannot be tested without a figure. Producing the
+% figure bundle is part of what it is for. Every other non-plot file in the
+% package is still scanned.
+orchestrators = "runExploration.m";
 packageFolder = fullfile(root, "src", "+vawlume", "+eda");
 packageFiles = dir(fullfile(packageFolder, "*.m"));
 plotCalls = ["plotMetricDistribution(", "plotMetricCorrelation(", ...
@@ -309,7 +317,8 @@ plotCalls = ["plotMetricDistribution(", "plotMetricCorrelation(", ...
     "plotSupportFeatureDistributions("];
 for index = 1:numel(packageFiles)
     file = string(packageFiles(index).name);
-    if startsWith(file, "plot") || startsWith(file, "render")
+    if startsWith(file, "plot") || startsWith(file, "render") || ...
+            ismember(file, orchestrators)
         continue
     end
     source = codeOnly(fileread(fullfile(packageFolder, file)));

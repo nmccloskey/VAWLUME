@@ -70,6 +70,7 @@ matching_consensus_demo          % the full pairwise cross-extractor path
 multi_extractor_agreement_demo   % all three extractors, end to end
 multimodal_integration_demo      % geometry, tracking, identity, acoustic response
 caller_attribution_demo          % imported caller attribution, end to end
+consilience_exploration_demo     % the exploratory consilience workflow, end to end
 ```
 
 The demonstrations under [`examples/`](examples/) create every input they
@@ -414,6 +415,23 @@ stay four separate numbers; none is derived from another and no caller is
 assigned. See
 [`docs/development/29_integrated_multimodal_demonstration.md`](docs/development/29_integrated_multimodal_demonstration.md).
 
+The extractor-consilience exploration demonstration at
+[`examples/consilience_exploration_demo.m`](examples/consilience_exploration_demo.m)
+is the integrated proof for the exploratory workflow. It applies the tracked
+reference configuration over a synthetic six-recording project, diagnoses the
+candidate-metric space, decides for itself which matching thresholds to screen
+and at what values, screens them over the whole dataset under a bounded
+interaction-aware design, draws a seeded metadata-stratified recording subset and
+probes it harder, compares the two probes as a table rather than a score,
+characterizes every exact extractor-support pattern at the reference, renders a
+spectrogram gallery from the original audio, and exports tables, figures, an
+example index and a provenance record. It deliberately shows thin data: the
+fractional screen makes **no leverage claim about any factor** and says why,
+three support patterns hold nothing at all, and six cannot supply the number of
+examples requested. No threshold it explores is selected, recommended, or
+calibrated. See
+[`docs/development/35_consilience_exploration_workflow.md`](docs/development/35_consilience_exploration_workflow.md).
+
 The caller-attribution demonstration at
 [`examples/caller_attribution_demo.m`](examples/caller_attribution_demo.m) is the
 integrated Phase 4 proof. It imports an external attribution export on the
@@ -443,6 +461,7 @@ agreement_filter_demo
 temporal_alignment_demo
 multimodal_integration_demo
 caller_attribution_demo
+consilience_exploration_demo
 ```
 
 Each creates every input it needs under the system temporary directory and
@@ -701,6 +720,7 @@ diagram can draw.
 - [`docs/development/32_imported_attribution_intake.md`](docs/development/32_imported_attribution_intake.md) — the imported path: label resolution, preserved source values, and why intake relates a window to no event
 - [`docs/development/33_attribution_correspondence.md`](docs/development/33_attribution_correspondence.md) — relating imported windows to VAWLUME events: the declared clock, the eligibility rule, and preserved ambiguity
 - [`docs/development/34_integrated_caller_attribution_demonstration.md`](docs/development/34_integrated_caller_attribution_demonstration.md) — the integrated caller-attribution example: its synthetic session, the two target kinds, the refusals it demonstrates, and the boundaries it does not cross
+- [`docs/development/35_consilience_exploration_workflow.md`](docs/development/35_consilience_exploration_workflow.md) — the exploratory consilience workflow: its stages, the analysis-cost arithmetic, fractional-factorial aliasing, subset sampling, the two support-pattern vocabularies, the thin shared feature space, the USVSEG frequency-extent limitation, and its explicit non-goals
 
 Extractor-specific design references should live under:
 
