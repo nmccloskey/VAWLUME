@@ -14,6 +14,9 @@ function result = runScreen(conn, dataset, materialized, options)
 %   Apply                   write, default false
 %   RepoRoot                repository root
 %   AgreementSpecPath       agreement policy; defaults to the tracked one
+%   ProbeRole               "whole_dataset" (default) or "subset". Tags this
+%                           probe in the provenance so the two probes of one
+%                           exploration run are distinguishable
 %   StopOnFailure           abandon the probe at the first failed unit,
 %                           default false
 %   WarnAtAnalyses / MaximumAnalyses / AllowExceedingMaximum
@@ -55,6 +58,8 @@ arguments
     options.Apply (1,1) logical = false
     options.RepoRoot (1,1) string = ""
     options.AgreementSpecPath (1,1) string = ""
+    options.ProbeRole (1,1) string ...
+        {mustBeMember(options.ProbeRole, ["whole_dataset", "subset"])} = "whole_dataset"
     options.StopOnFailure (1,1) logical = false
     options.WarnAtAnalyses (1,1) double {mustBePositive} = 250
     options.MaximumAnalyses (1,1) double {mustBePositive} = 2500
@@ -107,6 +112,7 @@ result = struct( ...
     applied=options.Apply, ...
     abandoned=abandoned, ...
     exploration_run_key=materialized.exploration_run_key, ...
+    probe_role=options.ProbeRole, ...
     exploration_run=exploration, ...
     project_key=dataset.project_key, ...
     cost=cost, ...
@@ -346,7 +352,7 @@ else
     action = "created";
 end
 
-linked = linkSources(conn, analysisId, manifest);
+linked = linkSources(conn, analysisId, manifest, options.ProbeRole);
 profile = registerDesignRecord(conn, dataset, materialized, analysisId, ...
     cost, completeness, options);
 
@@ -360,7 +366,19 @@ exploration = struct( ...
     detail="");
 end
 
-function linked = linkSources(conn, analysisId, manifest)
+function linked = linkSources(conn, analysisId, manifest, probeRole)
+%LINKSOURCES Attach this probe's agreement analyses to the exploration run.
+%
+% The dependency role carries the probe role, so a reader can tell the two
+% probes of one exploration run apart without re-deriving which configurations
+% and recordings belonged to which.
+%
+% analysis_run_sources is keyed on (analysis_run_id, source_analysis_run_id), so
+% one analysis carries ONE role. When the two probes share a configuration and a
+% recording the analysis is genuinely the same one and is reused rather than
+% rewritten, and it keeps the role of the probe that produced it first. That is
+% truthful but incomplete: the membership a reader wants is recoverable from each
+% probe's own design record, which lists its configurations and recordings.
 agreement = manifest(manifest.unit_kind == "agreement" & ...
     ismember(manifest.status, ["committed", "reused"]), :);
 linked = 0;
@@ -377,8 +395,8 @@ for index = 1:height(agreement)
     end
     execute(conn, "INSERT INTO analysis_run_sources(analysis_run_id, " + ...
         "source_analysis_run_id, dependency_role) VALUES(" + ...
-        string(analysisId) + ", " + string(sourceId) + ...
-        ", 'exploration_agreement')");
+        string(analysisId) + ", " + string(sourceId) + ", " + ...
+        edaSqlText("exploration_agreement_" + probeRole) + ")");
     linked = linked + 1;
 end
 end
@@ -389,25 +407,34 @@ function profile = registerDesignRecord(conn, dataset, materialized, ...
 %
 % profile_kind 'analysis_settings' and content_format 'json' are both already in
 % the schema's vocabularies, so this needs no schema change.
-payload = designPayload(materialized, dataset, cost, completeness);
+payload = designPayload(materialized, dataset, cost, completeness, ...
+    options.ProbeRole);
 directory = fullfile(materialized.output_root, "exploration", ...
     materialized.exploration_run_key);
 if ~isfolder(directory)
     mkdir(directory);
 end
-path = fullfile(directory, "exploration_design_record.json");
+% The role is part of the filename and of the version label. Two probes of one
+% exploration run share a run key - which is what makes an analysis common to
+% both reused rather than duplicated - so an unqualified name would have the
+% subset probe overwrite the whole-dataset probe's design record on disk and
+% collide with it on config_profile_versions' UNIQUE(profile_id, version_label).
+% The label is what a reader reads, so it carries the role rather than a counter.
+label = materialized.exploration_run_key + "#" + options.ProbeRole;
+path = fullfile(directory, "exploration_design_record_" + ...
+    options.ProbeRole + ".json");
 writeJson(path, payload);
 checksum = edaSha256OfFile(path);
 
 profileKey = "vawlume.eda.exploration_design." + ...
     materialized.exploration_run_key;
 profileId = ensureProfile(conn, dataset.project_id, profileKey);
-versionId = ensureVersion(conn, profileId, materialized.exploration_run_key, ...
-    path, checksum, options);
+versionId = ensureVersion(conn, profileId, label, path, checksum, options);
 ensureAssignment(conn, analysisId, versionId);
 
 profile = struct(profile_key=profileKey, profile_id=profileId, ...
-    profile_version_id=versionId, version_label=materialized.exploration_run_key, ...
+    profile_version_id=versionId, version_label=label, ...
+    probe_role=options.ProbeRole, ...
     assignment_role="exploration_design", content_uri=string(path), ...
     checksum_sha256=checksum);
 end
@@ -462,11 +489,12 @@ execute(conn, "INSERT INTO analysis_run_profiles(analysis_run_id, " + ...
     ", " + string(versionId) + ", 'exploration_design')");
 end
 
-function value = designPayload(materialized, dataset, cost, completeness)
+function value = designPayload(materialized, dataset, cost, completeness, probeRole)
 provenance = materialized.provenance;
 value = struct( ...
     record_version="1.0", ...
     exploration_run_key=materialized.exploration_run_key, ...
+    probe_role=probeRole, ...
     project_key=dataset.project_key, ...
     recording_ids=dataset.recordings.recording_id', ...
     extractor_keys=dataset.extractor_keys, ...
