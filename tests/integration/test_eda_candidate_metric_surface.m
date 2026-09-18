@@ -417,13 +417,30 @@ before = databaseCounts(fixture.conn);
 surfaceOf(fixture);
 verifyEqual(testCase, databaseCounts(fixture.conn), before);
 
+% Scan the whole package except the one function that owns database writes.
+%
+% This test originally scanned every file in +eda, which was correct while the
+% package was read-only throughout. The exploration runner deliberately writes -
+% it is the only thing in the workflow that does - so the assertion is now
+% "nothing writes EXCEPT the runner" rather than "nothing writes". Keeping the
+% scan package-wide with one named exemption is what makes it still catch an
+% accidental write introduced anywhere else, including in a function added
+% later.
+writers = "runScreen.m";
 matchingRoot = fullfile(fixture.repo_root, "src", "+vawlume", "+eda");
 files = dir(fullfile(matchingRoot, "**", "*.m"));
 source = "";
+scanned = 0;
 for index = 1:numel(files)
+    if ismember(string(files(index).name), writers)
+        continue
+    end
     source = source + newline + ...
         string(fileread(fullfile(files(index).folder, files(index).name)));
+    scanned = scanned + 1;
 end
+verifyGreaterThan(testCase, scanned, 10, ...
+    "The scan must cover the package, not an accidentally empty set.");
 for forbidden = ["INSERT INTO", "UPDATE ", "DELETE FROM", "DROP ", ...
         "CREATE VIEW", "CREATE TABLE", "sqlwrite", "AutoCommit"]
     verifyFalse(testCase, contains(source, forbidden), forbidden);
