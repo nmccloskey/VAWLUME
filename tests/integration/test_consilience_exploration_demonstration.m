@@ -201,18 +201,16 @@ for name = ["metric_distributions", "probe_factors", "screen_responses", ...
     verifyTrue(testCase, ismember(name, value.table_names), ...
         "Export '" + name + "' is missing from the bundle.");
 end
-verifyGreaterThanOrEqual(testCase, value.figure_count, 13);
+verifyGreaterThanOrEqual(testCase, value.figure_count, 14);
 verifyTrue(testCase, value.provenance_written);
 verifyGreaterThan(testCase, value.provenance_bytes, 2000);
 
-% One figure family cannot be drawn on any input: renderMetricCoverageTable
-% builds a uitable and the raster export path uses `print`, which refuses a
-% figure carrying a UI control. The run records the refusal and keeps going
-% rather than abandoning the whole set, and the coverage counts it would have
-% shown are in metric_distributions.csv regardless.
 undrawn = testCase.TestData.first.exports.figures_not_drawn;
-verifyEqual(testCase, undrawn.name, "metric_coverage");
-verifyTrue(testCase, contains(undrawn.path(1), "not drawn"));
+verifyEqual(testCase, height(undrawn), 0);
+figures = value.figures;
+coverage = figures(figures.name == "metric_coverage", :);
+verifyEqual(testCase, height(coverage), 1);
+verifyFalse(testCase, startsWith(coverage.path, "not drawn"));
 end
 
 % ------------------------------------------------------------- determinism ---

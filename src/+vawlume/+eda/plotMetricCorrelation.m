@@ -8,7 +8,7 @@ arguments
     dependencies (1,1) struct
     kind (1,1) string {mustBeMember(kind, ["pearson", "spearman", "partial"])}
     options.Visible (1,1) logical = false
-    options.FigureSizeInches (1,2) double {mustBePositive} = [11 8]
+    options.FigureSizeInches (1,2) double {mustBePositive} = [16 14]
     options.ExportPath (1,1) string = ""
     options.ResolutionDpi (1,1) double {mustBePositive} = 300
 end
@@ -40,9 +40,27 @@ if ~isequal(size(matrix), [numel(names), numel(names)]) || ...
         "metric-name count.", kind);
 end
 caution = edaCautionNote();
+showCellReasons = numel(names) <= 8;
+note = "Undefined cells are NaN with the displayed reason; they are " + ...
+    "not zero and do not indicate absence of association.";
+reasonVocabulary = unique(reasons(strlength(reasons) > 0));
+if ~showCellReasons
+    note = [note; "At this metric density, crossed cells remain visibly " + ...
+        "undefined but per-cell reason text is omitted for legibility. " + ...
+        "Undefined-reason vocabulary: " + ...
+        strjoin(replace(reasonVocabulary, "_", " "), ", ") + "."];
+end
 [fig, ax] = edaPlotFigure(options.Visible, options.FigureSizeInches, ...
-    caution, "Undefined cells are NaN with the displayed reason; they are " + ...
-    "not zero and do not indicate absence of association.");
+    caution, note);
+if ~showCellReasons
+    % Dense rotated tick labels need their own vertical clearance above the
+    % interpretation box. The larger default canvas keeps every cell legible.
+    ax.Position = [0.10 0.60 0.84 0.30];
+end
+figureData = fig.UserData;
+figureData.undefined_reason_vocabulary = reasonVocabulary;
+figureData.per_cell_reason_labels = showCellReasons;
+fig.UserData = figureData;
 imageHandle = imagesc(ax, matrix, [-1 1]);
 imageHandle.AlphaData = isfinite(matrix);
 imageHandle.Tag = "vawlume-correlation-matrix";
@@ -75,11 +93,13 @@ for row = 1:numel(names)
                 Color=[0.35 0.35 0.35], HandleVisibility="off");
             line(ax, [column-0.42 column+0.42], [row+0.42 row-0.42], ...
                 Color=[0.35 0.35 0.35], HandleVisibility="off");
-            label = replace(reasons(row, column), "_", " ");
-            if strlength(label) == 0, label = "undefined"; end
-            text(ax, column, row, "undefined" + newline + label, ...
-                HorizontalAlignment="center", FontSize=6, ...
-                Interpreter="none", Tag="vawlume-undefined-reason");
+            if showCellReasons
+                label = replace(reasons(row, column), "_", " ");
+                if strlength(label) == 0, label = "undefined"; end
+                text(ax, column, row, "undefined" + newline + label, ...
+                    HorizontalAlignment="center", FontSize=6, ...
+                    Interpreter="none", Tag="vawlume-undefined-reason");
+            end
         end
     end
 end

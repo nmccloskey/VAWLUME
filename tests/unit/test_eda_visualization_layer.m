@@ -6,9 +6,12 @@ tests = functiontests({ ...
     @testEveryFigureFamilyRunsWithoutAConnection, ...
     @testDiagnosticGraphicsEqualTheirSourceValues, ...
     @testUndefinedPartialCellsAreExplicitAndNeverZero, ...
+    @testDenseUndefinedMatrixKeepsCrossesAndMovesReasonsToTheNote, ...
     @testScreeningGraphicsEqualTheirSourceValues, ...
     @testLeverageUnknownsRemainVisibleAndExtractorStyleMatches, ...
+    @testStrictnessDirectionReachesEveryFactorLabel, ...
     @testSupportPatternGraphicsPreserveExactPatternsAndCoverage, ...
+    @testMultiParagraphAndLongNotesCannotDisplaceTheCaution, ...
     @testDegenerateInputsRefuseOrDegradeExplicitly, ...
     @testFigureExportUsesRequestedResolutionAndVectorFormat, ...
     @testTableExportCarriesProvenanceCautionAndHostileText, ...
@@ -77,11 +80,38 @@ ax = findall(correlationFigure, Tag="vawlume-eda-axes");
 verifyEqual(testCase, colormap(ax), parula(256), AbsTol=eps);
 
 tableHandle = findall(coverageFigure, Tag="vawlume-metric-coverage-table");
-verifyEqual(testCase, tableHandle.Data.metric_name, ...
+verifyEqual(testCase, tableHandle.UserData.metric_name, ...
     f.distributions.metric_name);
-verifyEqual(testCase, tableHandle.Data.supported, f.distributions.supported);
+verifyEqual(testCase, tableHandle.UserData.supported, f.distributions.supported);
 clear cleanup
 closeAll([histogramFigure correlationFigure coverageFigure]);
+end
+
+function testDenseUndefinedMatrixKeepsCrossesAndMovesReasonsToTheNote(testCase)
+count = 16;
+names = "metric_" + string((1:count)');
+dependencies = struct(metric_names=names, pearson=nan(count), ...
+    spearman=nan(count), correlation_observations=zeros(count), ...
+    correlation_undefined_reason=repmat("insufficient_observations", count), ...
+    partial=struct(matrix=nan(count), ...
+        undefined_reason=repmat("insufficient_observations", count)));
+fig = vawlume.eda.plotMetricCorrelation(dependencies, "partial");
+cleanup = onCleanup(@() closeAll(fig));
+imageHandle = findall(fig, Tag="vawlume-correlation-matrix");
+verifyTrue(testCase, all(isnan(imageHandle.CData), "all"));
+verifyFalse(testCase, any(imageHandle.CData == 0, "all"));
+verifyEqual(testCase, numel(findall(fig, Tag="vawlume-undefined-cell")), ...
+    count^2);
+verifyEmpty(testCase, findall(fig, Tag="vawlume-undefined-reason"));
+note = findall(fig, Tag="vawlume-eda-interpretation-note");
+verifyTrue(testCase, any(contains(string(note.String), ...
+    "Undefined-reason vocabulary: insufficient observations")));
+verifyFalse(testCase, fig.UserData.per_cell_reason_labels);
+verifyEqual(testCase, fig.Position(3:4), 100 * [16 14]);
+ax = findall(fig, Tag="vawlume-eda-axes");
+verifyGreaterThanOrEqual(testCase, ax.Position(2), 0.59);
+clear cleanup
+closeAll(fig);
 end
 
 function testUndefinedPartialCellsAreExplicitAndNeverZero(testCase)
@@ -102,6 +132,74 @@ for cellHandle = cells'
 end
 clear cleanup
 closeAll(fig);
+end
+
+function testStrictnessDirectionReachesEveryFactorLabel(testCase)
+f = fixture();
+fig = vawlume.eda.plotMainEffects(f.categories, ...
+    Response="agreement_groups_total", QualifierKind="extractor_key", ...
+    Qualifier="usvseg", ValueKind="count");
+cleanup = onCleanup(@() closeAll(fig));
+ax = findall(fig, Tag="vawlume-eda-axes");
+labels = string(ax.XTickLabel(:));
+verifyEqual(testCase, numel(labels), height(f.categories));
+key = findall(fig, Tag="vawlume-main-effects-factor-key");
+verifyEqual(testCase, numel(key), 1);
+verifyTrue(testCase, any(contains(key.UserData.strictness_label, ...
+    "larger = stricter")));
+verifyTrue(testCase, any(contains(key.UserData.strictness_label, ...
+    "smaller = stricter")));
+clear cleanup
+closeAll(fig);
+
+withoutInactiveDirection = f.categories;
+withoutInactiveDirection.strictness_direction(2) = "";
+inactiveFigure = vawlume.eda.plotMainEffects(withoutInactiveDirection, ...
+    Response="agreement_groups_total", QualifierKind="extractor_key", ...
+    Qualifier="usvseg", ValueKind="count");
+cleanupInactive = onCleanup(@() closeAll(inactiveFigure));
+inactiveAxes = findall(inactiveFigure, Tag="vawlume-eda-axes");
+verifyEqual(testCase, numel(inactiveAxes.XTickLabel), ...
+    height(withoutInactiveDirection));
+inactiveKey = findall(inactiveFigure, ...
+    Tag="vawlume-main-effects-factor-key");
+verifyTrue(testCase, any(contains(inactiveKey.UserData.strictness_label, ...
+    "strictness not supplied")));
+withoutActiveDirection = f.categories;
+withoutActiveDirection.strictness_direction(1) = "";
+verifyError(testCase, @() vawlume.eda.plotMainEffects( ...
+    withoutActiveDirection, Response="agreement_groups_total", ...
+    QualifierKind="extractor_key", Qualifier="usvseg", ValueKind="count"), ...
+    "vawlume:eda:PlotInputInvalid");
+clear cleanupInactive
+closeAll(inactiveFigure);
+end
+
+function testMultiParagraphAndLongNotesCannotDisplaceTheCaution(testCase)
+f = fixture();
+multiParagraph = ["first paragraph"; "second paragraph"];
+summary = vawlume.eda.plotSupportPatternSummary(f.patterns, ...
+    InterpretationNote=multiParagraph);
+longNote = repmat("An intentionally excessive interpretation paragraph " + ...
+    "that may be clipped without affecting the caution.", 40, 1);
+feature = vawlume.eda.plotSupportFeatureDistributions( ...
+    f.features, "vocalization_duration", InterpretationNote=longNote);
+cleanup = onCleanup(@() closeAll([summary feature]));
+for fig = [summary feature]
+    caution = findall(fig, Tag="vawlume-eda-caution");
+    note = findall(fig, Tag="vawlume-eda-interpretation-note");
+    verifyEqual(testCase, numel(caution), 1);
+    verifyEqual(testCase, numel(note), 1);
+    verifyTrue(testCase, any(contains(string(caution.String), ...
+        "does not establish that manual calibration is unnecessary")));
+    cautionTop = caution.Position(2) + caution.Position(4);
+    verifyLessThan(testCase, cautionTop, note.Position(2));
+end
+verifyTrue(testCase, any(contains(string(findall(summary, ...
+    Tag="vawlume-eda-interpretation-note").String), "first paragraph")));
+verifyTrue(testCase, feature.UserData.long_note_layout);
+clear cleanup
+closeAll([summary feature]);
 end
 
 function testScreeningGraphicsEqualTheirSourceValues(testCase)
@@ -143,7 +241,11 @@ fig = vawlume.eda.plotMainEffects(f.categories, ...
     Qualifier="usvseg", ValueKind="count");
 cleanup = onCleanup(@() closeAll(fig));
 
-labels = string({findall(fig, Tag="vawlume-leverage-category").String});
+categoryGraphics = findall(fig, Tag="vawlume-leverage-category");
+labels = strings(numel(categoryGraphics), 1);
+for index = 1:numel(categoryGraphics)
+    labels(index) = categoryGraphics(index).UserData.category;
+end
 verifyTrue(testCase, any(contains(labels, "interaction_suspected")));
 verifyTrue(testCase, any(contains(labels, "insufficient_information")));
 style = vawlume.eda.exampleStyles("usvseg");
@@ -221,21 +323,29 @@ end
 function testFigureExportUsesRequestedResolutionAndVectorFormat(testCase)
 f = fixture();
 pngPath = string(tempname) + ".png";
+coveragePath = string(tempname) + ".png";
 svgPath = string(tempname) + ".svg";
-cleanupFiles = onCleanup(@() deleteFiles([pngPath svgPath]));
+cleanupFiles = onCleanup(@() deleteFiles([pngPath coveragePath svgPath]));
 fig = vawlume.eda.plotMetricDistribution(f.metrics, "metric_a", ...
     ExportPath=pngPath, ResolutionDpi=100, FigureSizeInches=[4 3]);
 cleanupFigure = onCleanup(@() closeAll(fig));
 verifyTrue(testCase, isfile(pngPath));
 info = imfinfo(pngPath);
 verifyEqual(testCase, [info.Width info.Height], [400 300], AbsTol=2);
+coverage = vawlume.eda.renderMetricCoverageTable(f.distributions, ...
+    ExportPath=coveragePath, ResolutionDpi=100, FigureSizeInches=[12 7]);
+cleanupCoverage = onCleanup(@() closeAll(coverage));
+verifyTrue(testCase, isfile(coveragePath));
+coverageInfo = imfinfo(coveragePath);
+verifyEqual(testCase, [coverageInfo.Width coverageInfo.Height], ...
+    [1200 700], AbsTol=2);
 returned = vawlume.eda.exportFigure(fig, svgPath, SizeInches=[4 3]);
 verifyEqual(testCase, returned, fig);
 verifyTrue(testCase, isfile(svgPath));
 verifyGreaterThan(testCase, dir(svgPath).bytes, 100);
-clear cleanupFigure cleanupFiles
-closeAll(fig);
-deleteFiles([pngPath svgPath]);
+clear cleanupCoverage cleanupFigure cleanupFiles
+closeAll([fig coverage]);
+deleteFiles([pngPath coveragePath svgPath]);
 end
 
 function testTableExportCarriesProvenanceCautionAndHostileText(testCase)
@@ -368,10 +478,12 @@ f.categories = table( ...
     repmat("agreement_groups_total",3,1), repmat("extractor_key",3,1), ...
     repmat("usvseg",3,1), strings(3,1), strings(3,1), ...
     repmat("count",3,1), ["factor_a";"factor_b";"factor_c"], ...
+    ["larger_is_stricter";"smaller_is_stricter";"smaller_is_stricter"], ...
     [2;NaN;0.1], [4;NaN;4], ...
     ["interaction_suspected";"insufficient_information";"low_leverage"], ...
     VariableNames=["response", "qualifier_kind", "qualifier", ...
     "secondary_kind", "secondary", "value_kind", "factor_name", ...
+    "strictness_direction", ...
     "main_effect", "response_range", "category"]);
 
 configs = ["cfg-a";"cfg-a";"cfg-b";"cfg-b"];
