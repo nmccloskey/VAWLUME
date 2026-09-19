@@ -201,6 +201,14 @@ Partial correlation is computed from the precision matrix,
 column, near-constant column, insufficient complete observations, and
 ill-conditioning.
 
+The insufficiency floor is complete-case `n < p + 10`, where `p` is the number
+of retained metrics. It is a deliberate additive margin for real analyses: with
+four metrics, fewer than 14 complete observations leaves partial correlation
+undefined. Small demonstration or pilot datasets may therefore produce an
+entirely undefined partial matrix even when the implementation is working as
+designed. Pearson and Spearman then use the labelled pairwise fallback; the
+partial matrix stays undefined rather than being made finite by regularization.
+
 **There is no ridge or shrinkage regularization, by default or otherwise.**
 Regularizing converts a singular matrix into a finite, plausible-looking number,
 which is precisely the failure this layer exists to avoid.
@@ -270,6 +278,14 @@ reports zero leverage for a reason that has nothing to do with the science.
 factor records its `strictness_direction`, and without it the sign of a main
 effect is uninterpretable.
 
+`max_abs_duration_difference_s` is an **absolute-seconds, scale-dependent
+axis**, not a duration ratio. On a dataset spanning 10 ms to 200 ms calls, a
+0.02 s bound is a 200% tolerance on the short calls and a 10% tolerance on the
+long calls, while the screen reports one leverage number for the factor. Read
+that leverage as sensitivity to one absolute bound over this population, not as
+a uniform relative-duration tolerance. A shared scale-free duration definition
+remains deferred until `vawlume.interval.relation` is deliberately extended.
+
 A factor is reported **inactive with its reason** — `disabled_by_user`,
 `metric_absent`, `insufficient_coverage`, `degenerate_interval` — rather than
 screened at an arbitrary value. An invariant design column destroys the design's
@@ -278,7 +294,7 @@ balance and yields a main effect of exactly zero that looks like a finding.
 The resolution also reports whether each probed interval **brackets the
 reference configuration's value**. It frequently does not, and that is worth
 knowing: it means the screen explores a neighbouring region rather than the
-neighbourhood of the configuration the support-pattern characterization uses.
+neighbourhood of the configuration the extractor-set characterization uses.
 
 ### 5.2 The design, and the aliasing warning
 
@@ -409,6 +425,12 @@ inputs.
 differ whenever a stratum is under-full or the one-per-stratum floor raises the
 total.
 
+An explicit request larger than the resolved frame returns the whole frame and
+sets `requested_exceeds_frame = true`; `OnExcessRequest="raise"` selects strict
+failure instead. The caller cannot know the resolved frame size before strata
+are resolved, so the default preserves the completed resolution work and makes
+the difference visible.
+
 ### 6.2 Concordance
 
 The two probes cover the same factors — a differing factor set is refused
@@ -445,8 +467,10 @@ and a full factorial being able to make one.
 **Probe agreement does not establish that manual calibration is unnecessary.**
 The probes share every assumption of the matching and agreement layers, so they
 cannot detect an error common to both, and neither observes ground truth at any
-point. That sentence travels in `calibration_note` and in the `reading` column
-of every agreeing row.
+point. That sentence always travels in `calibration_note`, table provenance and
+the concordance figure. Its substance appears in a row's `reading` only when
+the probes agree on both category and interpretable direction; category
+agreement with withheld direction does not claim directional agreement.
 
 ## 7. Exact support patterns
 
@@ -670,9 +694,17 @@ counts, and the reference configuration's identity and calibration status.
 Creating one would invite exactly the reading the methodology forbids.
 
 Figure export refuses degenerate inputs by design — a metric with one finite
-value, a screen with one configuration, a feature with no eligible pattern. On
-thin data those refusals are the honest answer, so the run records which figures
-were not drawn rather than abandoning the set.
+value, a screen with one configuration, a feature with no eligible extractor
+set. On thin data those refusals are the honest answer, so the run records which
+figures were not drawn rather than abandoning the set.
+
+The coverage table is drawn with ordinary axes graphics and exports through the
+same exact-size path as every other figure. Main-effect figures carry a factor
+key stating which value is stricter. Dependency figures use a larger 16×14-inch
+default; above eight metrics, undefined cells remain crossed while their reason
+vocabulary moves to the figure note instead of repeating unreadable prose in
+every cell. Interpretation notes and the canonical caution occupy independent
+regions, so long optional prose cannot displace the caution.
 
 Persistence: the matching and agreement analyses are applied normally,
 append-only and checksum-bearing; one `analysis_runs` row of type
@@ -690,8 +722,8 @@ truth that can go stale. **No schema change was required or made.**
   [`tests/integration/test_consilience_exploration_demonstration.m`](../../tests/integration/test_consilience_exploration_demonstration.m),
   including that two independent runs make identical automatic choices. It
   deliberately shows thin data: a resolution-III screen that makes no leverage
-  claim, three empty support patterns, and six patterns that cannot supply the
-  requested number of examples.
+  claim, three empty extractor sets, and six extractor sets that cannot supply
+  the requested number of examples.
 - [`examples/templates/consilience_exploration_workflow_template.m`](../../examples/templates/consilience_exploration_workflow_template.m)
   is the ten-section template to copy and edit. Everything configurable is in
   section 1; the rest calls public functions and reads their results. It lives

@@ -697,7 +697,7 @@ is not a calibrated confidence probability and not a biological truth label.
 Once a project carries runs from several extractors, you can ask a different
 kind of question: not *what did they agree on under this configuration*, but
 *how does their agreement respond to the configuration at all*, and *what kinds
-of detections occupy each support pattern*.
+of detections occupy each extractor set*.
 
 That is one call.
 
@@ -725,7 +725,7 @@ provenance record. A normal run configures a seed and nothing else.
 1. **Applies the tracked reference configuration** to every recording. The
    diagnostics read stored candidate pairs and the probe values are anchored on
    quantiles of those same observed metrics, so something has to have matched
-   first. This is also the run the support-pattern summaries and the gallery are
+   first. This is also the run the extractor-set summaries and the gallery are
    computed at.
 2. **Diagnoses the candidate-metric space** — distributions and robust
    quantiles, Pearson and Spearman correlation, partial correlation, coverage in
@@ -739,7 +739,7 @@ provenance record. A normal run configures a seed and nothing else.
 5. **Draws a seeded subset of recordings**, stratified automatically when a
    recording-level field qualifies, and probes it with a larger budget.
 6. **Compares the two probes**, per factor per response.
-7. **Characterizes every exact extractor-support pattern** at the reference
+7. **Characterizes every exact extractor set** at the reference
    configuration, with coverage beside every feature summary.
 8. **Renders a representative spectrogram gallery** from the original audio.
 9. **Exports** tables, figures, the example index and a provenance record.
@@ -802,7 +802,7 @@ to fit.
   still be a real vocalization.
 - **Non-agreement is not symmetric evidence.** One extractor failing to report an
   event does not establish that the event is false. An extractor-unique detection
-  is a support pattern, not an error category.
+  belongs to an extractor set; it is not an error category.
 - **No threshold here is recommended, selected, or calibrated.** The reference
   configuration's own status is `illustrative_prototype`. Screening around a
   value does not calibrate it.
@@ -811,12 +811,18 @@ to fit.
   observes ground truth.
 - **A fractional design aliases effects it cannot separate.** Read the alias
   table before reading a main effect.
+- **The duration screen is scale-dependent.**
+  `max_abs_duration_difference_s` is an absolute bound in seconds, not a ratio.
+  A 0.02 s bound is a 200% tolerance for a 10 ms call and a 10% tolerance for a
+  200 ms call, yet the workflow reports one leverage number for the factor.
+  Interpret it as sensitivity to that absolute bound over this dataset, not as
+  a uniform relative-duration tolerance.
 - **The shared feature space across DeepSqueak, MUPET and USVSEG is two features
   wide** — duration and centre frequency. Minimum, maximum and bandwidth
   frequency are registered for DeepSqueak and MUPET only, so they can be reported
-  *within* those patterns and never across patterns: the difference would be the
-  extractor composition, not the calls. The workflow refuses such a request
-  rather than flagging it.
+  *within* those extractor sets and never across extractor sets: the difference
+  would be the extractor composition, not the calls. The workflow refuses such
+  a request rather than flagging it.
 - **USVSEG contributes no measured frequency band edges.** Its annotations show a
   time extent and the frequency markers it did measure. No band is ever
   synthesized from a centre value, a peak value, a coefficient of variation, or
@@ -824,8 +830,8 @@ to fit.
   for DeepSqueak and MUPET beside full-height boundary lines and markers for
   USVSEG. That mixture is the honest picture.
 - **The gallery is illustrative, not a review form.** There is no verdict column
-  and no re-import path, and a pattern with too few members yields what it has
-  plus a reported shortfall rather than being padded from a neighbour.
+  and no re-import path, and an extractor set with too few members yields what it
+  has plus a reported shortfall rather than being padded from a neighbour.
 
 [`../development/35_consilience_exploration_workflow.md`](../development/35_consilience_exploration_workflow.md)
 documents the stages, the designs, the coverage vocabulary, the provenance
