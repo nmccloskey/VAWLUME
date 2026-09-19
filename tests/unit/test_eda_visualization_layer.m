@@ -1,6 +1,8 @@
 function tests = test_eda_visualization_layer
 %TEST_EDA_VISUALIZATION_LAYER Table-only Part 14 plots and exports.
 tests = functiontests({ ...
+    @setupOnce, ...
+    @teardownOnce, ...
     @testEveryFigureFamilyRunsWithoutAConnection, ...
     @testDiagnosticGraphicsEqualTheirSourceValues, ...
     @testUndefinedPartialCellsAreExplicitAndNeverZero, ...
@@ -12,6 +14,23 @@ tests = functiontests({ ...
     @testTableExportCarriesProvenanceCautionAndHostileText, ...
     @testRenderedLanguageHasNoUnqualifiedForbiddenVocabulary, ...
     @testPlotSourcesCallNoCoreOrDatabaseFunction});
+end
+
+function setupOnce(testCase)
+repoRoot = fileparts(fileparts(fileparts(mfilename("fullpath"))));
+sourcePath = fullfile(repoRoot, "src");
+testCase.TestData.repo_root = repoRoot;
+testCase.TestData.source_path = sourcePath;
+testCase.TestData.added_path = ~contains(path, sourcePath);
+if testCase.TestData.added_path
+    addpath(sourcePath);
+end
+end
+
+function teardownOnce(testCase)
+if testCase.TestData.added_path && contains(path, testCase.TestData.source_path)
+    rmpath(testCase.TestData.source_path);
+end
 end
 
 function testEveryFigureFamilyRunsWithoutAConnection(testCase)

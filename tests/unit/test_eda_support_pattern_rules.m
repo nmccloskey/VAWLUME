@@ -6,6 +6,8 @@ function tests = test_eda_support_pattern_rules
 % reference-configuration record. The registry joins and the real feature
 % distributions need a database and live in test_eda_support_pattern_profile.
 tests = functiontests({ ...
+    @setupOnce, ...
+    @teardownOnce, ...
     @testTheVocabularyEnumeratesEverySubsetForThreeExtractors, ...
     @testTheVocabularyIsArbitraryNRatherThanAListOfThree, ...
     @testTheReferenceConfigurationCarriesItsIdentityAndCalibrationState, ...
@@ -18,6 +20,23 @@ tests = functiontests({ ...
     @testTheCrossPatternListingNamesBothHalvesOfTheRule, ...
     @testLowCoverageIsAnnotatedOnTheCrossPatternResult, ...
     @testNoRankingOrConfidenceWeightAppearsInAnyReturnedFieldName});
+end
+
+function setupOnce(testCase)
+repoRoot = fileparts(fileparts(fileparts(mfilename("fullpath"))));
+sourcePath = fullfile(repoRoot, "src");
+testCase.TestData.repo_root = repoRoot;
+testCase.TestData.source_path = sourcePath;
+testCase.TestData.added_path = ~contains(path, sourcePath);
+if testCase.TestData.added_path
+    addpath(sourcePath);
+end
+end
+
+function teardownOnce(testCase)
+if testCase.TestData.added_path && contains(path, testCase.TestData.source_path)
+    rmpath(testCase.TestData.source_path);
+end
 end
 
 % ------------------------------------------------------------ vocabulary ---

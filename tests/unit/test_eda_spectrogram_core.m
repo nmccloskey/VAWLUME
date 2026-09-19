@@ -6,6 +6,8 @@ function tests = test_eda_spectrogram_core
 % wrong window, the wrong frame times or an unreproducible setting still looks
 % like a spectrogram.
 tests = functiontests({ ...
+    @setupOnce, ...
+    @teardownOnce, ...
     @testTheSettingsRecordRegeneratesTheSameMatrix, ...
     @testPerturbingOneSettingChangesTheMatrix, ...
     @testASettingsRecordFromADifferentSampleRateIsRefused, ...
@@ -19,6 +21,23 @@ tests = functiontests({ ...
     @testShortSignalsReportNoFramesRatherThanFailing, ...
     @testTheSettingsRecordCarriesEveryContractField, ...
     @testNothingIsDrawn});
+end
+
+function setupOnce(testCase)
+repoRoot = fileparts(fileparts(fileparts(mfilename("fullpath"))));
+sourcePath = fullfile(repoRoot, "src");
+testCase.TestData.repo_root = repoRoot;
+testCase.TestData.source_path = sourcePath;
+testCase.TestData.added_path = ~contains(path, sourcePath);
+if testCase.TestData.added_path
+    addpath(sourcePath);
+end
+end
+
+function teardownOnce(testCase)
+if testCase.TestData.added_path && contains(path, testCase.TestData.source_path)
+    rmpath(testCase.TestData.source_path);
+end
 end
 
 % ------------------------------------------------------- reproducibility ---

@@ -7,6 +7,8 @@ function tests = test_eda_subset_sampling
 % reproduces under its own seed. Nothing about the result announces the defect,
 % so the properties have to be asserted one at a time.
 tests = functiontests({ ...
+    @setupOnce, ...
+    @teardownOnce, ...
     @testIdenticalInputsReproduceTheIdenticalSubset, ...
     @testAnInterveningGlobalRngCallChangesNothing, ...
     @testTheGlobalGeneratorIsLeftExactlyAsItWasFound, ...
@@ -29,6 +31,23 @@ tests = functiontests({ ...
     @testAForcedFieldThatWasNotResolvedIsRefused, ...
     @testTheSubsetRecordCarriesEverythingPartTenNeeds, ...
     @testTheSelectedSetIsAlwaysASubsetOfTheFrame});
+end
+
+function setupOnce(testCase)
+repoRoot = fileparts(fileparts(fileparts(mfilename("fullpath"))));
+sourcePath = fullfile(repoRoot, "src");
+testCase.TestData.repo_root = repoRoot;
+testCase.TestData.source_path = sourcePath;
+testCase.TestData.added_path = ~contains(path, sourcePath);
+if testCase.TestData.added_path
+    addpath(sourcePath);
+end
+end
+
+function teardownOnce(testCase)
+if testCase.TestData.added_path && contains(path, testCase.TestData.source_path)
+    rmpath(testCase.TestData.source_path);
+end
 end
 
 % ------------------------------------------------------------ determinism ---

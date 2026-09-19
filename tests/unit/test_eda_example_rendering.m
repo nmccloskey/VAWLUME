@@ -1,6 +1,8 @@
 function tests = test_eda_example_rendering
 %TEST_EDA_EXAMPLE_RENDERING Pure display planning, styles, names and CSV.
 tests = functiontests({ ...
+    @setupOnce, ...
+    @teardownOnce, ...
     @testStyleAssignmentIsStableAndPrintConscious, ...
     @testStyleCapacityFailsRatherThanReusingAStyle, ...
     @testFilenamesAreStableSortableAndSafe, ...
@@ -10,6 +12,23 @@ tests = functiontests({ ...
     @testIdentifyingAndCautionTextTravelWithTheFigure, ...
     @testIndexRoundTripsHostileTextInTheFixedOrder, ...
     @testIndexRejectsReviewColumns});
+end
+
+function setupOnce(testCase)
+repoRoot = fileparts(fileparts(fileparts(mfilename("fullpath"))));
+sourcePath = fullfile(repoRoot, "src");
+testCase.TestData.repo_root = repoRoot;
+testCase.TestData.source_path = sourcePath;
+testCase.TestData.added_path = ~contains(path, sourcePath);
+if testCase.TestData.added_path
+    addpath(sourcePath);
+end
+end
+
+function teardownOnce(testCase)
+if testCase.TestData.added_path && contains(path, testCase.TestData.source_path)
+    rmpath(testCase.TestData.source_path);
+end
 end
 
 function testDisplayPlanIsPureAndCarriesAllGeometry(testCase)

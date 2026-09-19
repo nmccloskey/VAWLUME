@@ -7,6 +7,8 @@ function tests = test_eda_leverage_concordance
 % is constant across the whole design, without arranging for real data to
 % cooperate.
 tests = functiontests({ ...
+    @setupOnce, ...
+    @teardownOnce, ...
     @testEachCategoryIsProducedByItsOwnEffectTable, ...
     @testAConstantResponseIsInsufficientInformationForEveryFactor, ...
     @testAConstantResponseIsNotLowLeverageEvenWithAZeroEffect, ...
@@ -28,6 +30,23 @@ tests = functiontests({ ...
     @testSupportPatternMovementComparesExactPatterns, ...
     @testNoCompositeScoreAppearsInAnyReturnedFieldName, ...
     @testTheCalibrationCautionTravelsWithTheOutput});
+end
+
+function setupOnce(testCase)
+repoRoot = fileparts(fileparts(fileparts(mfilename("fullpath"))));
+sourcePath = fullfile(repoRoot, "src");
+testCase.TestData.repo_root = repoRoot;
+testCase.TestData.source_path = sourcePath;
+testCase.TestData.added_path = ~contains(path, sourcePath);
+if testCase.TestData.added_path
+    addpath(sourcePath);
+end
+end
+
+function teardownOnce(testCase)
+if testCase.TestData.added_path && contains(path, testCase.TestData.source_path)
+    rmpath(testCase.TestData.source_path);
+end
 end
 
 % ------------------------------------------------------- the five categories ---

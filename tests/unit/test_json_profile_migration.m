@@ -56,11 +56,13 @@ for index = find([profiles.executable])
     verifyEqual(testCase, loaded.relative_path, profiles(index).relative_path);
     verifyEqual(testCase, loaded.checksum_sha256, repeated.checksum_sha256);
     verifyEqual(testCase, strlength(loaded.checksum_sha256), 64);
-    expectedVersion = "0.1.0";
-    if contains(profiles(index).relative_path, "/mupet/")
-        expectedVersion = "0.1.1";
+    if isfield(jsonDocument, "profiles")
+        profileEnvelopes = [jsonDocument.profiles.profile];
+        expectedVersions = string({profileEnvelopes.profile_version})';
+    else
+        expectedVersions = string(jsonDocument.profile.profile_version);
     end
-    verifyTrue(testCase, all(loaded.profile_version_labels == expectedVersion));
+    verifyEqual(testCase, loaded.profile_version_labels(:), expectedVersions(:));
 end
 
 clear cleanupPath
