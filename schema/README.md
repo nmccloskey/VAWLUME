@@ -1,13 +1,14 @@
 # VAWLUME Schema
 
-This directory holds VAWLUME's relational model. Two files describe it, and only
-one of them is authoritative.
+This directory holds VAWLUME's relational model. Three files describe it, and
+each is authoritative for something different.
 
-| File | Status |
-|---|---|
-| [`schema.sql`](schema.sql) | **Authoritative.** Hand-maintained, and what VAWLUME executes to create a database |
-| [`schema.json`](schema.json) | **Generated.** A machine-readable export of `schema.sql`, never hand-edited |
-| [`fixtures/`](fixtures/) | Deterministic synthetic-fixture and acceptance-query sources used by the tests |
+| File | Status | Owns |
+|---|---|---|
+| [`schema.sql`](schema.sql) | **Authoritative.** Hand-maintained, and what VAWLUME executes to create a database | The executable SQLite structure: every table, view, column, type, key, constraint, trigger, and index |
+| [`schema.json`](schema.json) | **Generated.** A machine-readable export of `schema.sql`, never hand-edited | Nothing of its own; it is a structural projection of `schema.sql` |
+| [`schema_metadata.json`](schema_metadata.json) | **Authoritative.** Hand-authored | What the objects mean: object purpose, column meaning, and relationship meaning, keyed to the structural identities above |
+| [`fixtures/`](fixtures/) | Deterministic synthetic-fixture and acceptance-query sources used by the tests | |
 
 ## `schema.sql` is the schema
 
@@ -58,6 +59,55 @@ binary. It is not VAWLUME's, not MATLAB's, and not the schema's. It is left
 exactly as tbls reports it, so a tbls upgrade shows up as an honest one-line
 diff instead of being hidden — a diff that is only that line is not a schema
 change.
+
+## `schema_metadata.json` is what the model means
+
+`schema_metadata.json` holds the human-authored semantics of the model: what each
+table and view is for, what each column means, and what each foreign-key
+relationship says, read from child to parent. It is keyed to the identities
+`schema.json` exports, and it owns **only** meaning. It never states a type,
+nullability, key, constraint, or whether an object exists; those belong to
+`schema.sql`, and a disagreement about them is settled there. A view column may
+carry a `same_as` pointer to the base-table column it projects unchanged instead
+of repeating that column's description.
+
+It is the single place those descriptions are maintained. Nothing else, including
+this README, the documentation, or exporter code, keeps a second copy; generated
+outputs may repeat them. Read it through `vawlume.schema.loadMetadata`, its only
+parser, which needs neither a database nor tbls.
+
+Two commands validate it against the committed structure:
+
+```matlab
+addpath("src"); vawlume.schema.validateMetadata                   % identity
+addpath("src"); vawlume.schema.validateMetadata(Mode="complete")  % identity + coverage
+```
+
+**Identity** mode checks that everything the document names exists with the kind
+it claims: no invented object, no column on the wrong object, no relationship
+SQLite does not declare, no `same_as` pointer to a missing or non-table column,
+and a `schema_version` that matches `schema.sql`. **Complete** mode adds absence
+checks. Every domain the document declares complete must describe all of its
+objects and columns, and once every domain is declared complete, every object,
+column, and relationship in the schema must be described.
+
+What a green result proves is limited. It proves coverage and identity: every
+object, column, and relationship has a description or an honest pointer, and
+every description is attached to something real. It does not prove that any
+description is correct, and no description has been externally reviewed. Only
+reading the prose against `schema.sql` and the implementation catches fluent,
+wrong prose, and those manual reviews found errors that every automated check
+had accepted.
+
+**A schema change owes the metadata a review.** When `schema.sql` changes, update
+`schema_metadata.json` in the same change: set its `schema_version` to the new
+version, describe anything added, remove anything dropped, and revisit every
+description the change may have invalidated. Validation fails with
+`vawlume:schema:SchemaVersionMismatch` until `schema_version` agrees, so the
+document goes stale loudly rather than silently. Its own `metadata_version`
+changes whenever its grammar or content is materially revised. The obligation to
+run both commands lives in
+[`docs/development/02_development_workflow.md`](../docs/development/02_development_workflow.md).
 
 ## Exploring the model as a diagram
 

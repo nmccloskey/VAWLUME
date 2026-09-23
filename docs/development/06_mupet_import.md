@@ -255,9 +255,13 @@ between them. The profile's `broader_canonical_concept` declaration is preserved
 as registered feature provenance in `extractor_features.notes`, not as a
 joinable column.
 
-The general rule that follows: **join on `equivalence_class` for cross-extractor
-comparison, and on `canonical_name` only when both extractors genuinely share
-one canonical feature.** No `transform_equivalent` relationship exists between
+The general rule that follows: **use `equivalence_class` to find candidate
+counterparts across extractors, and compare a pair only when a registered
+`feature_relationships` row declares it `consilience_eligible` and both sides'
+canonical units agree.** A shared equivalence class, like a shared canonical
+name or unit, nominates a pair; it does not make the pair comparable. See
+[`09_detection_and_feature_agreement.md`](09_detection_and_feature_agreement.md).
+No `transform_equivalent` relationship exists between
 any DeepSqueak and MUPET feature, and the power/energy/amplitude relationships
 remain `related` with `consilience_eligible = 0`.
 

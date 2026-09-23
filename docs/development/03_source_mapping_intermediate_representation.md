@@ -329,9 +329,12 @@ fields are known. The profile's `mapping_policy.unknown_fields` decides:
 | `error`, `fail`, `reject` | `error` | invalidates |
 | absent or anything else | `info` | none |
 
-`mapTableFields` also returns `unmapped_source_fields` for inspection. The
-current IR reports these columns but does not yet carry their per-row values, so
-populating the schema's `unmapped_source_values` table remains future work.
+`mapTableFields` also returns `unmapped_source_fields` for inspection. The IR
+reports these columns but does not itself carry their per-row values. Whether
+those values reach the schema's `unmapped_source_values` table is decided per
+importer: the USVSEG importer attaches them from the source table and writes
+them; the DeepSqueak and MUPET importers currently report the columns as
+warnings without preserving their values.
 
 ## Conflict and validity semantics
 

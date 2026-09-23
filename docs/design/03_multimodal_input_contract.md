@@ -461,11 +461,15 @@ transformed, rescaled, or reinterpreted to make a comparison possible.
 Window access uses the **existing** alignment transforms where a common-time
 operation is already supported, and does nothing else.
 
-If a requested operation needs a transform the alignment layer does not
-implement — piecewise-affine, in particular — the reader returns a clear
-unsupported status. It must not reimplement transform arithmetic locally, and it
-must not degrade silently to a simpler model. Alignment robustification belongs
-to a later phase and stays there.
+The reader applies whatever transform the alignment layer has stored, through
+`vawlume.alignment.applyTransform`. That now includes continuous piecewise-affine
+transforms fitted over declared breakpoints, which the alignment layer
+implements. When no usable transform exists, or the window's basis cannot be
+transformed, the reader returns a clear status and leaves native times
+untouched. It must not reimplement transform arithmetic locally, and it must not
+degrade silently to a simpler model. Fitting stays in the alignment layer; that
+layer estimates no breakpoints and performs no robust regression or automatic
+outlier rejection.
 
 ## What is authoritative
 
@@ -523,7 +527,9 @@ Not in this layer:
 - dense tracking or audio samples materialized into SQLite;
 - a generalized continuous-data access framework;
 - a universal multimodal matcher;
-- piecewise-affine or drift-aware alignment robustification;
+- alignment fitting of any kind: piecewise-affine transforms are fitted by the
+  alignment layer and only consumed here, and breakpoint estimation or robust
+  refitting exists in neither;
 - mandatory calibration hardware or a mandatory reference type;
 - automatic correction or rewriting of user tracking artifacts;
 - a calibrated acoustic normalization model presented as validated.

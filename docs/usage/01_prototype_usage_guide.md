@@ -106,7 +106,7 @@ this prototype estimates who called.
   no calibrated acceptance threshold.
 - **Sequence, bout, motif, and hierarchy-aware analyses are not implemented.**
   The `sequences`, `sequence_members`, `bouts`, and `bout_members` tables exist
-  in the schema and are used by no code.
+  in the schema as modeled storage, but no current workflow writes rows to them.
 - **Real-data acceptance is operational, not scientific validation.** The
   extractor-consilience exploration workflow has run end to end on one real
   Pilot 3 recording with DeepSqueak, MUPET, and USVSEG outputs. No comprehensive
@@ -401,7 +401,10 @@ One consequence matters when querying: **cross-extractor feature comparison goes
 through `extractor_features.equivalence_class` and `feature_relationships`, not
 through a shared canonical name.** DeepSqueak's contour median is registered
 under its own canonical name rather than the generic `frequency_center` MUPET
-uses, so a canonical-name join finds nothing at all for central frequency.
+uses, so a canonical-name join finds nothing at all for central frequency. A
+shared equivalence class only nominates candidates. A pair is compared only when
+its registered relationship is `consilience_eligible` and both sides' canonical
+units agree.
 
 ### 5.6 Authoring rhythm
 
@@ -888,8 +891,10 @@ into your own JSON file and edit it. You are declaring:
 
 - a `source.include.glob` that finds your recordings;
 - a `hierarchy.levels` list of your **native** level names, each with a
-  `canonical_role` (`study`, `experimental_group`, `subject`, `session`,
-  `recording`, …) and a `parent`;
+  `canonical_role` and a `parent`. The role vocabulary is open: `study`,
+  `experimental_group`, `subject`, `session`, and `recording` are examples used
+  by the shipped profiles and fixtures, not a fixed list, and neither the
+  profile validator nor the schema restricts the value;
 - one `mappings` entry per level, drawn from a path component
   (`path_component_regex`), the filename (`filename_regex`), or a `literal`.
 
@@ -1703,13 +1708,13 @@ in the prototype; derived tables are returned to MATLAB.
 |---|---|
 | Schema + seed | `schema_info`, `extractors`, `extractor_versions`, `canonical_features`, `extractor_features`, `feature_mappings`, `feature_relationships`, `metric_definitions`, `config_profiles`, `config_profile_versions` |
 | Project intake | `projects`, `source_files`, `entity_types`, `experimental_entities`, `entity_relationships`, `recordings`, `recording_entity_links`, `*_profile_assignments`, `ingestion_runs`, `ingestion_files` |
-| Extractor import | `extraction_runs`, `extraction_run_inputs`, `extraction_run_profiles`, `artifacts`, `extraction_run_artifacts`, `detections`, `event_measurements`; `unmapped_source_values` for unclaimed source columns; and — DeepSqueak only — `curation_events`, `classification_runs`, `classification_classes`, `classification_assignments` |
+| Extractor import | `extraction_runs`, `extraction_run_inputs`, `extraction_run_profiles`, `artifacts`, `extraction_run_artifacts`, `detections`, `event_measurements`; `unmapped_source_values` for unclaimed source columns — currently USVSEG only, since the DeepSqueak and MUPET importers report unclaimed columns as warnings without preserving their values; and — DeepSqueak only — `curation_events`, `classification_runs`, `classification_classes`, `classification_assignments` |
 | Matching | `analysis_runs`, `analysis_run_profiles`, `analysis_run_extraction_inputs`, `candidate_pairs`, `match_groups`, `match_group_members`, `consensus_events`, `consensus_event_members` |
 | Consilience | `consilience_assessments`, `agreement_statistics`; `manual_reviews` and `manual_reference_events` hold independent human input |
 | Arbitrary-N agreement | `analysis_runs` (a `multi_extractor_agreement` run with many-parent lineage), `agreement_groups`, `agreement_group_members`, `agreement_supporting_edges` |
 | Alignment | `timebases`, `external_streams`, `external_stream_sources`, `external_stream_coverage`, `external_events`, `external_event_attributes`, `alignment_sets`, `alignment_anchors`, `alignment_anchor_observations`, `time_alignment_runs`, `alignment_segments`, `alignment_anchor_residuals` |
 | Multimodal intake and response | `coordinate_systems`, `channel_placements`, `tracking_streams`, `tracking_series`, `tracking_identity_associations`, `acoustic_references`; response applies add `analysis_runs`, `analysis_run_sources`, `derived_measurements`, `channel_response_estimates`, and `channel_response_estimate_sources` |
-| Attribution run and evidence | setup writes `analysis_runs`, `analysis_run_profiles`, `analysis_run_extraction_inputs` or `analysis_run_sources`, `attribution_runs`, and `attribution_targets`; candidate/evidence batches add `attribution_candidates` and `attribution_evidence`; decision tables remain empty |
+| Attribution run and evidence | setup writes `analysis_runs`, `analysis_run_profiles`, `analysis_run_extraction_inputs` or `analysis_run_sources`, `attribution_runs`, and `attribution_targets`; candidate/evidence batches add `attribution_candidates` and `attribution_evidence`; `vawlume.ingest.attribution` adds `imported_attribution_windows` and `imported_attribution_claims`; `vawlume.attribution.correspondWindows` adds `attribution_window_correspondences`; `vawlume.attribution.decide` adds `attribution_decisions` and `attribution_decision_candidates` |
 
 Note that `agreement_statistics` belongs to *pairwise* consilience despite its
 name; the arbitrary-N layer stores no summary at all. Its counts, fractions,
@@ -1721,7 +1726,8 @@ Convenience views: `v_detection_core`, `v_recording_entity_context`,
 `v_agreement_group_members`, `v_agreement_supporting_edges`,
 `v_agreement_extractor_pair_support`, `v_agreement_group_summary`,
 `v_cross_extractor_feature_pairs`, `v_feature_relationship_endpoints`,
-`v_external_events_aligned`, `v_sequence_members`.
+`v_external_events_aligned`, `v_sequence_members`, `v_agreement_group_extent`,
+`v_attribution_window_correspondences`.
 
 ### 8.2 Identifiers and provenance
 
@@ -2123,10 +2129,16 @@ exported tables, figures, an example index and a provenance record.
   profile grammar, and the existing registrars inside the matching, agreement and
   attribution-policy paths have not been refactored onto it.
 
-### Representable in the schema but unimplemented
+### Modeled in the schema but not populated by current workflows
 
-`sequences`, `sequence_members`, `bouts`, and `bout_members` are written
-by no code path at all. `recording_epochs` is written only by the Phase 1 synthetic fixture builder
+`sequences`, `sequence_members`, `bouts`, and `bout_members` are implemented
+schema: their tables, constraints, triggers, and the `v_sequence_members` view
+exist and are valid storage for modeled sequences and bouts. What is missing is
+a writer. No current workflow inserts rows into them, because the regularized
+timeline they would be built from remains a MATLAB working artifact that is
+deliberately not persisted (see §8.4). An empty sequence table therefore means
+no workflow has written one, not that the storage is absent or that no sequence
+exists in the data. `recording_epochs` is written only by the Phase 1 synthetic fixture builder
 — no ingest or analysis path populates it. `metric_definitions` and
 `derived_measurements` are now written, but only by the acoustic
 reference-response path: the shipped metric definitions are the three acoustic

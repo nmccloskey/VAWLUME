@@ -544,23 +544,23 @@ absence is not perfect knowledge. It is **never combined with `rmse_s`**: how
 well the model describes the anchors and how well each anchor was read are
 different quantities, and both are reported separately.
 
-### Which uncertainties declare their semantics, and why
+### Which uncertainties declare their semantics
 
-Three columns store an `uncertainty_s`, and only one carries a semantics column.
-The rule is not arbitrary:
+Three columns store an `uncertainty_s`, and all three carry an
+`uncertainty_semantics` companion that a CHECK requires whenever a number is
+present:
 
-| Column | Semantics column | Why |
-| --- | --- | --- |
-| `alignment_anchor_observations.uncertainty_s` | No | **Fixed by the schema.** It is the recorded reading uncertainty of one observation, in seconds, on that observation's own clock. There is one thing it can mean, so a per-row declaration would record the same string on every row |
-| `alignment_segments.uncertainty_s` | **Yes** | **Derived, and derivable several ways.** It could have been a maximum, a mean, a propagated variance, or a residual-based bound. Which one it is cannot be inferred from the number, so the row states it |
-| `aligned_external_events.uncertainty_s` | No | **Inherited.** That table is an optional regenerable cache nothing populates; any value in it would carry the semantics of the segment it came from |
+| Column | What the declaration distinguishes |
+| --- | --- |
+| `alignment_anchor_observations.uncertainty_s` | A recorded reading uncertainty of one observation, on that observation's own clock, whose meaning depends on the device or procedure that produced it |
+| `alignment_segments.uncertainty_s` | A derived bound that could have been a maximum, a mean, a propagated variance, or a residual-based bound; which one cannot be inferred from the number |
+| `aligned_external_events.uncertainty_s` | A cached value, in an optional regenerable table no public path currently populates, which must still say what it is if one is ever stored |
 
-The principle: **a stored number declares its semantics when the same column
-could legitimately hold quantities that mean different things.** A column with
-one possible meaning is documented once, here, rather than on every row.
-
-If a refresh API is ever added for `aligned_external_events`, that column moves
-from the third case to the second and gains a semantics column with it.
+The principle: **a stored number declares its semantics.** It was first
+enforced on segments alone; the observation and cache columns gained the same
+companion and CHECK with the caller-attribution schema bump (P3-1; see
+[`31_caller_attribution_schema.md`](31_caller_attribution_schema.md)). None of
+the three is calibrated, and none is a weight in the fit.
 
 ## Reading a set back
 
@@ -779,7 +779,9 @@ than relying on printed inspection.
   marker and decides whether it is identity-dependent.
 - Identity evidence is linked by association id. There is no interval-overlap
   search matching an anchor to the identity claims covering its moment.
-- Run and set status updates are outside the apply transaction; see Transactions.
+- Run and set status updates are inside the apply transaction whenever the apply
+  inserts rows. An apply that records only failures inserts nothing, so its
+  status updates each autocommit on their own; see Transactions.
 - Unweighted least squares; recorded uncertainty is not a weight.
 - No outlier detection, and no automatic exclusion of a badly fitting anchor.
   Exclusion is a human decision, recorded on the observation and declared

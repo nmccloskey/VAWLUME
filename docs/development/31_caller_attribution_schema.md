@@ -298,8 +298,11 @@ here chooses.
 
 ## `v_attribution_window_correspondences`
 
-One row per stored correspondence, joined to the window, the target, and the claims
-the window carries. It exists so no caller composes that join by hand.
+One row per stored correspondence and window claim, joined to the window, the
+target, and the claims the window carries. A window with several claims repeats
+its correspondence once per claim, and a window with none gives one row with NULL
+claim columns, so count correspondences by `attribution_window_correspondence_id`
+rather than by rows. It exists so no caller composes that join by hand.
 
 It carries **two bases that must not be confused**:
 

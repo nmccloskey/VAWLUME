@@ -6,11 +6,14 @@ This document is the data dictionary for VAWLUME's temporal-alignment relational
 grammar: what each table means, which table is authoritative for what, and which
 invariants the database enforces versus which are left to application code.
 
-It describes the relational structure. External event and anchor table source
-mapping now exists as a database-free IR layer; manifest orchestration, database
-registration, transform fitting, aligned-timestamp generation, and timeline
-construction do not yet exist. The
-governing design contract is
+It describes the relational structure. The code that reads and writes it is
+documented beside it: manifest reading and database registration in
+[`12_alignment_intake_and_registration.md`](12_alignment_intake_and_registration.md),
+transform fitting, application and QC in
+[`13_transform_fitting_and_alignment_qc.md`](13_transform_fitting_and_alignment_qc.md),
+and common-time projection and the regularized timeline in
+[`14_common_time_views_and_regularized_timeline.md`](14_common_time_views_and_regularized_timeline.md).
+The governing design contract is
 [`../design/02_temporal_alignment_contract.md`](../design/02_temporal_alignment_contract.md).
 
 Introduced at schema version `0.5-draft` (`PRAGMA user_version = 5`). The
@@ -168,9 +171,12 @@ and update. It is a convenience column, never an independent authority.
 
 Method vocabulary is closed: `offset`, `affine`, `piecewise_affine`.
 `piecewise_affine` is representable here and in `alignment_segments`, and its
-breakpoints are declared input in `alignment_run_breakpoints`. **Fitting** the
-model is Phase 3 work; until it lands the fitting API must fail clearly rather
-than silently degrading to a single affine segment.
+breakpoints are declared input in `alignment_run_breakpoints`.
+`vawlume.alignment.fit` fits it as one affine segment per declared interval,
+continuous at the breakpoints. Breakpoints are never estimated, and a piecewise
+request that declares none fails with `BreakpointsRequired` rather than silently
+degrading to a single affine segment; see
+[`13_transform_fitting_and_alignment_qc.md`](13_transform_fitting_and_alignment_qc.md).
 
 A breakpoint is the caller's claim that something happened to a clock, never a
 value VAWLUME searched for. It is persisted rather than passed only as a call
@@ -317,7 +323,7 @@ Enforced by the database, each with a probe in
 | Only a rejected or failed transform carries a failure code | CHECK |
 | Declared breakpoints require a `piecewise_affine` method | trigger (insert and update) |
 | Breakpoint index and source time are unique within a transform | UNIQUE |
-| A segment's uncertainty declares its semantics | CHECK |
+| An observation's, a segment's, or a cached aligned event's uncertainty declares its semantics | CHECK |
 | Anchor evidence class vocabulary, with undeclared distinct from declared | CHECK |
 | Anchor identity evidence requires an `identity_dependent` observation | trigger (insert and update) |
 | One identity association cited once per observation | UNIQUE |

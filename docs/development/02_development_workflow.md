@@ -293,6 +293,7 @@ Checks run at the level the change surface justifies, not reflexively.
 | Focused | The nearest unit tests, plus the integration tests exercising the changed workflow | During and before the end of every itinerary |
 | Self-description | `tests/unit/test_repository_self_description.m`, or `check_repository_self_description` directly | **Every itinerary.** Non-executing; finishes in seconds |
 | Schema freshness | `tests/unit/test_schema_documentation.m`, or `schema_documentation(Mode="check")` directly | **Every itinerary that touches `schema/schema.sql`.** Needs tbls; skips with an actionable message when tbls is absent |
+| Metadata validation | `vawlume.schema.validateMetadata` and `vawlume.schema.validateMetadata(Mode="complete")`, plus the `tests/unit/test_schema_metadata_*.m` suites | **Every itinerary that touches `schema/schema_metadata.json` or `schema/schema.sql`.** Needs no database and no tbls |
 | Full gate | `runtests("tests", IncludeSubfolders=true)` | Cross-cutting change, integration or phase boundary, release or closure verification |
 
 The self-description tier exists because the full gate is the wrong instrument
@@ -319,6 +320,30 @@ separate tier from self-description because it is the one check that executes:
 it builds a throwaway database and shells out to tbls, which takes seconds
 rather than milliseconds and is pointless when the schema has not changed. See
 [§12](#12-generated-artifacts) for the obligation and the two commands.
+
+The metadata-validation tier checks the third schema artifact,
+`schema/schema_metadata.json`, which holds the model's human-authored semantics.
+It compares two committed files and executes nothing, so it is separate from
+freshness rather than part of it: freshness asks whether `schema.json` still
+matches `schema.sql`, and this tier asks whether the semantic document still
+matches `schema.json`.
+
+```matlab
+addpath("src"); vawlume.schema.validateMetadata                   % identity
+addpath("src"); vawlume.schema.validateMetadata(Mode="complete")  % identity + coverage
+```
+
+Identity mode checks that every object, column, relationship, and `same_as`
+pointer the document names exists as claimed, and that its `schema_version`
+matches `schema.sql`. Complete mode adds the absence checks, which require every
+object, column, and relationship to be described. A change to `schema.sql` owes
+both, and usually owes a metadata edit too, because a version bump fails identity
+mode until `schema_version` is updated and a new column fails complete mode until
+it is described. A green result proves coverage and identity only. It does not
+review the prose. A description can pass every check and still be wrong, so
+semantic edits still need to be read against `schema.sql` and the
+implementation. The artifact's authority and the version-bump obligation are set
+out in [`schema/README.md`](../../schema/README.md).
 
 The current checkpoint has completed source mapping, transactional project
 intake, and all three extractor importers, each through atomic apply and each
@@ -450,6 +475,8 @@ addpath("tools"); schema_documentation(Mode="check")   % verify
 ```
 
 Both commands run [`tools/schema_documentation.m`](../../tools/schema_documentation.m), and the check regenerates through the same code path the generator uses. A check that regenerated differently would not be a check; it would be a second generator that agrees with the first by coincidence until it does not.
+
+The same schema change also owes the metadata-validation tier in [§11](#validation-tiers), because `schema/schema_metadata.json` is keyed to the regenerated structure and must be updated to match it.
 
 Three properties are worth knowing before the first surprising diff:
 
