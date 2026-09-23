@@ -399,7 +399,11 @@ below; this is the exact shape that bites.
 - a target's event, an imported window, and a correspondence all belong to the
   run's own recording and run;
 - a decision names its policy, and `assigned` / `simultaneous` / the rest select
-  exactly one / two or more / no candidates;
+  exactly one / two or more / no candidates. That holds when a selection is
+  added, when the status changes, and, added at schema version `0.11-draft`, when
+  a selection is removed, whether directly or by deleting the selected
+  candidate. Removing the decision, its target, or its run removes the set with
+  it;
 - an excluded decision gives a reason, and a failed run gives a failure code;
 - a second decision for one target under one policy is refused;
 - an `aligned` correspondence names the transform it used;
@@ -427,10 +431,6 @@ there.
   convention documented in the trigger section of `schema/schema.sql`. A direct
   `UPDATE` outside the public API can still move a row across a boundary.
   `PRAGMA foreign_key_check` will not see it.
-- **The decision cardinality rule is enforced on the link table's INSERT and on the
-  decision's status UPDATE**, but deleting a selection does not re-check the
-  status. An `assigned` decision whose only selection is deleted becomes an
-  `assigned` decision selecting nobody.
 - **`agreement_extent_method` is not checked against the view.** A target may name
   an extent method for a group whose members were since deleted.
 - **Nothing constrains `evidence_kind`, `method`, or any semantics string** to a

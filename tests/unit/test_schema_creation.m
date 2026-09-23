@@ -15,8 +15,8 @@ cleanupDb = onCleanup(@() cleanupDatabase(conn, dbFile));
 summary = vawlume.db.applySchema(conn, fullfile(repoRoot, "schema", "schema.sql"));
 
 verifyGreaterThan(testCase, summary.statements_executed, 0);
-verifyEqual(testCase, string(firstValue(conn, "SELECT schema_version FROM schema_info")), "0.10-draft");
-verifyEqual(testCase, double(firstValue(conn, "PRAGMA user_version")), 10);
+verifyEqual(testCase, string(firstValue(conn, "SELECT schema_version FROM schema_info")), "0.11-draft");
+verifyEqual(testCase, double(firstValue(conn, "PRAGMA user_version")), 11);
 verifyEqual(testCase, double(firstValue(conn, "PRAGMA foreign_keys")), 1);
 verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
 

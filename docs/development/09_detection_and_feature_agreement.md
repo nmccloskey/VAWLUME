@@ -98,13 +98,15 @@ exposed verbatim, because sharing an equivalence class does not make a pair
 eligible. Its only restriction is `extractor_a <> extractor_b`, which is what
 makes it a cross-extractor view.
 
-The canonical columns arrive through `feature_mappings`, which may hold several
-mappings for one feature, for example across profile versions. The view then
-returns one row per combination of the two sides' mappings, and a side with no
-mapping has null canonical columns. Count relationships by
-`feature_relationship_id`, not by rows. For counterpart counting use
-`v_feature_relationship_endpoints`, which joins no canonical features for
-exactly this reason.
+The view returns exactly one row per relationship. A feature may hold several
+`feature_mappings` rows, because a profile revision registers a new mapping
+beside the old one, so each side's canonical columns come from that feature's
+most recently registered mapping (the highest `feature_mapping_id`). This was
+added at schema version `0.11-draft`; before that, the view repeated a
+relationship once per combination of the two sides' mappings. A side with no
+mapping has null canonical columns. Earlier mappings remain in
+`feature_mappings`, and `v_feature_relationship_endpoints` joins no canonical
+features at all.
 
 `feature_a` / `feature_b` follow `feature_relationships`' ascending-id `CHECK`
 and carry **no extractor or directional meaning**. Consumers orient themselves by

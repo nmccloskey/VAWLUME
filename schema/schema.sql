@@ -1,6 +1,6 @@
 -- VAWLUME prototype relational schema
--- Version: 0.10-draft
--- Date: 2026-09-14
+-- Version: 0.11-draft
+-- Date: 2026-09-23
 -- Target: SQLite (MATLAB-centered workflow)
 --
 -- Design priorities:
@@ -47,9 +47,9 @@ CREATE TABLE schema_info (
 );
 
 INSERT OR IGNORE INTO schema_info(schema_version, description)
-VALUES ('0.10-draft', 'Imported caller claims preserved relationally: one row per (window, claimed caller) carrying the exporting system''s score and probability with their declared semantics and explicit missingness, replacing a delimiter-joined label string, plus a correspondence read surface naming the agreement-group extent basis');
+VALUES ('0.11-draft', 'Schema hygiene: agreement summary patterns state their own aggregate order, cross-extractor feature pairs give one row per relationship from each feature''s latest mapping, an agreement run takes one extraction run per extractor, and removing a decision''s selection cannot contradict its status');
 
-PRAGMA user_version = 10;
+PRAGMA user_version = 11;
 
 -- ============================================================================
 -- 1. Project and configuration-profile infrastructure
@@ -1371,10 +1371,12 @@ CREATE TABLE alignment_sets (
 -- to equal it. It is a convenience column, never an independent authority.
 --
 -- piecewise_affine is representable here and in alignment_segments, and its
--- breakpoints are declared input persisted in alignment_run_breakpoints. Fitting
--- the model is Phase 3 work: until it lands the fitting API fails clearly rather
--- than silently degrading to a single affine segment, which would answer a
--- different question than the caller asked.
+-- breakpoints are declared input persisted in alignment_run_breakpoints.
+-- vawlume.alignment.fit fits it as one affine segment per declared interval,
+-- continuous at the breakpoints. Breakpoints are never estimated, and a piecewise
+-- request that declares none fails with BreakpointsRequired rather than silently
+-- degrading to a single affine segment, which would answer a different question
+-- than the caller asked.
 CREATE TABLE time_alignment_runs (
     alignment_run_id    INTEGER PRIMARY KEY,
     alignment_set_id    INTEGER NOT NULL REFERENCES alignment_sets(alignment_set_id) ON DELETE CASCADE,
@@ -2654,6 +2656,61 @@ BEGIN
     SELECT RAISE(ABORT, 'Analysis-run source belongs to a different project than the derived analysis');
 END;
 
+-- An arbitrary-N agreement run takes one extraction run per extractor. Agreement
+-- is across extractors, and the pair views give one row per extractor pair only
+-- because each extractor is represented through one run; a second run of the same
+-- extractor would double its pair rows and merge their assessment counts. The
+-- composer has always required this, and these guards make it hold for any
+-- writer. The same run under a second input_role is still one run. The update twin
+-- excludes the row being updated, so replacing an extractor's run with another run
+-- of that extractor is allowed. Other run types are unaffected.
+CREATE TRIGGER trg_agreement_input_one_run_per_extractor
+BEFORE INSERT ON analysis_run_extraction_inputs
+FOR EACH ROW
+WHEN (SELECT run_type FROM analysis_runs WHERE analysis_run_id = NEW.analysis_run_id)
+        = 'multi_extractor_agreement'
+ AND EXISTS (
+    SELECT 1
+    FROM analysis_run_extraction_inputs existing
+    JOIN extraction_runs er_existing
+      ON er_existing.extraction_run_id = existing.extraction_run_id
+    JOIN extractor_versions ev_existing
+      ON ev_existing.extractor_version_id = er_existing.extractor_version_id
+    JOIN extraction_runs er_new ON er_new.extraction_run_id = NEW.extraction_run_id
+    JOIN extractor_versions ev_new
+      ON ev_new.extractor_version_id = er_new.extractor_version_id
+    WHERE existing.analysis_run_id = NEW.analysis_run_id
+      AND existing.extraction_run_id <> NEW.extraction_run_id
+      AND ev_existing.extractor_id = ev_new.extractor_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'An agreement run takes one extraction run per extractor');
+END;
+
+CREATE TRIGGER trg_agreement_input_one_run_per_extractor_update
+BEFORE UPDATE OF analysis_run_id, extraction_run_id ON analysis_run_extraction_inputs
+FOR EACH ROW
+WHEN (SELECT run_type FROM analysis_runs WHERE analysis_run_id = NEW.analysis_run_id)
+        = 'multi_extractor_agreement'
+ AND EXISTS (
+    SELECT 1
+    FROM analysis_run_extraction_inputs existing
+    JOIN extraction_runs er_existing
+      ON er_existing.extraction_run_id = existing.extraction_run_id
+    JOIN extractor_versions ev_existing
+      ON ev_existing.extractor_version_id = er_existing.extractor_version_id
+    JOIN extraction_runs er_new ON er_new.extraction_run_id = NEW.extraction_run_id
+    JOIN extractor_versions ev_new
+      ON ev_new.extractor_version_id = er_new.extractor_version_id
+    WHERE existing.analysis_run_id = NEW.analysis_run_id
+      AND existing.rowid <> OLD.rowid
+      AND existing.extraction_run_id <> NEW.extraction_run_id
+      AND ev_existing.extractor_id = ev_new.extractor_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'An agreement run takes one extraction run per extractor');
+END;
+
 -- Agreement groups live only on an arbitrary-N agreement run, never grafted onto
 -- a pairwise matching analysis, and their recording belongs to that run's project.
 CREATE TRIGGER trg_agreement_group_run_scope
@@ -3041,6 +3098,39 @@ WHEN (
 )
 BEGIN
     SELECT RAISE(ABORT, 'Decision status contradicts the candidates already selected');
+END;
+
+-- The third direction: removing a selection, directly or by deleting the selected
+-- candidate, must not leave an 'assigned' decision selecting nobody or a
+-- 'simultaneous' one selecting fewer than two.
+--
+-- It must not refuse the cascades that remove the decision itself. When the
+-- decision, its target, or its run is deleted, the selections go by cascade, and
+-- the order in which SQLite cascades into sibling tables is an implementation
+-- detail. So the guard fires only while the decision AND its target still exist.
+-- A target being deleted is already gone when its cascades run, which keeps the
+-- guard independent of that order. Measured in both table-creation orders.
+CREATE TRIGGER trg_attribution_decision_cardinality_delete
+AFTER DELETE ON attribution_decision_candidates
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1
+    FROM attribution_decisions ad
+    JOIN attribution_targets at
+      ON at.attribution_target_id = ad.attribution_target_id
+    WHERE ad.attribution_decision_id = OLD.attribution_decision_id
+      AND CASE ad.decision_status
+            WHEN 'assigned' THEN
+              (SELECT COUNT(*) FROM attribution_decision_candidates dc
+                WHERE dc.attribution_decision_id = OLD.attribution_decision_id) <> 1
+            WHEN 'simultaneous' THEN
+              (SELECT COUNT(*) FROM attribution_decision_candidates dc
+                WHERE dc.attribution_decision_id = OLD.attribution_decision_id) < 2
+            ELSE 0
+          END
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Removing this selection leaves the decision status contradicting its selected candidates');
 END;
 
 -- A correspondence links a window and a target that belong to the same run.
@@ -3468,12 +3558,21 @@ member_counts AS (
     FROM member_rows
     GROUP BY agreement_group_id
 ),
+-- Every group_concat below states its own ORDER BY. SQLite does not promise that
+-- an aggregate follows the order of the subquery feeding it, and these patterns
+-- are query keys whose order is documented. Ordered aggregates need SQLite 3.44.
 extractor_sets AS (
     SELECT
         agreement_group_id,
-        group_concat(extractor_key, '|') AS extractor_set_key,
-        group_concat(extractor_name, ' | ') AS extractor_set_label,
-        group_concat(extraction_run_key, '|') AS extraction_run_set_key
+        group_concat(extractor_key, '|'
+                     ORDER BY extractor_key, extraction_run_key)
+            AS extractor_set_key,
+        group_concat(extractor_name, ' | '
+                     ORDER BY extractor_key, extraction_run_key)
+            AS extractor_set_label,
+        group_concat(extraction_run_key, '|'
+                     ORDER BY extractor_key, extraction_run_key)
+            AS extraction_run_set_key
     FROM (
         SELECT DISTINCT
             agreement_group_id,
@@ -3481,7 +3580,6 @@ extractor_sets AS (
             extractor_name,
             extraction_run_key
         FROM member_rows
-        ORDER BY agreement_group_id, extractor_key, extraction_run_key
     )
     GROUP BY agreement_group_id
 ),
@@ -3498,25 +3596,26 @@ edge_counts AS (
 topology_patterns AS (
     SELECT
         agreement_group_id,
-        group_concat(pairwise_topology_label, '|') AS pairwise_topology_pattern
+        group_concat(pairwise_topology_label, '|'
+                     ORDER BY pairwise_topology_label)
+            AS pairwise_topology_pattern
     FROM (
         SELECT DISTINCT agreement_group_id, pairwise_topology_label
         FROM exact_edges
-        ORDER BY agreement_group_id, pairwise_topology_label
     )
     GROUP BY agreement_group_id
 ),
 ambiguous_topology_patterns AS (
     SELECT
         agreement_group_id,
-        group_concat(pairwise_topology_label, '|')
+        group_concat(pairwise_topology_label, '|'
+                     ORDER BY pairwise_topology_label)
             AS ambiguous_pairwise_topology_pattern
     FROM (
         SELECT DISTINCT agreement_group_id, pairwise_topology_label
         FROM exact_edges
         WHERE pairwise_topology_label IN
               ('one_to_many', 'many_to_one', 'many_to_many', 'ambiguous')
-        ORDER BY agreement_group_id, pairwise_topology_label
     )
     GROUP BY agreement_group_id
 ),
@@ -3532,26 +3631,28 @@ pair_counts AS (
 supported_patterns AS (
     SELECT
         agreement_group_id,
-        group_concat(extractor_pair_key, '|') AS supported_extractor_pair_pattern,
-        group_concat(extractor_pair_label, ';') AS supported_extractor_pair_label
+        group_concat(extractor_pair_key, '|' ORDER BY extractor_pair_key)
+            AS supported_extractor_pair_pattern,
+        group_concat(extractor_pair_label, ';' ORDER BY extractor_pair_key)
+            AS supported_extractor_pair_label
     FROM (
         SELECT agreement_group_id, extractor_pair_key, extractor_pair_label
         FROM pair_support
         WHERE is_supported = 1
-        ORDER BY agreement_group_id, extractor_pair_key
     )
     GROUP BY agreement_group_id
 ),
 unsupported_patterns AS (
     SELECT
         agreement_group_id,
-        group_concat(extractor_pair_key, '|') AS unsupported_extractor_pair_pattern,
-        group_concat(extractor_pair_label, ';') AS unsupported_extractor_pair_label
+        group_concat(extractor_pair_key, '|' ORDER BY extractor_pair_key)
+            AS unsupported_extractor_pair_pattern,
+        group_concat(extractor_pair_label, ';' ORDER BY extractor_pair_key)
+            AS unsupported_extractor_pair_label
     FROM (
         SELECT agreement_group_id, extractor_pair_key, extractor_pair_label
         FROM pair_support
         WHERE is_supported = 0
-        ORDER BY agreement_group_id, extractor_pair_key
     )
     GROUP BY agreement_group_id
 )
@@ -3633,6 +3734,13 @@ LEFT JOIN unsupported_patterns up ON up.agreement_group_id = ag.agreement_group_
 -- feature_a/feature_b order follows feature_relationships' ascending-id CHECK and
 -- carries no extractor or directional meaning; consumers must orient themselves
 -- by extractor_a_name / extractor_b_name.
+--
+-- One row per relationship. A feature may hold several mappings, because a
+-- profile revision registers a new one beside the old, so each side's canonical
+-- columns come from that feature's most recently registered mapping (the highest
+-- feature_mapping_id). Joining every mapping would repeat the relationship once
+-- per combination and duplicate every pair a consumer discovers. A feature with no
+-- mapping keeps NULL canonical columns.
 CREATE VIEW v_cross_extractor_feature_pairs AS
 SELECT
     fr.feature_relationship_id,
@@ -3675,9 +3783,13 @@ JOIN extractor_versions eva ON eva.extractor_version_id = a.extractor_version_id
 JOIN extractors ea ON ea.extractor_id = eva.extractor_id
 JOIN extractor_versions evb ON evb.extractor_version_id = b.extractor_version_id
 JOIN extractors eb ON eb.extractor_id = evb.extractor_id
-LEFT JOIN feature_mappings fma ON fma.extractor_feature_id = a.extractor_feature_id
+LEFT JOIN feature_mappings fma ON fma.feature_mapping_id = (
+    SELECT MAX(m.feature_mapping_id) FROM feature_mappings m
+    WHERE m.extractor_feature_id = a.extractor_feature_id)
 LEFT JOIN canonical_features cfa ON cfa.canonical_feature_id = fma.canonical_feature_id
-LEFT JOIN feature_mappings fmb ON fmb.extractor_feature_id = b.extractor_feature_id
+LEFT JOIN feature_mappings fmb ON fmb.feature_mapping_id = (
+    SELECT MAX(m.feature_mapping_id) FROM feature_mappings m
+    WHERE m.extractor_feature_id = b.extractor_feature_id)
 LEFT JOIN canonical_features cfb ON cfb.canonical_feature_id = fmb.canonical_feature_id
 WHERE ea.extractor_id <> eb.extractor_id;
 
@@ -3936,8 +4048,10 @@ FROM (
     FROM group_context g JOIN extremes e USING(agreement_group_id)
 );
 
--- One row per stored correspondence, carrying the two bases a reader must not
--- confuse and the imported claims the correspondence reaches.
+-- One row per stored correspondence and window claim, carrying the two bases a
+-- reader must not confuse and the imported claims the correspondence reaches. A
+-- window with several claims repeats its correspondence once per claim, so count
+-- correspondences by attribution_window_correspondence_id rather than by rows.
 --
 -- iou_basis says whether the IoU was computed on NATIVE or ALIGNED intervals.
 -- target_extent_basis says which of the five derivations supplied an agreement
@@ -3950,8 +4064,9 @@ FROM (
 -- second copy would be a second place for one fact to be wrong. This view is that
 -- join, named once so no caller composes it by hand.
 --
--- Claim columns are NULL when a window carried no claim resolving to a caller, and
--- a NULL score is an absent number rather than a zero one.
+-- Claim columns are NULL only when a window carries no claim row at all. A claim
+-- whose label resolved to no entity still yields a row, with a NULL
+-- claimed_entity_id. A NULL score is an absent number rather than a zero one.
 CREATE VIEW v_attribution_window_correspondences AS
 SELECT
     c.attribution_window_correspondence_id,

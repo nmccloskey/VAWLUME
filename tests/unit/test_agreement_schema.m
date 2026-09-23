@@ -22,8 +22,8 @@ function testSchemaVersionAndAgreementObjectsExist(testCase)
 [fixture, cleanup] = setUpSchema(); %#ok<ASGLU>
 conn = fixture.conn;
 
-verifyEqual(testCase, textOf(conn, "SELECT schema_version FROM schema_info"), "0.10-draft");
-verifyEqual(testCase, numberOf(conn, "PRAGMA user_version"), 10);
+verifyEqual(testCase, textOf(conn, "SELECT schema_version FROM schema_info"), "0.11-draft");
+verifyEqual(testCase, numberOf(conn, "PRAGMA user_version"), 11);
 
 for name = ["analysis_run_sources", "agreement_groups", ...
         "agreement_group_members", "agreement_supporting_edges"]
@@ -374,6 +374,121 @@ verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
 clear cleanup
 end
 
+% ------------------------------------------- one extraction run per extractor ---
+
+function testAnAgreementRunTakesOneExtractionRunPerExtractor(testCase)
+% The pair views give one row per extractor pair only because each extractor
+% reaches an agreement run through one extraction run. The composer has always
+% required that; the schema now does too, so a direct write cannot quietly give
+% one extractor two runs and double its pair rows.
+[fixture, cleanup] = setUpWorld(); %#ok<ASGLU>
+conn = fixture.conn;
+agreement = string(fixture.agreement_run);
+secondMupetRun = string(fixture.runs.undeclared);
+
+verifySqlFailsWith(testCase, conn, "INSERT INTO analysis_run_extraction_inputs(" + ...
+    "analysis_run_id,extraction_run_id,input_role) VALUES(" + agreement + "," + ...
+    secondMupetRun + ",'agreement_input')", "one extraction run per extractor");
+% Repointing the USVSEG input at a second MUPET run is the same violation.
+verifySqlFailsWith(testCase, conn, "UPDATE analysis_run_extraction_inputs " + ...
+    "SET extraction_run_id = " + secondMupetRun + " WHERE analysis_run_id = " + ...
+    agreement + " AND extraction_run_id = " + string(fixture.runs.usvseg), ...
+    "one extraction run per extractor");
+
+% Replacing an extractor's run with another run of the same extractor is not a
+% second run: the row being updated does not count against itself.
+execute(conn, "UPDATE analysis_run_extraction_inputs SET extraction_run_id = " + ...
+    secondMupetRun + " WHERE analysis_run_id = " + agreement + ...
+    " AND extraction_run_id = " + string(fixture.runs.mupet));
+% One run under a second role is still one run.
+execute(conn, "INSERT INTO analysis_run_extraction_inputs(analysis_run_id," + ...
+    "extraction_run_id,input_role) VALUES(" + agreement + "," + ...
+    string(fixture.runs.ds) + ",'reference')");
+% Other run types are untouched by the rule.
+execute(conn, "INSERT INTO analysis_run_extraction_inputs(analysis_run_id," + ...
+    "extraction_run_id,input_role) VALUES(" + string(fixture.undeclared_pair) + "," + ...
+    string(fixture.runs.mupet) + ",'extra')");
+
+verifyEqual(testCase, numberOf(conn, "SELECT COUNT(*) AS n FROM " + ...
+    "analysis_run_extraction_inputs WHERE analysis_run_id = " + agreement), 4);
+
+clear cleanup
+end
+
+% ------------------------------------------------ summary pattern ordering ---
+
+function testSummaryPatternsStateTheirOwnOrder(testCase)
+% SQLite does not promise that group_concat follows a subquery's ORDER BY, so
+% the documented pattern order has to be stated inside each aggregate. The old
+% definition produced the same values in practice, which is why this test reads
+% the view definition as well as its output: the values alone cannot tell a
+% guaranteed order from a lucky one.
+[fixture, cleanup] = setUpWorld(); %#ok<ASGLU>
+conn = fixture.conn;
+
+definition = textOf(conn, "SELECT sql FROM sqlite_master " + ...
+    "WHERE type = 'view' AND name = 'v_agreement_group_summary'");
+calls = regexp(definition, "group_concat\(([^()]*)\)", "tokens");
+verifyNotEmpty(testCase, calls);
+for index = 1:numel(calls)
+    verifyTrue(testCase, contains(calls{index}{1}, "ORDER BY"), ...
+        "group_concat without its own ORDER BY: " + calls{index}{1});
+end
+
+summary = fetch(conn, "SELECT extractor_set_key, extraction_run_set_key, " + ...
+    "supported_extractor_pair_pattern, pairwise_topology_pattern " + ...
+    "FROM v_agreement_group_summary WHERE agreement_group_id = " + ...
+    string(fixture.convergent_group));
+verifyEqual(testCase, string(summary.extractor_set_key), "deepsqueak|mupet|usvseg");
+verifyEqual(testCase, string(summary.extraction_run_set_key), "ds1|mu1|uv1");
+verifyEqual(testCase, string(summary.supported_extractor_pair_pattern), ...
+    "deepsqueak--mupet|deepsqueak--usvseg|mupet--usvseg");
+verifyEqual(testCase, string(summary.pairwise_topology_pattern), "one_to_one");
+
+clear cleanup
+end
+
+% ---------------------------------------- feature pairs under several mappings ---
+
+function testFeaturePairsGiveOneRowPerRelationshipUnderSeveralMappings(testCase)
+% A profile revision registers a second mapping for a feature it already maps.
+% The pair view must still give one row per registered relationship, taking the
+% canonical columns from the most recently registered mapping; both consumers of
+% the view read it that way.
+[fixture, cleanup] = setUpWorld(); %#ok<ASGLU>
+conn = fixture.conn;
+
+execute(conn, "INSERT INTO extractor_features(extractor_feature_id," + ...
+    "extractor_version_id,native_name,native_unit,equivalence_class) VALUES" + ...
+    "(100,1,'Principal Frequency','kHz','vocalization_frequency_center')," + ...
+    "(101,2,'mean frequency','kHz','vocalization_frequency_center')," + ...
+    "(102,3,'meanfreq','kHz','vocalization_frequency_center')");
+execute(conn, "INSERT INTO canonical_features(canonical_feature_id," + ...
+    "canonical_name,canonical_unit) VALUES(200,'freq_as_first_registered','Hz')," + ...
+    "(201,'freq_as_revised','kHz'),(202,'frequency_center','kHz')");
+execute(conn, "INSERT INTO feature_mappings(feature_mapping_id," + ...
+    "extractor_feature_id,canonical_feature_id,mapping_type) VALUES" + ...
+    "(1,100,200,'comparable'),(2,101,202,'comparable'),(3,100,201,'comparable')");
+execute(conn, "INSERT INTO feature_relationships(feature_a_id,feature_b_id," + ...
+    "relationship_type,consilience_eligible) VALUES(100,101,'comparable',1)," + ...
+    "(101,102,'related',0)");
+
+rows = fetch(conn, "SELECT feature_relationship_id, " + ...
+    "IFNULL(feature_a_canonical_name,'') AS a_name, " + ...
+    "IFNULL(feature_a_canonical_unit,'') AS a_unit, " + ...
+    "IFNULL(feature_b_canonical_name,'(no mapping)') AS b_name " + ...
+    "FROM v_cross_extractor_feature_pairs ORDER BY feature_relationship_id");
+verifyEqual(testCase, height(rows), 2, ...
+    "Expected one row per relationship, not one per mapping combination.");
+verifyEqual(testCase, string(rows.a_name(1)), "freq_as_revised");
+verifyEqual(testCase, string(rows.a_unit(1)), "kHz");
+verifyEqual(testCase, string(rows.b_name(1)), "frequency_center");
+% A feature with no mapping keeps NULL canonical columns rather than dropping out.
+verifyEqual(testCase, string(rows.b_name(2)), "(no mapping)");
+
+clear cleanup
+end
+
 % ------------------------------------------------------------------ helpers ---
 
 function value = pairwiseGroupSubquery()
@@ -623,6 +738,20 @@ catch
     didFail = true;
 end
 verifyTrue(testCase, didFail, "Expected SQL statement to fail: " + sql);
+end
+
+function verifySqlFailsWith(testCase, conn, sql, expectedFragment)
+% A refusal alone does not prove which constraint fired, so the message is
+% checked too.
+message = "";
+try
+    execute(conn, sql);
+catch exception
+    message = string(exception.message);
+end
+verifyTrue(testCase, contains(message, expectedFragment), ...
+    "Expected refusal containing """ + expectedFragment + """ for: " + sql + ...
+    newline + "Got: " + message);
 end
 
 function text = sqlText(value)

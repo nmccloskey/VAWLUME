@@ -35,9 +35,9 @@ end
 function testSchemaVersionIsCurrent(testCase)
 conn = testCase.TestData.conn;
 version = fetch(conn, "SELECT schema_version FROM schema_info");
-verifyEqual(testCase, string(version{1,1}), "0.10-draft");
+verifyEqual(testCase, string(version{1,1}), "0.11-draft");
 userVersion = fetch(conn, "PRAGMA user_version");
-verifyEqual(testCase, double(userVersion{1,1}), 10);
+verifyEqual(testCase, double(userVersion{1,1}), 11);
 end
 
 % --- targets name exactly one event set ----------------------------------
@@ -199,6 +199,69 @@ execute(conn, "INSERT INTO attribution_decisions(attribution_decision_id," + ...
 verifyRefused(testCase, ...
     "INSERT INTO attribution_decision_candidates(attribution_decision_id," + ...
     "attribution_candidate_id) VALUES(1,999)", "different attribution target");
+end
+
+% --- decision cardinality survives deletion ---------------------------------
+
+function testDeletingTheOnlySelectionOfAnAssignedDecisionIsRefused(testCase)
+% The status-to-cardinality rule was checked when a selection was added and when
+% the status changed, but not when a selection was removed, so an 'assigned'
+% decision could be left selecting nobody.
+conn = testCase.TestData.conn;
+addThreeCandidates(conn);
+addDecision(conn, "assigned", 1);
+verifyRefused(testCase, "DELETE FROM attribution_decision_candidates " + ...
+    "WHERE attribution_decision_id=1", "Removing this selection");
+end
+
+function testDeletingASelectionBelowTwoForSimultaneousIsRefused(testCase)
+conn = testCase.TestData.conn;
+addThreeCandidates(conn);
+addDecision(conn, "simultaneous", [1 2 3]);
+% Three down to two still satisfies 'simultaneous'.
+execute(conn, "DELETE FROM attribution_decision_candidates " + ...
+    "WHERE attribution_decision_id=1 AND attribution_candidate_id=3");
+verifyRefused(testCase, "DELETE FROM attribution_decision_candidates " + ...
+    "WHERE attribution_decision_id=1 AND attribution_candidate_id=2", ...
+    "Removing this selection");
+end
+
+function testDeletingASelectedCandidateIsRefused(testCase)
+% Deleting the candidate removes the selection by cascade, which is the same
+% violation reached one step further away.
+conn = testCase.TestData.conn;
+addThreeCandidates(conn);
+addDecision(conn, "assigned", 1);
+verifyRefused(testCase, "DELETE FROM attribution_candidates " + ...
+    "WHERE attribution_candidate_id=1", "Removing this selection");
+% A candidate the decision did not select is unaffected.
+execute(conn, "DELETE FROM attribution_candidates WHERE attribution_candidate_id=3");
+end
+
+function testDeletingTheDecisionTargetOrRunStillCascades(testCase)
+% The guard must not refuse the cascades that remove the decision itself. Cascade
+% order between sibling tables is an SQLite implementation detail, so the guard
+% keys on whether the decision's target still exists rather than on that order.
+conn = testCase.TestData.conn;
+addThreeCandidates(conn);
+
+addDecision(conn, "assigned", 1);
+execute(conn, "DELETE FROM attribution_decisions WHERE attribution_decision_id=1");
+verifyEqual(testCase, countOf(conn, "attribution_decision_candidates"), 0);
+
+addDecision(conn, "simultaneous", [1 2]);
+execute(conn, "DELETE FROM attribution_targets WHERE attribution_target_id=1");
+verifyEqual(testCase, countOf(conn, "attribution_decisions"), 0);
+verifyEqual(testCase, countOf(conn, "attribution_candidates"), 0);
+
+execute(conn, "INSERT INTO attribution_targets(attribution_target_id," + ...
+    "attribution_run_id,detection_id) VALUES(1,1,1)");
+addThreeCandidates(conn);
+addDecision(conn, "assigned", 2);
+execute(conn, "DELETE FROM attribution_runs WHERE attribution_run_id=1");
+verifyEqual(testCase, countOf(conn, "attribution_targets"), 0);
+verifyEqual(testCase, countOf(conn, "attribution_decision_candidates"), 0);
+verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
 end
 
 % --- evidence -------------------------------------------------------------
@@ -472,6 +535,22 @@ execute(conn, "INSERT INTO attribution_candidates(attribution_candidate_id," + .
     "(1,1,1,0.8,'external posterior-like score, uncalibrated')," + ...
     "(2,1,2,0.6,'external posterior-like score, uncalibrated')," + ...
     "(3,1,3,0.1,'external posterior-like score, uncalibrated')");
+end
+
+function addDecision(conn, status, candidateIds)
+execute(conn, "INSERT INTO attribution_decisions(attribution_decision_id," + ...
+    "attribution_target_id,decision_status,policy_profile_version_id) " + ...
+    "VALUES(1,1," + "'" + status + "',1)");
+for candidateId = candidateIds
+    execute(conn, "INSERT INTO attribution_decision_candidates(" + ...
+        "attribution_decision_id,attribution_candidate_id) VALUES(1," + ...
+        string(candidateId) + ")");
+end
+end
+
+function value = countOf(conn, tableName)
+rows = fetch(conn, "SELECT COUNT(*) AS n FROM " + tableName);
+value = double(rows.n(1));
 end
 
 function addDisagreeingGroup(conn)

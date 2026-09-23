@@ -1,6 +1,6 @@
 {
-  "metadata_version": "0.8.0",
-  "schema_version": "0.10-draft",
+  "metadata_version": "0.9.0",
+  "schema_version": "0.11-draft",
   "coverage": {
     "complete_domains": [
       { "domain": "identity_config_provenance", "object_count": 10 },
@@ -1445,7 +1445,7 @@
     "analysis_run_extraction_inputs": {
       "kind": "table",
       "domain": "matching_agreement",
-      "description": "Declares which extraction runs an analysis was permitted to draw detections from. This is the boundary that makes an analysis's population explicit: a group may only contain detections from a run declared here, and a trigger enforces it.",
+      "description": "Declares which extraction runs an analysis was permitted to draw detections from. This is the boundary that makes an analysis's population explicit: a group may only contain detections from a run declared here, and a trigger enforces it. An arbitrary-N agreement run may declare only one extraction run per extractor, also trigger-enforced, because agreement is compared across extractors rather than across runs of one tool.",
       "columns": {
         "analysis_run_id": {
           "description": "Analysis consuming the extraction run."
@@ -3033,7 +3033,7 @@
       "description": "One selected candidate belonging to one attribution decision. The link represents a set rather than a single winner, allowing assigned decisions to select one candidate and simultaneous decisions to select multiple candidates while other statuses select none.",
       "columns": {
         "attribution_decision_id": {
-          "description": "Policy conclusion whose selected-candidate set contains this link. Insert and decision-status-update triggers check the permitted size of that set; direct SQL deletion is outside that public-write guarantee."
+          "description": "Policy conclusion whose selected-candidate set contains this link. Triggers check the permitted size of that set when a selection is added, when the decision status changes, and when a selection is removed, directly or by deleting the selected candidate; removing the decision, its target, or its run removes the whole set together."
         },
         "attribution_candidate_id": {
           "description": "Candidate selected by the decision. A trigger requires it to belong to the same attribution target as the decision."
@@ -3439,7 +3439,7 @@
     "v_agreement_extractor_pair_support": {
       "kind": "view",
       "domain": "views",
-      "description": "Query surface giving, for each arbitrary-N agreement group, one row per unordered pair of distinct extractors represented among its members, whether or not any edge supports that pair. It is the coarse reduction of v_agreement_supporting_edges: several exact edges may support one row, and an unsupported pair stays present with a zero count so the missing pair is named rather than only counted. Here side a is the extractor with the lexically lower extractor_key, unlike the candidate-pair ordering in v_agreement_supporting_edges. The row grain assumes each extractor is represented through one extraction run, which the current composer requires but the view does not enforce. It owns no rows and stores no summary: assessment and support are recomputed from declared source analyses and cited edges on every read.",
+      "description": "Query surface giving, for each arbitrary-N agreement group, one row per unordered pair of distinct extractors represented among its members, whether or not any edge supports that pair. It is the coarse reduction of v_agreement_supporting_edges: several exact edges may support one row, and an unsupported pair stays present with a zero count so the missing pair is named rather than only counted. Here side a is the extractor with the lexically lower extractor_key, unlike the candidate-pair ordering in v_agreement_supporting_edges. The row grain relies on each extractor being represented through one extraction run, which the schema enforces for agreement runs. It owns no rows and stores no summary: assessment and support are recomputed from declared source analyses and cited edges on every read.",
       "columns": {
         "agreement_group_id": { "same_as": "agreement_groups.agreement_group_id" },
         "analysis_run_id": { "same_as": "agreement_groups.analysis_run_id" },
@@ -3540,7 +3540,7 @@
           "description": "Number of distinct extractors that reported the group's member detections. Answers questions such as which groups every participating extractor reached without a further join."
         },
         "extractor_set_key": {
-          "description": "Machine-facing list of the group's represented extractors: their extractor_key values in ascending order joined by a vertical bar. Built from distinct extractor and extraction-run combinations, so a key would repeat only if one extractor were represented through two runs, which the current composer refuses. A query key, not an identity."
+          "description": "Machine-facing list of the group's represented extractors: their extractor_key values in ascending order joined by a vertical bar. Built from distinct extractor and extraction-run combinations; since an agreement run takes one extraction run per extractor, each key appears once. A query key, not an identity."
         },
         "extractor_set_label": {
           "description": "Human-facing list of the group's represented extractor names, in the same order as extractor_set_key and joined by a spaced vertical bar. For reading, not for joining."
@@ -3555,7 +3555,7 @@
           "description": "Number of the group's possible extractor pairs that at least one cited edge supports, counted from v_agreement_extractor_pair_support."
         },
         "possible_extractor_pair_count": {
-          "description": "Number of unordered pairs of distinct extractors represented in the group: its row count in v_agreement_extractor_pair_support, which is N(N-1)/2 for N represented extractors when each contributes through one extraction run. Zero for a group reported by one extractor."
+          "description": "Number of unordered pairs of distinct extractors represented in the group: its row count in v_agreement_extractor_pair_support, which is N(N-1)/2 for N represented extractors, since each contributes through one extraction run. Zero for a group reported by one extractor."
         },
         "assessed_extractor_pair_count": {
           "description": "Number of the group's possible extractor pairs that at least one declared source analysis covered, whether or not the comparison found support."
@@ -3604,7 +3604,7 @@
     "v_cross_extractor_feature_pairs": {
       "kind": "view",
       "domain": "views",
-      "description": "Query surface giving each registered cross-extractor feature relationship with both features' declared metadata side by side (extractor, version, native name and unit, derivation stage, operational variant, method, definition, equivalence class and canonical mapping), so a pairing can be judged without assembling the registry by hand. A pair appears because a feature_relationships row asserts it, not because the features look alike: a shared canonical name or equivalence class is neither necessary nor sufficient, and relationship_type and consilience_eligible are shown unfiltered. Sides a and b follow the relationship's ascending-identifier ordering and carry no extractor or directional meaning, so orient by extractor_a_name and extractor_b_name. Relationships between two features of one extractor are excluded. The canonical columns come from optional feature mappings: a side with none gives nulls there, and a side with several repeats the relationship once per mapping. It owns no rows.",
+      "description": "Query surface giving each registered cross-extractor feature relationship with both features' declared metadata side by side (extractor, version, native name and unit, derivation stage, operational variant, method, definition, equivalence class and canonical mapping), so a pairing can be judged without assembling the registry by hand. A pair appears because a feature_relationships row asserts it, not because the features look alike: a shared canonical name or equivalence class is neither necessary nor sufficient, and relationship_type and consilience_eligible are shown unfiltered. Sides a and b follow the relationship's ascending-identifier ordering and carry no extractor or directional meaning, so orient by extractor_a_name and extractor_b_name. Relationships between two features of one extractor are excluded. There is exactly one row per relationship. Each side's canonical columns come from that feature's most recently registered mapping, since a profile revision registers a new mapping beside the old one; a side with no mapping gives nulls there. It owns no rows.",
       "columns": {
         "feature_relationship_id": { "same_as": "feature_relationships.feature_relationship_id" },
         "relationship_type": { "same_as": "feature_relationships.relationship_type" },
@@ -3642,10 +3642,10 @@
           "description": "Side a: equivalence-class label declared for feature_a_id. Shown so the pairing can be read against it; sharing a class with the other side neither creates nor confirms the relationship."
         },
         "feature_a_canonical_name": {
-          "description": "Side a: name of a canonical feature that feature_a_id is mapped to through feature_mappings. Null when it has no mapping; several mappings give several rows. A canonical name shared with the other side is not what makes the pair comparable."
+          "description": "Side a: name of the canonical feature that feature_a_id is mapped to by its most recently registered mapping in feature_mappings. Null when it has no mapping; earlier mappings of the same feature are not shown here. A canonical name shared with the other side is not what makes the pair comparable."
         },
         "feature_a_canonical_unit": {
-          "description": "Side a: canonical unit of the canonical feature that feature_a_id is mapped to. Null when feature_a_id has no mapping or the canonical feature has no unit. Agreement of the two sides' canonical units is the second half of the comparability gate, alongside consilience_eligible."
+          "description": "Side a: canonical unit of the canonical feature that feature_a_id is mapped to by its most recently registered mapping. Null when feature_a_id has no mapping or the canonical feature has no unit. Agreement of the two sides' canonical units is the second half of the comparability gate, alongside consilience_eligible."
         },
         "feature_a_domain": {
           "description": "Side a: broad domain of the canonical feature that feature_a_id is mapped to, such as timing or spectral content. Null when feature_a_id has no mapping."
@@ -3679,10 +3679,10 @@
           "description": "Side b: equivalence-class label declared for feature_b_id. Shown so the pairing can be read against it; sharing a class with the other side neither creates nor confirms the relationship."
         },
         "feature_b_canonical_name": {
-          "description": "Side b: name of a canonical feature that feature_b_id is mapped to through feature_mappings. Null when it has no mapping; several mappings give several rows. A canonical name shared with the other side is not what makes the pair comparable."
+          "description": "Side b: name of the canonical feature that feature_b_id is mapped to by its most recently registered mapping in feature_mappings. Null when it has no mapping; earlier mappings of the same feature are not shown here. A canonical name shared with the other side is not what makes the pair comparable."
         },
         "feature_b_canonical_unit": {
-          "description": "Side b: canonical unit of the canonical feature that feature_b_id is mapped to. Null when feature_b_id has no mapping or the canonical feature has no unit. Agreement of the two sides' canonical units is the second half of the comparability gate, alongside consilience_eligible."
+          "description": "Side b: canonical unit of the canonical feature that feature_b_id is mapped to by its most recently registered mapping. Null when feature_b_id has no mapping or the canonical feature has no unit. Agreement of the two sides' canonical units is the second half of the comparability gate, alongside consilience_eligible."
         },
         "feature_b_domain": {
           "description": "Side b: broad domain of the canonical feature that feature_b_id is mapped to, such as timing or spectral content. Null when feature_b_id has no mapping."
@@ -5530,7 +5530,7 @@
       "source_columns": ["attribution_candidate_id"],
       "target_table": "attribution_candidates",
       "target_columns": ["attribution_candidate_id"],
-      "description": "Names one candidate selected by this decision. Insert and decision-status-update triggers require the candidate to concern the same target and check the decision status's selected-set size; direct SQL deletion can bypass the latter guarantee."
+      "description": "Names one candidate selected by this decision. Triggers require the candidate to concern the same target, and check the decision status's selected-set size on insert, on status update, and on removal, so deleting a selected candidate is refused while the decision stands."
     },
     {
       "source_table": "attribution_decision_candidates",

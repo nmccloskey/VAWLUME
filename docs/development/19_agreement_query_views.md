@@ -56,8 +56,9 @@ v_agreement_extractor_pair_support returns one row for every unordered pair of
 extractors represented in a group. The pair is ordered by extractor_key, and
 the view includes both extractor/run/version endpoints. Its rows are built from
 pairs of represented extraction runs, so "one row per extractor pair" relies on
-each extractor contributing through one run. `vawlume.agreement.compose`
-enforces that today; the schema and the view do not.
+each extractor contributing through one run. Triggers on
+analysis_run_extraction_inputs enforce that for every agreement run, added at
+schema version `0.11-draft`; `vawlume.agreement.compose` has always required it.
 
 source_analysis_count, source_analysis_run_id/key, and is_assessed expose
 whether the agreement run declared a source analysis covering those two
@@ -86,8 +87,7 @@ v_agreement_group_summary returns one row per agreement group:
 | uniqueness | is_singleton, is_extractor_unique |
 
 For N represented extractors, possible_extractor_pair_count is the row count in
-the possible-pair view and therefore equals N*(N-1)/2 under the one-run-per-
-extractor rule above. support_fraction is the
+the possible-pair view and therefore equals N*(N-1)/2. support_fraction is the
 supported count divided by that possible count. It is NULL for a singleton
 because no extractor pair is possible. Pair-support and assessment-completeness
 flags are false there rather than vacuously reporting corroboration.
