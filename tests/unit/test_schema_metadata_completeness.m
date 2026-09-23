@@ -18,7 +18,7 @@ function tests = test_schema_metadata_completeness
 % 3's to make, and testTheCommittedDocumentIsNotYetComplete is what keeps
 % anyone from making it by accident in the meantime.
 tests = functiontests({ ...
-    @testTheCommittedDocumentIsNotYetComplete, ...
+    @testTheCommittedDocumentSurvivesItsOwnClaims, ...
     @testAPartialDocumentPassesIdentityButClaimsNothing, ...
     @testADeclaredDomainMustDescribeEveryColumnOfItsObjects, ...
     @testADeclaredDomainMustMatchItsOwnObjectCount, ...
@@ -32,29 +32,36 @@ end
 % The committed document
 % ---------------------------------------------------------------------------
 
-function testTheCommittedDocumentIsNotYetComplete(testCase)
-% Part 2 ships a seed, not schema documentation. This is the machine-readable
-% form of that statement: no domain is declared complete, so nothing downstream
-% may present the document as a full description of the schema.
+function testTheCommittedDocumentSurvivesItsOwnClaims(testCase)
+% Whatever the document claims about itself must be true of it.
 %
-% Part 3 will make this test fail. That is the signal to delete it, not to
-% weaken it -- and the failure will say which domains have been claimed.
+% This replaces testTheCommittedDocumentIsNotYetComplete, which asserted that
+% NO domain was declared complete. That assertion was Part 2's way of saying it
+% shipped a seed rather than schema documentation, and Part 3a retired it by
+% completing the first three domains -- which is what it was written to detect.
+%
+% Deleting it outright would have left the committed document unguarded between
+% here and part3g, which is the one pass that adds the global assertion. So the
+% weaker claim is replaced by a stronger one that holds at every point in
+% between: a domain declared complete must actually be complete. A later subpart
+% that claims a domain while leaving one of its columns undescribed fails here,
+% in the ordinary suite, rather than at the end of Part 3.
+%
+% It deliberately asserts nothing about HOW MANY domains are claimed. part3g
+% owns that, and a count here would be a literal this test would have to chase.
 cleanup = addSourcePath(); %#ok<NASGU>
 
-metadata = vawlume.schema.loadMetadata(RepoRoot=repoRootForTest());
-
-verifyEmpty(testCase, metadata.complete_domains, ...
-    "The committed metadata now claims complete domains: " + ...
-    strjoin(metadata.complete_domains.domain', ", ") + ...
-    ". If Part 3 has begun, this test has served its purpose and should go.");
-
-% The seed still has to be internally consistent: it just has not covered much.
 report = vawlume.schema.validateMetadata( ...
     RepoRoot=repoRootForTest(), Mode="complete", Print=false);
+
 verifyTrue(testCase, report.passed, ...
-    "The seed metadata does not survive its own completeness gate: " + ...
+    "The committed metadata does not survive its own completeness claims: " + ...
     newline + strjoin(report.findings.detail, newline));
-verifyLessThan(testCase, report.described_objects, report.structural_objects);
+
+% A claim of zero domains would pass the gate vacuously. Part 3 has begun, so
+% at least one domain is claimed and the gate above had something to check.
+verifyNotEmpty(testCase, report.complete_domains, ...
+    "No domain is declared complete, so the completeness gate proved nothing.");
 end
 
 function testAPartialDocumentPassesIdentityButClaimsNothing(testCase)
