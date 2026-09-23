@@ -14,11 +14,12 @@ function tests = test_schema_metadata_completeness
 % when every domain is claimed does the document assert it covers the whole
 % schema, and only then does the global check run.
 %
-% The mechanism is Part 2's. The claim that every domain is complete is Part
-% 3's to make, and testTheCommittedDocumentIsNotYetComplete is what keeps
-% anyone from making it by accident in the meantime.
+% The mechanism is Part 2's. The claim that every domain is complete was Part
+% 3's to make, and part3g made it. testTheCommittedDocumentIsGloballyComplete
+% keeps that claim a property of the repository rather than of one session.
 tests = functiontests({ ...
     @testTheCommittedDocumentSurvivesItsOwnClaims, ...
+    @testTheCommittedDocumentIsGloballyComplete, ...
     @testAPartialDocumentPassesIdentityButClaimsNothing, ...
     @testADeclaredDomainMustDescribeEveryColumnOfItsObjects, ...
     @testADeclaredDomainMustMatchItsOwnObjectCount, ...
@@ -62,6 +63,41 @@ verifyTrue(testCase, report.passed, ...
 % at least one domain is claimed and the gate above had something to check.
 verifyNotEmpty(testCase, report.complete_domains, ...
     "No domain is declared complete, so the completeness gate proved nothing.");
+end
+
+function testTheCommittedDocumentIsGloballyComplete(testCase)
+% The committed document describes the whole supported schema: every object,
+% every column and every relationship. An export package renders all of them,
+% so any one left out would ship as a blank cell in a package that presents
+% itself as self-describing.
+%
+% Passing Mode="complete" is not enough on its own. The global check runs only
+% once every domain is claimed, so a document that quietly dropped one claim
+% would still pass while no longer asserting that it covers the schema. The
+% test therefore also requires that no described object sits in an unclaimed
+% domain, and that the described counts equal the structural ones. Both are
+% stated without literals, so a schema change moves them with it.
+cleanup = addSourcePath(); %#ok<NASGU>
+
+report = vawlume.schema.validateMetadata( ...
+    RepoRoot=repoRootForTest(), Mode="complete", Print=false);
+
+verifyTrue(testCase, report.passed, ...
+    "The committed metadata is not globally complete: " + ...
+    newline + strjoin(report.findings.detail, newline));
+
+metadata = vawlume.schema.loadMetadata(RepoRoot=repoRootForTest());
+unclaimed = setdiff(unique(metadata.objects.domain), report.complete_domains.domain);
+verifyEmpty(testCase, unclaimed, ...
+    "Objects are described in domains the document does not claim complete, " + ...
+    "so the global check never ran: " + strjoin(unclaimed, ", "));
+
+verifyEqual(testCase, report.described_objects, report.structural_objects, ...
+    "Every schema object must be described.");
+verifyEqual(testCase, report.described_columns, report.structural_columns, ...
+    "Every schema column must be described or, on a view, explicitly pointed.");
+verifyEqual(testCase, report.described_relationships, report.structural_relationships, ...
+    "Every structural relationship must be described.");
 end
 
 function testAPartialDocumentPassesIdentityButClaimsNothing(testCase)

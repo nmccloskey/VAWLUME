@@ -1,5 +1,5 @@
 {
-  "metadata_version": "0.7.0",
+  "metadata_version": "0.8.0",
   "schema_version": "0.10-draft",
   "coverage": {
     "complete_domains": [
@@ -11,7 +11,8 @@
       { "domain": "matching_agreement", "object_count": 16 },
       { "domain": "alignment_external", "object_count": 15 },
       { "domain": "tracking_acoustic_derived", "object_count": 12 },
-      { "domain": "attribution", "object_count": 9 }
+      { "domain": "attribution", "object_count": 9 },
+      { "domain": "views", "object_count": 14 }
     ]
   },
   "objects": {
@@ -3177,10 +3178,609 @@
         }
       }
     },
+    "v_detection_core": {
+      "kind": "view",
+      "domain": "views",
+      "description": "Query surface that reads each detection together with its project, recording, source file, extractor, extractor version and extraction run, so a detection can be interpreted in one query instead of six joins. It owns no rows: every value comes from detections and the tables they cite, and it returns exactly one row per detection because experimental participants are deliberately left out; v_recording_entity_context carries them.",
+      "columns": {
+        "detection_id": { "same_as": "detections.detection_id" },
+        "recording_id": { "same_as": "detections.recording_id" },
+        "extraction_run_id": { "same_as": "detections.extraction_run_id" },
+        "project_key": { "same_as": "projects.project_key" },
+        "native_recording_id": { "same_as": "recordings.native_recording_id" },
+        "recording_relative_path": {
+          "description": "Portable project-relative path of the source file registered for the detection's recording, taken from source_files.relative_path. Identifies which audio file the detection came from without depending on where the project root currently sits."
+        },
+        "extractor_name": { "same_as": "extractors.extractor_name" },
+        "extractor_version": {
+          "description": "Reported version label of the extractor version whose run produced the detection, taken from extractor_versions.version_label. A text label, not an identifier of an extractor_versions row."
+        },
+        "extraction_run_key": {
+          "description": "Caller-supplied durable key of the extraction run that reported the detection, taken from extraction_runs.run_key. Stable across database rebuilds in a way extraction_run_id is not."
+        },
+        "native_event_id": { "same_as": "detections.native_event_id" },
+        "event_subtype": { "same_as": "detections.event_subtype" },
+        "start_time_s": { "same_as": "detections.start_time_s" },
+        "end_time_s": { "same_as": "detections.end_time_s" },
+        "duration_s": {
+          "description": "Detection length in seconds, computed by the view as end_time_s minus start_time_s from the stored native onset and offset. Stored nowhere; it inherits the timing basis and recording clock of those two values."
+        },
+        "timing_basis": { "same_as": "detections.timing_basis" },
+        "detection_score": { "same_as": "detections.detection_score" }
+      }
+    },
+    "v_recording_entity_context": {
+      "kind": "view",
+      "domain": "views",
+      "description": "Query surface that places each recording beside the experimental entities linked to it, with its project and source file, so a recording's experimental context (subjects, sessions or whatever levels the project declares) can be read in one query. One row per recording-to-entity link: a recording with several linked entities appears several times and one with none does not appear, so counting rows counts links, not recordings. It owns no rows.",
+      "columns": {
+        "recording_id": { "same_as": "recordings.recording_id" },
+        "project_key": { "same_as": "projects.project_key" },
+        "source_file_id": { "same_as": "source_files.source_file_id" },
+        "source_path_or_uri": {
+          "description": "Location at which the recording's source file was discovered, taken from source_files.path_or_uri. A runtime location recorded at intake rather than the file's durable identity, which source_relative_path carries."
+        },
+        "source_relative_path": {
+          "description": "Portable project-relative path of the recording's source file, taken from source_files.relative_path. Together with the project this is the identity intake uses for the file."
+        },
+        "source_filename": {
+          "description": "Base name of the recording's source file, taken from source_files.filename. Useful for searching by name; the relative path keeps same-named files in different folders apart."
+        },
+        "native_recording_id": { "same_as": "recordings.native_recording_id" },
+        "entity_type": {
+          "description": "The project's own name for the linked entity's level, taken from entity_types.native_name and preserved as the source expressed it. canonical_role carries VAWLUME's added reading of that level when one was declared."
+        },
+        "canonical_role": { "same_as": "entity_types.canonical_role" },
+        "entity_id": { "same_as": "experimental_entities.entity_id" },
+        "entity_native_id": {
+          "description": "The project's own identifier for the linked entity, taken from experimental_entities.native_id and preserved as expressed. Unique only within the entity's level, so read it together with entity_type."
+        },
+        "display_label": { "same_as": "experimental_entities.display_label" },
+        "link_type": { "same_as": "recording_entity_links.link_type" },
+        "role_label": { "same_as": "recording_entity_links.role_label" },
+        "start_time_s": { "same_as": "recording_entity_links.start_time_s" },
+        "end_time_s": { "same_as": "recording_entity_links.end_time_s" }
+      }
+    },
+    "v_event_measurements_long": {
+      "kind": "view",
+      "domain": "views",
+      "description": "Long-form query surface giving one row per stored event measurement, with the measured detection's run and recording, the declared extractor feature that defines the quantity, and the canonical feature name when the measurement was mapped to one. It lets a reader select measurements by feature without joining the feature registry by hand. It owns no rows and pivots nothing: native and canonical values stay side by side on the measurement's own row, and canonical_name is null for a measurement mapped to no canonical feature.",
+      "columns": {
+        "event_measurement_id": { "same_as": "event_measurements.event_measurement_id" },
+        "detection_id": { "same_as": "event_measurements.detection_id" },
+        "extraction_run_id": { "same_as": "detections.extraction_run_id" },
+        "recording_id": { "same_as": "detections.recording_id" },
+        "native_name": { "same_as": "extractor_features.native_name" },
+        "feature_native_unit": {
+          "description": "Unit declared for the extractor feature in the feature registry, taken from extractor_features.native_unit. Distinct from native_unit on the same row, which is the unit recorded on this individual measurement."
+        },
+        "derivation_stage": { "same_as": "extractor_features.derivation_stage" },
+        "feature_operational_variant": {
+          "description": "Operational variant declared for the extractor feature in the feature registry, taken from extractor_features.operational_variant. Distinct from operational_variant on the same row, which is the variant carried on the measurement itself."
+        },
+        "canonical_name": { "same_as": "canonical_features.canonical_name" },
+        "native_raw_token": { "same_as": "event_measurements.native_raw_token" },
+        "native_value_real": { "same_as": "event_measurements.native_value_real" },
+        "native_value_integer": { "same_as": "event_measurements.native_value_integer" },
+        "native_value_text": { "same_as": "event_measurements.native_value_text" },
+        "native_value_boolean": { "same_as": "event_measurements.native_value_boolean" },
+        "native_unit": { "same_as": "event_measurements.native_unit" },
+        "canonical_value_real": { "same_as": "event_measurements.canonical_value_real" },
+        "canonical_value_integer": { "same_as": "event_measurements.canonical_value_integer" },
+        "canonical_value_text": { "same_as": "event_measurements.canonical_value_text" },
+        "canonical_value_boolean": { "same_as": "event_measurements.canonical_value_boolean" },
+        "canonical_unit": { "same_as": "event_measurements.canonical_unit" },
+        "transform_key": { "same_as": "event_measurements.transform_key" },
+        "operational_variant": { "same_as": "event_measurements.operational_variant" }
+      }
+    },
+    "v_match_group_members": {
+      "kind": "view",
+      "domain": "views",
+      "description": "Query surface listing each member detection of a pairwise match group beside the group's topology, ambiguity and score and the member's extractor, version, extraction run, native identity and timing, so the detections one pairwise analysis grouped can be read with enough context to see which tool reported each. One row per group membership. It owns no rows; match_groups and match_group_members remain the authority, and arbitrary-N agreement is read through v_agreement_group_members instead.",
+      "columns": {
+        "match_group_id": { "same_as": "match_groups.match_group_id" },
+        "analysis_run_id": { "same_as": "match_groups.analysis_run_id" },
+        "recording_id": { "same_as": "match_groups.recording_id" },
+        "match_type": { "same_as": "match_groups.match_type" },
+        "ambiguity_status": { "same_as": "match_groups.ambiguity_status" },
+        "match_score": { "same_as": "match_groups.match_score" },
+        "detection_id": { "same_as": "match_group_members.detection_id" },
+        "extractor_name": { "same_as": "extractors.extractor_name" },
+        "extractor_version": {
+          "description": "Reported version label of the extractor version whose run produced the member detection, taken from extractor_versions.version_label. A text label, not an identifier."
+        },
+        "extraction_run_key": {
+          "description": "Caller-supplied durable key of the extraction run that reported the member detection, taken from extraction_runs.run_key."
+        },
+        "native_event_id": { "same_as": "detections.native_event_id" },
+        "start_time_s": { "same_as": "detections.start_time_s" },
+        "end_time_s": { "same_as": "detections.end_time_s" }
+      }
+    },
+    "v_agreement_group_members": {
+      "kind": "view",
+      "domain": "views",
+      "description": "Long-form query surface giving one row per native detection held in an arbitrary-N agreement group, with the group's run, recording and key and the member's extraction run, extractor, version, native identity and timing. It lets a composed component be inspected detection by detection without losing any member's own provenance: several detections from one extractor are not collapsed, and the group adds connectivity without replacing the members' native identity or timing. It owns no rows; agreement_groups and agreement_group_members are the authority, and the other v_agreement_* views are computed from this one.",
+      "columns": {
+        "agreement_group_id": { "same_as": "agreement_groups.agreement_group_id" },
+        "analysis_run_id": { "same_as": "agreement_groups.analysis_run_id" },
+        "agreement_run_key": {
+          "description": "Caller-supplied durable key of the arbitrary-N agreement run that composed the group, taken from analysis_runs.run_key for the group's analysis_run_id."
+        },
+        "recording_id": { "same_as": "agreement_groups.recording_id" },
+        "native_recording_id": { "same_as": "recordings.native_recording_id" },
+        "group_key": { "same_as": "agreement_groups.group_key" },
+        "derivation_method": { "same_as": "agreement_groups.derivation_method" },
+        "detection_id": { "same_as": "agreement_group_members.detection_id" },
+        "member_role": { "same_as": "agreement_group_members.member_role" },
+        "extraction_run_id": { "same_as": "detections.extraction_run_id" },
+        "extraction_run_key": {
+          "description": "Caller-supplied durable key of the extraction run that reported the member detection, taken from extraction_runs.run_key."
+        },
+        "extractor_id": { "same_as": "extractors.extractor_id" },
+        "extractor_key": { "same_as": "extractors.extractor_key" },
+        "extractor_name": { "same_as": "extractors.extractor_name" },
+        "extractor_version_id": { "same_as": "extractor_versions.extractor_version_id" },
+        "extractor_version": {
+          "description": "Reported version label of the member's extractor version, taken from extractor_versions.version_label. extractor_version_id on the same row is the identifier."
+        },
+        "native_event_id": { "same_as": "detections.native_event_id" },
+        "event_subtype": { "same_as": "detections.event_subtype" },
+        "start_time_s": { "same_as": "detections.start_time_s" },
+        "end_time_s": { "same_as": "detections.end_time_s" },
+        "duration_s": {
+          "description": "Member detection length in seconds, computed by the view as end_time_s minus start_time_s from the detection's stored native onset and offset. Stored nowhere."
+        }
+      }
+    },
+    "v_agreement_supporting_edges": {
+      "kind": "view",
+      "domain": "views",
+      "description": "Query surface giving one row per exact pairwise candidate edge that an arbitrary-N agreement group cites as support, so its row count and candidate_pair_id set match agreement_supporting_edges exactly. Each row adds the group's identity, the pairwise source analysis, the edge's temporal evidence and status from candidate_pairs, and the source match group holding both endpoints where one was materialized. Columns marked a describe the detection in detection_a_id and columns marked b the detection in detection_b_id; that is the candidate pair's identifier ordering and carries no extractor meaning, which is why extractor_pair_key, extractor_pair_label and detection_edge_key are separately oriented by stable key. It owns no rows and synthesizes no transitive edge. With the other v_agreement_* views it is where the arbitrary-N layer's summaries are read, since that layer stores none.",
+      "columns": {
+        "agreement_supporting_edge_id": { "same_as": "agreement_supporting_edges.agreement_supporting_edge_id" },
+        "agreement_group_id": { "same_as": "agreement_groups.agreement_group_id" },
+        "analysis_run_id": { "same_as": "agreement_groups.analysis_run_id" },
+        "agreement_run_key": {
+          "description": "Caller-supplied durable key of the agreement run that composed the citing group, taken from analysis_runs.run_key."
+        },
+        "recording_id": { "same_as": "agreement_groups.recording_id" },
+        "group_key": { "same_as": "agreement_groups.group_key" },
+        "candidate_pair_id": { "same_as": "agreement_supporting_edges.candidate_pair_id" },
+        "source_analysis_run_id": {
+          "description": "Pairwise analysis that produced the cited candidate edge, taken from candidate_pairs.analysis_run_id. One of the agreement run's declared source analyses, and distinct from analysis_run_id, which is the agreement run itself."
+        },
+        "source_analysis_run_key": {
+          "description": "Caller-supplied durable key of the pairwise source analysis that produced the cited edge, taken from analysis_runs.run_key for source_analysis_run_id."
+        },
+        "detection_a_id": { "same_as": "candidate_pairs.detection_a_id" },
+        "detection_b_id": { "same_as": "candidate_pairs.detection_b_id" },
+        "extraction_run_a_id": {
+          "description": "Side a: extraction run that reported the detection in detection_a_id, taken from detections.extraction_run_id."
+        },
+        "extraction_run_a_key": {
+          "description": "Side a: caller-supplied durable run_key of the extraction run that reported detection_a_id."
+        },
+        "extractor_a_id": {
+          "description": "Side a: identifier of the extractor whose run reported detection_a_id, reached through that run's extractor version."
+        },
+        "extractor_a_key": {
+          "description": "Side a: stable extractor_key of the extractor that reported detection_a_id; one of the two keys extractor_pair_key is composed from."
+        },
+        "extractor_a_name": {
+          "description": "Side a: human-readable name of the extractor that reported detection_a_id; one of the two names extractor_pair_label is composed from."
+        },
+        "extractor_version_a_id": {
+          "description": "Side a: identifier of the extractor version whose run reported detection_a_id."
+        },
+        "extractor_a_version": {
+          "description": "Side a: reported version label of the extractor version whose run reported detection_a_id. A text label, not an identifier."
+        },
+        "native_event_a_id": {
+          "description": "Side a: the extractor's own event identifier for detection_a_id, taken from detections.native_event_id and meaningful only within its run, recording and artifact."
+        },
+        "extraction_run_b_id": {
+          "description": "Side b: extraction run that reported the detection in detection_b_id, taken from detections.extraction_run_id."
+        },
+        "extraction_run_b_key": {
+          "description": "Side b: caller-supplied durable run_key of the extraction run that reported detection_b_id."
+        },
+        "extractor_b_id": {
+          "description": "Side b: identifier of the extractor whose run reported detection_b_id, reached through that run's extractor version."
+        },
+        "extractor_b_key": {
+          "description": "Side b: stable extractor_key of the extractor that reported detection_b_id; one of the two keys extractor_pair_key is composed from."
+        },
+        "extractor_b_name": {
+          "description": "Side b: human-readable name of the extractor that reported detection_b_id; one of the two names extractor_pair_label is composed from."
+        },
+        "extractor_version_b_id": {
+          "description": "Side b: identifier of the extractor version whose run reported detection_b_id."
+        },
+        "extractor_b_version": {
+          "description": "Side b: reported version label of the extractor version whose run reported detection_b_id. A text label, not an identifier."
+        },
+        "native_event_b_id": {
+          "description": "Side b: the extractor's own event identifier for detection_b_id, taken from detections.native_event_id and meaningful only within its run, recording and artifact."
+        },
+        "extractor_pair_key": {
+          "description": "Machine-facing key for the edge's unordered extractor pair: the two extractor_key values in ascending lexical order joined by a double hyphen, whichever side each came from. The key v_agreement_extractor_pair_support groups edges by; a query key, never an identity."
+        },
+        "extractor_pair_label": {
+          "description": "Human-facing label for the same unordered extractor pair: the two extractor names joined by a spaced double hyphen, ordered by extractor_key rather than by side. For reading, not for joining."
+        },
+        "detection_edge_key": {
+          "description": "Display key for the exact detection edge. Each endpoint is written as its extraction run_key, a hash sign and its native event identifier (empty when the detection has none); the lexically lower endpoint comes first and the two are joined by a double hyphen. It uses no surrogate identifier, so it survives a rebuild, but it is not a primary identity: two detections of one run without native identifiers render alike."
+        },
+        "temporal_overlap_s": { "same_as": "candidate_pairs.temporal_overlap_s" },
+        "temporal_iou": { "same_as": "candidate_pairs.temporal_iou" },
+        "onset_difference_s": { "same_as": "candidate_pairs.onset_difference_s" },
+        "offset_difference_s": { "same_as": "candidate_pairs.offset_difference_s" },
+        "duration_difference_s": { "same_as": "candidate_pairs.duration_difference_s" },
+        "candidate_score": { "same_as": "candidate_pairs.candidate_score" },
+        "candidate_status": { "same_as": "candidate_pairs.candidate_status" },
+        "details_json": { "same_as": "candidate_pairs.details_json" },
+        "pairwise_match_group_id": {
+          "description": "Match group of the source pairwise analysis that holds both endpoints of this edge. Null when no group of that analysis holds both, including when the analysis produced candidate rows but formed no groups; that is absence of pairwise topology, not ambiguity."
+        },
+        "pairwise_match_type": {
+          "description": "Topology of the source match group named by pairwise_match_group_id, taken from match_groups.match_type. Null exactly when pairwise_match_group_id is null."
+        },
+        "pairwise_ambiguity_status": {
+          "description": "Ambiguity status of the source match group named by pairwise_match_group_id, taken from match_groups.ambiguity_status. Null exactly when pairwise_match_group_id is null."
+        },
+        "pairwise_topology_label": {
+          "description": "Convenience label equal to pairwise_match_type when a source match group holds both endpoints, and the literal no_group_materialized otherwise, so missing pairwise topology is reported as absence rather than read as ambiguity."
+        }
+      }
+    },
+    "v_agreement_extractor_pair_support": {
+      "kind": "view",
+      "domain": "views",
+      "description": "Query surface giving, for each arbitrary-N agreement group, one row per unordered pair of distinct extractors represented among its members, whether or not any edge supports that pair. It is the coarse reduction of v_agreement_supporting_edges: several exact edges may support one row, and an unsupported pair stays present with a zero count so the missing pair is named rather than only counted. Here side a is the extractor with the lexically lower extractor_key, unlike the candidate-pair ordering in v_agreement_supporting_edges. The row grain assumes each extractor is represented through one extraction run, which the current composer requires but the view does not enforce. It owns no rows and stores no summary: assessment and support are recomputed from declared source analyses and cited edges on every read.",
+      "columns": {
+        "agreement_group_id": { "same_as": "agreement_groups.agreement_group_id" },
+        "analysis_run_id": { "same_as": "agreement_groups.analysis_run_id" },
+        "agreement_run_key": {
+          "description": "Caller-supplied durable key of the agreement run that composed the group, taken from analysis_runs.run_key."
+        },
+        "recording_id": { "same_as": "agreement_groups.recording_id" },
+        "group_key": { "same_as": "agreement_groups.group_key" },
+        "extraction_run_a_id": {
+          "description": "Side a (the lexically lower extractor_key): extraction run through which that extractor is represented in the group."
+        },
+        "extraction_run_a_key": {
+          "description": "Side a: caller-supplied durable run_key of the extraction run through which the side-a extractor is represented."
+        },
+        "extractor_a_id": {
+          "description": "Side a: identifier of the extractor with the lexically lower extractor_key of the pair."
+        },
+        "extractor_a_key": {
+          "description": "Side a: the lexically lower extractor_key of the pair, and the first component of extractor_pair_key."
+        },
+        "extractor_a_name": {
+          "description": "Side a: human-readable name of the side-a extractor, and the first component of extractor_pair_label."
+        },
+        "extractor_version_a_id": {
+          "description": "Side a: identifier of the extractor version whose extraction run represents the side-a extractor in the group."
+        },
+        "extractor_a_version": {
+          "description": "Side a: reported version label of the extractor version representing the side-a extractor. A text label, not an identifier."
+        },
+        "extraction_run_b_id": {
+          "description": "Side b (the lexically higher extractor_key): extraction run through which that extractor is represented in the group."
+        },
+        "extraction_run_b_key": {
+          "description": "Side b: caller-supplied durable run_key of the extraction run through which the side-b extractor is represented."
+        },
+        "extractor_b_id": {
+          "description": "Side b: identifier of the extractor with the lexically higher extractor_key of the pair."
+        },
+        "extractor_b_key": {
+          "description": "Side b: the lexically higher extractor_key of the pair, and the second component of extractor_pair_key."
+        },
+        "extractor_b_name": {
+          "description": "Side b: human-readable name of the side-b extractor, and the second component of extractor_pair_label."
+        },
+        "extractor_version_b_id": {
+          "description": "Side b: identifier of the extractor version whose extraction run represents the side-b extractor in the group."
+        },
+        "extractor_b_version": {
+          "description": "Side b: reported version label of the extractor version representing the side-b extractor. A text label, not an identifier."
+        },
+        "extractor_pair_key": {
+          "description": "Machine-facing key for the pair: extractor_a_key and extractor_b_key joined by a double hyphen, lower key first. Equal to the extractor_pair_key of the exact edges in v_agreement_supporting_edges that support it; a query key, not an identity."
+        },
+        "extractor_pair_label": {
+          "description": "Human-facing label for the pair: the side-a and side-b extractor names joined by a spaced double hyphen. For reading, not for joining."
+        },
+        "source_analysis_count": {
+          "description": "Number of the agreement run's declared source analyses whose extraction inputs include both of this pair's extraction runs. The current composer requires exactly one for every participating pair; the count stays visible so that requirement is auditable, and zero means the pair was never assessed."
+        },
+        "source_analysis_run_id": {
+          "description": "Lowest identifier among the declared source analyses counted by source_analysis_count, which is the covering analysis itself when the count is one. Null when no source analysis covers the pair."
+        },
+        "source_analysis_run_key": {
+          "description": "Lexically lowest run_key among the covering source analyses, which is the covering analysis's key when the count is one. Null when none covers the pair. Taken independently of source_analysis_run_id, so with several covering analyses the two need not name the same one."
+        },
+        "is_assessed": {
+          "description": "1 when at least one declared source analysis covers this pair's two extraction runs, otherwise 0. Says whether the pair was compared at all, not whether the comparison found support."
+        },
+        "support_edge_count": {
+          "description": "Number of exact supporting edges the group cites whose extractor_pair_key is this pair, counted from v_agreement_supporting_edges. Zero when none, including when the pair was never assessed."
+        },
+        "is_supported": {
+          "description": "1 when support_edge_count is positive, otherwise 0. A coarse reading: some exact edge between these two extractors joins members of the group, not that every member from one is joined to every member from the other."
+        }
+      }
+    },
+    "v_agreement_group_summary": {
+      "kind": "view",
+      "domain": "views",
+      "description": "Query surface giving one row per arbitrary-N agreement group, reducing its members, exact supporting edges, possible extractor pairs and declared source analyses to counts, sets, fractions, patterns and status flags. This is where the arbitrary-N layer's summary lives: that layer stores no summary table (agreement_statistics is pairwise consilience despite its name), and every value here is recomputed from member and edge rows on each read, so it cannot drift from the evidence. Pair-support completeness, one-detection-per-extractor membership and unambiguous one-to-one topology are independent dimensions and are reported separately. It owns no rows, and through the edges it counts it inherits the matching specification's illustrative, uncalibrated temporal-IoU floor like the rest of the agreement layer.",
+      "columns": {
+        "agreement_group_id": { "same_as": "agreement_groups.agreement_group_id" },
+        "analysis_run_id": { "same_as": "agreement_groups.analysis_run_id" },
+        "agreement_run_key": {
+          "description": "Caller-supplied durable key of the agreement run that composed the group, taken from analysis_runs.run_key."
+        },
+        "recording_id": { "same_as": "agreement_groups.recording_id" },
+        "native_recording_id": { "same_as": "recordings.native_recording_id" },
+        "group_key": { "same_as": "agreement_groups.group_key" },
+        "derivation_method": { "same_as": "agreement_groups.derivation_method" },
+        "member_count": {
+          "description": "Number of member detections in the group, counted from its membership rows."
+        },
+        "extraction_run_count": {
+          "description": "Number of distinct extraction runs that reported the group's member detections."
+        },
+        "extractor_count": {
+          "description": "Number of distinct extractors that reported the group's member detections. Answers questions such as which groups every participating extractor reached without a further join."
+        },
+        "extractor_set_key": {
+          "description": "Machine-facing list of the group's represented extractors: their extractor_key values in ascending order joined by a vertical bar. Built from distinct extractor and extraction-run combinations, so a key would repeat only if one extractor were represented through two runs, which the current composer refuses. A query key, not an identity."
+        },
+        "extractor_set_label": {
+          "description": "Human-facing list of the group's represented extractor names, in the same order as extractor_set_key and joined by a spaced vertical bar. For reading, not for joining."
+        },
+        "extraction_run_set_key": {
+          "description": "Machine-facing list of the extraction runs that reported the group's members: their run_key values joined by a vertical bar, ordered by extractor_key and then run key."
+        },
+        "support_edge_count": {
+          "description": "Number of exact pairwise candidate edges the group cites as support. Zero for a group no edge joins, such as a singleton."
+        },
+        "supported_extractor_pair_count": {
+          "description": "Number of the group's possible extractor pairs that at least one cited edge supports, counted from v_agreement_extractor_pair_support."
+        },
+        "possible_extractor_pair_count": {
+          "description": "Number of unordered pairs of distinct extractors represented in the group: its row count in v_agreement_extractor_pair_support, which is N(N-1)/2 for N represented extractors when each contributes through one extraction run. Zero for a group reported by one extractor."
+        },
+        "assessed_extractor_pair_count": {
+          "description": "Number of the group's possible extractor pairs that at least one declared source analysis covered, whether or not the comparison found support."
+        },
+        "support_fraction": {
+          "description": "supported_extractor_pair_count divided by possible_extractor_pair_count: the share of the group's possible extractor pairs that some cited edge supports. Null when no pair is possible, as for a singleton. A proportion of extractor pairs rather than of detections, resting on edges admitted under an uncalibrated floor; it is not a probability that the members are one event."
+        },
+        "supported_extractor_pair_pattern": {
+          "description": "Machine-facing list of the supported extractor pairs: their extractor_pair_key values in ascending order joined by a vertical bar. Empty text when no pair is supported."
+        },
+        "supported_extractor_pair_label": {
+          "description": "Human-facing labels of the supported extractor pairs, in the same order and joined by semicolons. Empty text when no pair is supported."
+        },
+        "unsupported_extractor_pair_pattern": {
+          "description": "Machine-facing list of the possible extractor pairs that no cited edge supports, as ascending extractor_pair_key values joined by a vertical bar. Names the missing pairs; empty text when none is missing."
+        },
+        "unsupported_extractor_pair_label": {
+          "description": "Human-facing labels of the unsupported extractor pairs, in the same order and joined by semicolons. Empty text when none is missing."
+        },
+        "is_extractor_pair_support_complete": {
+          "description": "1 when at least one extractor pair is possible and every possible pair is supported by a cited edge, otherwise 0. Says every pair of represented extractors is directly joined somewhere in the group, not that each detection is joined to every other; a group with no possible pair gets 0 rather than a vacuous 1."
+        },
+        "is_pairwise_assessment_complete": {
+          "description": "1 when at least one extractor pair is possible and a declared source analysis covered every one of them, otherwise 0. Separates a pair assessed and found unsupported from one never compared; a group with no possible pair gets 0."
+        },
+        "is_one_detection_per_extractor": {
+          "description": "1 when the group holds exactly as many member detections as distinct extractors, so no extractor contributed more than one detection; otherwise 0. Independent of pair support and of topology, and true of a singleton."
+        },
+        "is_unambiguous_one_to_one": {
+          "description": "1 when the group cites at least one exact edge and every cited edge lies in a source match group that is both one-to-one and unambiguous; otherwise 0. An edge with no materialized source group, any split, merge or ambiguous source topology, or a group citing no edge gives 0."
+        },
+        "pairwise_topology_pattern": {
+          "description": "Distinct pairwise_topology_label values of the group's cited edges in ascending order, joined by a vertical bar, including no_group_materialized where a source analysis formed no group holding the edge. Empty text when the group cites no edge."
+        },
+        "ambiguous_pairwise_topology_pattern": {
+          "description": "The part of pairwise_topology_pattern made of split, merge, many-to-many and ambiguous topology labels, in the same form. Empty text when no cited edge has such a topology."
+        },
+        "is_singleton": {
+          "description": "1 when the group has exactly one member detection, otherwise 0. A singleton is a detection no cited edge joined to another; composition keeps it as a group rather than dropping it."
+        },
+        "is_extractor_unique": {
+          "description": "1 when every member of the group was reported by one extractor, otherwise 0. Under the current composer, whose edges always join two different extractors, only a singleton can qualify; the flag is kept apart from is_singleton because it asks a different question."
+        }
+      }
+    },
+    "v_cross_extractor_feature_pairs": {
+      "kind": "view",
+      "domain": "views",
+      "description": "Query surface giving each registered cross-extractor feature relationship with both features' declared metadata side by side (extractor, version, native name and unit, derivation stage, operational variant, method, definition, equivalence class and canonical mapping), so a pairing can be judged without assembling the registry by hand. A pair appears because a feature_relationships row asserts it, not because the features look alike: a shared canonical name or equivalence class is neither necessary nor sufficient, and relationship_type and consilience_eligible are shown unfiltered. Sides a and b follow the relationship's ascending-identifier ordering and carry no extractor or directional meaning, so orient by extractor_a_name and extractor_b_name. Relationships between two features of one extractor are excluded. The canonical columns come from optional feature mappings: a side with none gives nulls there, and a side with several repeats the relationship once per mapping. It owns no rows.",
+      "columns": {
+        "feature_relationship_id": { "same_as": "feature_relationships.feature_relationship_id" },
+        "relationship_type": { "same_as": "feature_relationships.relationship_type" },
+        "consilience_eligible": { "same_as": "feature_relationships.consilience_eligible" },
+        "comparison_method": { "same_as": "feature_relationships.comparison_method" },
+        "unit_normalization": { "same_as": "feature_relationships.unit_normalization" },
+        "default_role": { "same_as": "feature_relationships.default_role" },
+        "justification": { "same_as": "feature_relationships.justification" },
+        "feature_a_id": { "same_as": "feature_relationships.feature_a_id" },
+        "extractor_a_name": {
+          "description": "Side a: name of the extractor whose version declares feature_a_id."
+        },
+        "extractor_a_version": {
+          "description": "Side a: reported version label of the extractor version that declares feature_a_id. A text label, not an identifier."
+        },
+        "feature_a_native_name": {
+          "description": "Side a: the extractor's own name for feature_a_id, as declared in the feature registry."
+        },
+        "feature_a_native_unit": {
+          "description": "Side a: unit the extractor expresses feature_a_id in, as declared. What reconciles the two sides' units is stated by unit_normalization, not inferred from these values."
+        },
+        "feature_a_derivation_stage": {
+          "description": "Side a: how far through the extractor's own processing feature_a_id is produced, as declared."
+        },
+        "feature_a_operational_variant": {
+          "description": "Side a: operational variant declared for feature_a_id, where its extractor emits more than one definition of nominally the same quantity."
+        },
+        "feature_a_measurement_method": {
+          "description": "Side a: how the extractor arrives at the value of feature_a_id, as declared."
+        },
+        "feature_a_native_definition": {
+          "description": "Side a: what the extractor says feature_a_id means, in its own terms; part of the basis on which the relationship's justification is judged."
+        },
+        "feature_a_equivalence_class": {
+          "description": "Side a: equivalence-class label declared for feature_a_id. Shown so the pairing can be read against it; sharing a class with the other side neither creates nor confirms the relationship."
+        },
+        "feature_a_canonical_name": {
+          "description": "Side a: name of a canonical feature that feature_a_id is mapped to through feature_mappings. Null when it has no mapping; several mappings give several rows. A canonical name shared with the other side is not what makes the pair comparable."
+        },
+        "feature_a_canonical_unit": {
+          "description": "Side a: canonical unit of the canonical feature that feature_a_id is mapped to. Null when feature_a_id has no mapping or the canonical feature has no unit. Agreement of the two sides' canonical units is the second half of the comparability gate, alongside consilience_eligible."
+        },
+        "feature_a_domain": {
+          "description": "Side a: broad domain of the canonical feature that feature_a_id is mapped to, such as timing or spectral content. Null when feature_a_id has no mapping."
+        },
+        "feature_b_id": { "same_as": "feature_relationships.feature_b_id" },
+        "extractor_b_name": {
+          "description": "Side b: name of the extractor whose version declares feature_b_id."
+        },
+        "extractor_b_version": {
+          "description": "Side b: reported version label of the extractor version that declares feature_b_id. A text label, not an identifier."
+        },
+        "feature_b_native_name": {
+          "description": "Side b: the extractor's own name for feature_b_id, as declared in the feature registry."
+        },
+        "feature_b_native_unit": {
+          "description": "Side b: unit the extractor expresses feature_b_id in, as declared. What reconciles the two sides' units is stated by unit_normalization, not inferred from these values."
+        },
+        "feature_b_derivation_stage": {
+          "description": "Side b: how far through the extractor's own processing feature_b_id is produced, as declared."
+        },
+        "feature_b_operational_variant": {
+          "description": "Side b: operational variant declared for feature_b_id, where its extractor emits more than one definition of nominally the same quantity."
+        },
+        "feature_b_measurement_method": {
+          "description": "Side b: how the extractor arrives at the value of feature_b_id, as declared."
+        },
+        "feature_b_native_definition": {
+          "description": "Side b: what the extractor says feature_b_id means, in its own terms; part of the basis on which the relationship's justification is judged."
+        },
+        "feature_b_equivalence_class": {
+          "description": "Side b: equivalence-class label declared for feature_b_id. Shown so the pairing can be read against it; sharing a class with the other side neither creates nor confirms the relationship."
+        },
+        "feature_b_canonical_name": {
+          "description": "Side b: name of a canonical feature that feature_b_id is mapped to through feature_mappings. Null when it has no mapping; several mappings give several rows. A canonical name shared with the other side is not what makes the pair comparable."
+        },
+        "feature_b_canonical_unit": {
+          "description": "Side b: canonical unit of the canonical feature that feature_b_id is mapped to. Null when feature_b_id has no mapping or the canonical feature has no unit. Agreement of the two sides' canonical units is the second half of the comparability gate, alongside consilience_eligible."
+        },
+        "feature_b_domain": {
+          "description": "Side b: broad domain of the canonical feature that feature_b_id is mapped to, such as timing or spectral content. Null when feature_b_id has no mapping."
+        }
+      }
+    },
+    "v_feature_relationship_endpoints": {
+      "kind": "view",
+      "domain": "views",
+      "description": "Query surface giving each registered cross-extractor feature relationship twice, once from each feature's point of view: feature_id is the feature the row is about and counterpart_feature_id the related feature declared by another extractor. It answers which counterparts a feature has, and in which extractors, without checking both identifier orientations of v_cross_extractor_feature_pairs. The relationship's own columns repeat verbatim on both rows and nothing is filtered, so an ineligible relationship still appears. Canonical features are deliberately not joined, so several canonical mappings never multiply rows. Counts or fractions of counterparts are query products for a chosen extractor set, never stored properties. It owns no rows.",
+      "columns": {
+        "feature_relationship_id": { "same_as": "feature_relationships.feature_relationship_id" },
+        "relationship_type": { "same_as": "feature_relationships.relationship_type" },
+        "consilience_eligible": { "same_as": "feature_relationships.consilience_eligible" },
+        "comparison_method": { "same_as": "feature_relationships.comparison_method" },
+        "unit_normalization": { "same_as": "feature_relationships.unit_normalization" },
+        "default_role": { "same_as": "feature_relationships.default_role" },
+        "feature_id": {
+          "description": "The feature this row is oriented around: one endpoint of the relationship, either its lower- or higher-identifier side, taken from extractor_features.extractor_feature_id. Each relationship appears once with each endpoint here."
+        },
+        "extractor_id": { "same_as": "extractors.extractor_id" },
+        "extractor_name": { "same_as": "extractors.extractor_name" },
+        "extractor_version_id": { "same_as": "extractor_versions.extractor_version_id" },
+        "extractor_version": {
+          "description": "Reported version label of the extractor version that declares feature_id. A text label; extractor_version_id on the same row is the identifier."
+        },
+        "feature_native_name": {
+          "description": "The extractor's own name for feature_id, as declared in the feature registry."
+        },
+        "feature_native_unit": {
+          "description": "Unit the extractor expresses feature_id in, as declared."
+        },
+        "feature_equivalence_class": {
+          "description": "Equivalence-class label declared for feature_id. Exposed verbatim; which classes count as independent support rather than shared temporal evidence is a policy question this view does not answer."
+        },
+        "feature_operational_variant": {
+          "description": "Operational variant declared for feature_id, where its extractor emits more than one definition of nominally the same quantity."
+        },
+        "feature_derivation_stage": {
+          "description": "How far through the extractor's own processing feature_id is produced, as declared."
+        },
+        "counterpart_feature_id": {
+          "description": "The other endpoint of the relationship: the related feature, declared by a different extractor, whose point of view is taken on the mirror row."
+        },
+        "counterpart_extractor_id": {
+          "description": "Identifier of the extractor that declares counterpart_feature_id; never the same as extractor_id."
+        },
+        "counterpart_extractor_name": {
+          "description": "Human-readable name of the extractor that declares counterpart_feature_id."
+        },
+        "counterpart_extractor_version_id": {
+          "description": "Identifier of the extractor version that declares counterpart_feature_id."
+        },
+        "counterpart_extractor_version": {
+          "description": "Reported version label of the extractor version that declares counterpart_feature_id. A text label, not an identifier."
+        },
+        "counterpart_native_name": {
+          "description": "The counterpart extractor's own name for counterpart_feature_id, as declared."
+        },
+        "counterpart_native_unit": {
+          "description": "Unit the counterpart extractor expresses counterpart_feature_id in, as declared."
+        },
+        "counterpart_equivalence_class": {
+          "description": "Equivalence-class label declared for counterpart_feature_id, exposed verbatim. Sharing a class with feature_id does not make the pair eligible."
+        },
+        "counterpart_operational_variant": {
+          "description": "Operational variant declared for counterpart_feature_id."
+        },
+        "counterpart_derivation_stage": {
+          "description": "How far through the counterpart extractor's own processing counterpart_feature_id is produced, as declared."
+        }
+      }
+    },
+    "v_external_events_aligned": {
+      "kind": "view",
+      "domain": "views",
+      "description": "Query surface listing each external event with its stream's name, kind, modality and recording, and the event's cached aligned interval where one exists. The aligned columns are a read over aligned_external_events, an optional regenerable cache that no public path currently populates, so they are ordinarily null; an event cached under several alignment runs appears once per run. Native times remain the timing authority, and nothing aligned is written back to the event. It owns no rows.",
+      "columns": {
+        "external_event_id": { "same_as": "external_events.external_event_id" },
+        "external_stream_id": { "same_as": "external_streams.external_stream_id" },
+        "stream_name": { "same_as": "external_streams.stream_name" },
+        "stream_kind": { "same_as": "external_streams.stream_kind" },
+        "modality": { "same_as": "external_streams.modality" },
+        "event_type": { "same_as": "external_events.event_type" },
+        "start_time_native": { "same_as": "external_events.start_time_native" },
+        "end_time_native": { "same_as": "external_events.end_time_native" },
+        "alignment_run_id": { "same_as": "aligned_external_events.alignment_run_id" },
+        "target_timebase_id": { "same_as": "aligned_external_events.target_timebase_id" },
+        "start_time_aligned_s": { "same_as": "aligned_external_events.start_time_aligned_s" },
+        "end_time_aligned_s": { "same_as": "aligned_external_events.end_time_aligned_s" },
+        "uncertainty_s": { "same_as": "aligned_external_events.uncertainty_s" },
+        "recording_id": { "same_as": "external_streams.recording_id" }
+      }
+    },
     "v_sequence_members": {
       "kind": "view",
       "domain": "views",
-      "description": "Sequence membership joined to its owning sequence, so an ordered event list can be read together with the analysis run, recording, epoch, and scope that define it without writing the join by hand.",
+      "description": "Query surface pairing each sequence membership row with its owning sequence's analysis run, recording, epoch, scope entity and event-set kind, so an ordered event list can be read with the context that defines it without writing the join by hand. One row per member; ordinal_position, not row order, gives the sequence order. It owns no rows: sequences and sequence_members remain the authority.",
       "columns": {
         "sequence_member_id": { "same_as": "sequence_members.sequence_member_id" },
         "sequence_id": { "same_as": "sequence_members.sequence_id" },
@@ -3196,6 +3796,100 @@
         "aligned_external_event_id": { "same_as": "sequence_members.aligned_external_event_id" },
         "start_time_s": { "same_as": "sequence_members.start_time_s" },
         "end_time_s": { "same_as": "sequence_members.end_time_s" }
+      }
+    },
+    "v_agreement_group_extent": {
+      "kind": "view",
+      "domain": "views",
+      "description": "Query surface giving every defensible temporal extent of each arbitrary-N agreement group, one row per group and extent method: the union, intersection and mean of the members' boundaries, and the boundaries of the single longest and single shortest member. An agreement group has no interval of its own, only members, so VAWLUME computes all five and imposes none; which is right depends on the question, and whatever consumes an extent records the method it chose. Each row also carries the members' onset and offset spread, the disagreement itself. It owns no rows; every extent is recomputed from the member detections' native times on each read.",
+      "columns": {
+        "agreement_group_id": {
+          "description": "Agreement group whose extent this row gives, taken from its membership rows. Each group has one row per extent_method."
+        },
+        "extent_method": {
+          "description": "Which derivation produced this row's interval: the union, intersection or mean of the member boundaries, or the boundaries of the longest or shortest single member. The same names are what an attribution target's agreement_extent_method records, so a consumer can state which extent it used."
+        },
+        "representative_detection_id": {
+          "description": "For the longest-member and shortest-member methods, the member detection whose own boundaries were used, ties broken by the lowest detection identifier. Null for the union, intersection and mean methods, which are synthesized from all members rather than taken from one."
+        },
+        "start_time_s": {
+          "description": "Start of the group's extent under extent_method, in seconds from the start of the recording, derived from the members' stored native onsets. Null when the intersection is empty."
+        },
+        "end_time_s": {
+          "description": "End of the group's extent under extent_method, in seconds from the start of the recording, derived from the members' stored native offsets. Null when the intersection is empty."
+        },
+        "extent_is_empty": {
+          "description": "1 when the method yields no interval, otherwise 0. Only the intersection can be empty, when the latest member onset falls after the earliest member offset; it is then reported with null bounds rather than as a reversed or zero-length interval."
+        },
+        "gap_s": {
+          "description": "For an empty intersection, how far the members are from agreeing: the latest member onset minus the earliest member offset, in seconds, always positive. Null for every non-empty extent."
+        },
+        "member_count": {
+          "description": "Number of member detections in the group, repeated on each of its extent rows."
+        },
+        "extractor_count": {
+          "description": "Number of distinct extractors that reported the group's members, repeated on each of its extent rows."
+        },
+        "onset_spread_s": {
+          "description": "Latest member onset minus earliest member onset, in seconds: how far the members disagree about when the event began. Zero for a singleton, and repeated on each of the group's extent rows."
+        },
+        "offset_spread_s": {
+          "description": "Latest member offset minus earliest member offset, in seconds: how far the members disagree about when the event ended. Zero for a singleton, and repeated on each of the group's extent rows."
+        }
+      }
+    },
+    "v_attribution_window_correspondences": {
+      "kind": "view",
+      "domain": "views",
+      "description": "Query surface giving each stored imported-window-to-target correspondence with the imported window's run, recording, native identity and native times, the target's kind and referenced event, the target's extent basis, and the imported caller claims the window carries. It keeps side by side two bases a reader must not confuse: iou_basis says whether overlap was computed on native or aligned intervals, while target_extent_basis says which derivation supplied an agreement-group target's interval. Claims are left-joined, so a window with no claim gives one row with null claim columns and a window with several claims repeats the correspondence once per claim; it is not one row per correspondence. A correspondence is evidence of a plausible temporal relation, not caller selection, and the claims remain the exporting system's assertions. It owns no rows.",
+      "columns": {
+        "attribution_window_correspondence_id": { "same_as": "attribution_window_correspondences.attribution_window_correspondence_id" },
+        "attribution_run_id": { "same_as": "imported_attribution_windows.attribution_run_id" },
+        "recording_id": { "same_as": "imported_attribution_windows.recording_id" },
+        "imported_attribution_window_id": { "same_as": "attribution_window_correspondences.imported_attribution_window_id" },
+        "native_window_id": { "same_as": "imported_attribution_windows.native_window_id" },
+        "start_time_native": { "same_as": "imported_attribution_windows.start_time_native" },
+        "end_time_native": { "same_as": "imported_attribution_windows.end_time_native" },
+        "attribution_target_id": { "same_as": "attribution_window_correspondences.attribution_target_id" },
+        "target_kind": {
+          "description": "Which kind of VAWLUME event the target references: a detection, a consensus event or an agreement group, computed from which of detection_id, consensus_event_id and agreement_group_id is present. Stored nowhere; attribution_targets deliberately has no kind column."
+        },
+        "detection_id": { "same_as": "attribution_targets.detection_id" },
+        "consensus_event_id": { "same_as": "attribution_targets.consensus_event_id" },
+        "agreement_group_id": { "same_as": "attribution_targets.agreement_group_id" },
+        "target_extent_basis": {
+          "description": "For an agreement-group target, the extent derivation that supplied the group's interval, taken from attribution_targets.agreement_extent_method. Null for detection and consensus-event targets, which carry their own intervals. A different fact from iou_basis, and results under different extent bases are not poolable."
+        },
+        "iou_basis": { "same_as": "attribution_window_correspondences.iou_basis" },
+        "temporal_overlap_s": { "same_as": "attribution_window_correspondences.temporal_overlap_s" },
+        "temporal_iou": { "same_as": "attribution_window_correspondences.temporal_iou" },
+        "onset_difference_s": { "same_as": "attribution_window_correspondences.onset_difference_s" },
+        "offset_difference_s": { "same_as": "attribution_window_correspondences.offset_difference_s" },
+        "alignment_run_id": { "same_as": "attribution_window_correspondences.alignment_run_id" },
+        "aligned_start_s": { "same_as": "attribution_window_correspondences.aligned_start_s" },
+        "aligned_end_s": { "same_as": "attribution_window_correspondences.aligned_end_s" },
+        "start_extrapolated": { "same_as": "attribution_window_correspondences.start_extrapolated" },
+        "end_extrapolated": { "same_as": "attribution_window_correspondences.end_extrapolated" },
+        "eligibility_rule": { "same_as": "attribution_window_correspondences.eligibility_rule" },
+        "min_temporal_iou": { "same_as": "attribution_window_correspondences.min_temporal_iou" },
+        "imported_attribution_claim_id": { "same_as": "imported_attribution_claims.imported_attribution_claim_id" },
+        "claim_ordinal": { "same_as": "imported_attribution_claims.claim_ordinal" },
+        "source_caller_label": { "same_as": "imported_attribution_claims.source_caller_label" },
+        "claimed_entity_id": {
+          "description": "Canonical experimental entity the claim's source caller label resolved to, taken from imported_attribution_claims.entity_id. The exporting system's assertion under a declared mapping, not a VAWLUME attribution decision. Null when the window has no claim or the label is unresolved."
+        },
+        "claim_score": {
+          "description": "Score the exporting system asserted for the claim, taken from imported_attribution_claims.score and readable only through claim_score_semantics. Null means no score was supplied or the window has no claim, never zero."
+        },
+        "claim_score_semantics": {
+          "description": "Declared source meaning of claim_score, taken from imported_attribution_claims.score_semantics. Null when no score is present."
+        },
+        "claim_probability": {
+          "description": "Value the exporting system called a probability for the claim, taken from imported_attribution_claims.probability. An external assertion that VAWLUME neither calibrates nor verifies; null when none was supplied or the window has no claim."
+        },
+        "claim_probability_semantics": {
+          "description": "Declared source meaning of claim_probability, taken from imported_attribution_claims.probability_semantics. Null when no probability is present."
+        }
       }
     }
   },
