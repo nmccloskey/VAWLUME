@@ -73,6 +73,7 @@ multi_extractor_agreement_demo   % all three extractors, end to end
 multimodal_integration_demo      % geometry, tracking, identity, acoustic response
 caller_attribution_demo          % imported caller attribution, end to end
 consilience_exploration_demo     % the exploratory consilience workflow, end to end
+csv_export_demo                  % normal, selective, and schema-only CSV packages
 ```
 
 The demonstrations under [`examples/`](examples/) create every input they
@@ -80,6 +81,13 @@ need under the system temporary directory and remove it before returning, so
 they need no data of your own. To run them all, and to build your own database
 from your own recordings, follow the
 [prototype usage guide](docs/usage/01_prototype_usage_guide.md).
+
+To export an existing VAWLUME database, use
+`vawlume.export.database(dbPath, Output=outputDir)`. For an accessible schema
+reference with no database or data export, use
+`vawlume.export.database(Output=outputDir, SchemaOnly=true)`. The
+[CSV export guide](docs/usage/01_prototype_usage_guide.md#85-self-describing-csv-export)
+explains selection, package contents, fidelity, and overwrite safety.
 
 To check the environment is correctly configured:
 

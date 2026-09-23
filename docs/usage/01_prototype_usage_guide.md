@@ -1701,8 +1701,10 @@ measure different things, so none is offered.
 
 ### 8.1 What is written where
 
-VAWLUME writes into one SQLite file. There is no report or figure output layer
-in the prototype; derived tables are returned to MATLAB.
+VAWLUME's primary data store is one SQLite file. The consilience workflow can
+write reports and figures, and the CSV export workflow described in §8.5 can
+write a self-describing relational package; other derived tables are returned
+to MATLAB.
 
 | Stage | Principal tables written |
 |---|---|
@@ -1790,6 +1792,141 @@ is a **MATLAB working artifact only** — deliberately not persisted, which is w
 The database file itself is a derived artifact. What is worth version
 controlling is the profiles, manifests, specifications, and scripts that
 regenerate it.
+
+### 8.5 Self-describing CSV export
+
+CSV export is a faithful relational projection of a VAWLUME database, not an
+analysis-ready denormalization. It preserves canonical table, view, and column
+names and writes one CSV per selected object. CSV is the only implemented
+format even though the API retains an explicit `Format` option; every other
+value fails with `vawlume:export:UnsupportedFormat`.
+
+Always call the entry point fully qualified. Do not write
+`import vawlume.export.*`, because MATLAB already has functions named `export`
+and `database`.
+
+Normal export writes every base table and no views by default:
+
+```matlab
+addpath(src)
+result = vawlume.export.database(data/study.sqlite, ...
+    Output=exports/study_csv, Format=csv);
+```
+
+Select exact, case-sensitive table and view names with `Tables`. An explicitly
+named view is exported even though `IncludeViews` defaults to `false`:
+
+```matlab
+result = vawlume.export.database(data/study.sqlite, ...
+    Output=exports/detection_subset, ...
+    Tables=[detections, v_detection_core]);
+```
+
+For the most accessible repository-supported schema reference, omit the
+database and request schema-only mode. It exports no data and creates no
+`csv/` directory:
+
+```matlab
+result = vawlume.export.database( ...
+    Output=exports/vawlume_schema, SchemaOnly=true);
+```
+
+The runnable [`csv_export_demo`](../../examples/csv_export_demo.m) builds the
+Phase 1 fixture and exercises all three calls through the public API.
+
+#### Package contents
+
+```text
+<Output>/
+|-- README.md
+|-- meta/
+|   |-- manifest.csv
+|   |-- tables.csv
+|   |-- columns.csv
+|   `-- relationships.csv
+`-- csv/                         normal mode only
+    `-- <object_name>.csv        one per selected table or view
+```
+
+`tables.csv` always describes all supported tables and views; its `exported`,
+`row_count`, and `filename` fields identify what this particular package
+contains. `columns.csv` describes every column and identifies authored versus
+explicitly inherited view-column descriptions. `relationships.csv` lists every
+foreign key from child/source to parent/target. These three files are stable
+schema projections and are not narrowed to the selected objects.
+
+`manifest.csv` contains export-instance facts as `key,value,detail` rows. It
+records the package and format versions, mode and UTC timestamp; source filename,
+size and schema versions where applicable; repository and semantic-metadata
+versions; supported, selected and exported object/row/file counts; the NULL,
+quoting, REAL, BLOB, encoding and line-ending policies; and warnings. Schema-only
+mode leaves source facts blank with `detail=not_applicable` and records zero
+selected/exported objects, rows, and data files. The manifest is written last,
+after the staged package has been read back and validated.
+
+Stable meaning and instance facts have different authorities:
+
+- [`schema/schema.sql`](../../schema/schema.sql) is the executable relational
+  structure.
+- [`schema/schema.json`](../../schema/schema.json) is its generated structural
+  projection and is never hand-edited.
+- [`schema/schema_metadata.json`](../../schema/schema_metadata.json) is the
+  hand-authored semantic source for object, column, and relationship meaning.
+- `meta/manifest.csv`, row counts, filenames, selection, warnings, timestamp,
+  and source identity describe one export only.
+
+[`schema/README.md`](../../schema/README.md) explains those authorities and the
+metadata validation command. Export does not write a semantic-metadata snapshot
+into the source SQLite database.
+
+#### Fidelity and strict reading
+
+SQL NULL is a bare empty field; empty text is the quoted field `"`. Every
+non-NULL value is quoted using RFC 4180 rules. INTEGER values use full decimal
+text, REAL values use SQLite `printf('%!.17g')`, and BLOBs use uppercase
+hexadecimal. Files are UTF-8 without a BOM and use CRLF record terminators.
+Embedded newlines in quoted text are preserved.
+
+CSV preserves exact value text plus schema context, not SQLite storage types.
+Naive readers may infer numeric types again, including for quoted text that
+looks numeric. Force every variable to string when exact lexical values and the
+NULL-versus-empty distinction matter:
+
+```matlab
+file = exports/study_csv/csv/event_measurements.csv;
+opts = detectImportOptions(file, Delimiter=,, TextType=string);
+opts = setvartype(opts, string);
+rows = readtable(file, opts);
+```
+
+#### Destination, overwrite, and version behavior
+
+`Output` is mandatory and its parent must already exist. An absent or empty
+destination is accepted. A non-empty destination is refused by default.
+`Overwrite=true` replaces only an empty directory or a previous package that is
+recognized by both `README.md` and a `meta/manifest.csv` whose package format is
+`vawlume_csv_export`; it never authorizes deletion of an arbitrary directory.
+Filesystem/home/repository roots, directories containing a `.git` entry,
+ancestors of the VAWLUME repository, the source database's directory or a
+directory containing the source, and existing files are refused. A cleanup
+failure after a successful overwrite emits
+`vawlume:export:PreviousPackageNotRemoved`; the new validated package is already
+published, and the warning identifies the old sibling that remains.
+
+The database is opened read-only. The exporter compares SQLite
+`PRAGMA data_version` before and after reading every selected object and publishes
+nothing if it changes. This detects a concurrent committed change; it is not a
+read-isolation transaction, and work may be discarded only after the change is
+detected.
+
+The source database's schema version must match the repository schema version.
+A mismatch fails with `vawlume:export:SchemaVersionMismatch`. If exporting an
+older or otherwise different database is intentional,
+`AllowSchemaVersionMismatch=true` proceeds and records the mismatch in both the
+manifest and generated README; its data headers may differ from the repository
+metadata. A source filename literally equal to an option name, such as `Output`,
+can be parsed by MATLAB as a name-value argument; pass a normal path string with
+an extension.
 
 ---
 
@@ -1976,6 +2113,23 @@ comparability and coverage, and a measured-geometry spectrogram gallery, to
 exported tables, figures, an example index and a provenance record.
 
 ### Implemented but explicitly uncalibrated or narrow
+
+- **CSV export is relational and fidelity-oriented, not denormalized analysis
+  output.** Canonical names and selected objects are preserved; no joins,
+  summaries, or presentation aliases are introduced. Only CSV is implemented.
+- **CSV is not a type-preserving SQLite round trip.** It preserves exact value
+  text and distinguishes NULL from empty text, but consumers must use the schema
+  context and disable naive type inference where lexical identity matters.
+- **Exports do not embed semantic metadata in the source database.** Packages
+  project the current repository's `schema_metadata.json`; schema-only mode also
+  describes that repository-supported schema rather than an experimental
+  database.
+- **The source-change guard detects rather than isolates concurrent writes.** A
+  changed `PRAGMA data_version` prevents publication, but the exporter has no
+  supported snapshot transaction and discovers the change after reading.
+- Objects above 5,000,000 rows produce an advisory warning rather than a failure.
+  That threshold is extrapolated from a 100,000-row measurement and is not a
+  validated scale limit; export is neither chunked nor streamed.
 
 - **Every shipped threshold is illustrative.** The matching specification carries
   `calibration_status.state = "illustrative_prototype"`. Calibration needs a
