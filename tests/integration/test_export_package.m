@@ -15,7 +15,11 @@ function tests = test_export_package
 %   - unsupported formats and invalid options fail before anything exists;
 %   - the destination rules (§F) and atomic publication: an injected failure
 %     after the data files are written leaves the destination absent or holding
-%     its previous package, byte for byte, and leaves no staging behind.
+%     its previous package, byte for byte, and leaves no staging behind; a
+%     failed final rename puts back an empty destination or a previous package;
+%   - a relative source or destination resolves against the current folder,
+%     not the JVM's user.dir, and drive-relative or rooted Windows paths are
+%     refused.
 %
 % Metadata files are read with an RFC 4180 reader local to this test that keeps
 % the quoted/unquoted distinction, so a blank field (not applicable) and an
@@ -452,6 +456,58 @@ verifyError(testCase, @() vawlume.export.database(fixture, ...
 verifyFalse(testCase, isfolder(fullfile(testCase.TestData.area, "no_parent")));
 end
 
+% --- relative paths --------------------------------------------------------------------------
+% MATLAB's cd does not move the JVM's user.dir, so a relative path resolved by
+% java.io.File lands under the directory MATLAB started in. These run from a
+% project directory that differs from user.dir, as a desktop session does after
+% any cd.
+
+function testRelativeSourceAndOutputResolveAgainstTheCurrentFolder(testCase)
+project = enterProject(testCase);
+result = vawlume.export.database("data/study.sqlite", Output="exports/study_csv", ...
+    Tables="projects");
+expected = canonicalPath(fullfile(project, "exports", "study_csv"));
+verifyEqual(testCase, result.output_dir, expected);
+verifyTrue(testCase, isfile(fullfile(expected, "meta", "manifest.csv")));
+listing = dir(fullfile(project, "data", "study.sqlite"));
+verifyEqual(testCase, result.source.bytes, double(listing.bytes));
+verifyEmpty(testCase, siblingsLeftBehind(fullfile(project, "exports")));
+end
+
+function testRelativeSchemaOnlyOutputResolvesAgainstTheCurrentFolder(testCase)
+project = enterProject(testCase);
+result = vawlume.export.database(Output="exports/schema_reference", SchemaOnly=true);
+expected = canonicalPath(fullfile(project, "exports", "schema_reference"));
+verifyEqual(testCase, result.output_dir, expected);
+verifyTrue(testCase, isfile(fullfile(expected, "README.md")));
+end
+
+function testARelativeSourceStillGuardsItsOwnDirectory(testCase)
+% The destination is given absolutely and the source relatively. The guard
+% must compare against the source the export actually reads.
+project = enterProject(testCase);
+verifyError(testCase, @() vawlume.export.database("data/study.sqlite", ...
+    Output=fullfile(project, "data")), "vawlume:export:DestinationUnsafe");
+verifyError(testCase, @() vawlume.export.database("data/study.sqlite", ...
+    Output="data"), "vawlume:export:DestinationUnsafe");
+end
+
+function testDriveRelativeAndRootedPathsAreRefused(testCase)
+% Both depend on per-drive state that is invisible at the call site.
+assumeTrue(testCase, ispc, "Drive-relative and rooted forms are Windows-only.");
+enterProject(testCase);
+drive = extractBefore(string(pwd), 2);
+for output = [drive + ":exports\pkg", "\exports\pkg"]
+    verifyError(testCase, @() vawlume.export.database(Output=output, SchemaOnly=true), ...
+        "vawlume:export:AmbiguousPath", "Output " + output);
+end
+for source = [drive + ":data\study.sqlite", "\data\study.sqlite"]
+    verifyError(testCase, @() vawlume.export.database(source, Output="exports/pkg"), ...
+        "vawlume:export:AmbiguousPath", "source " + source);
+end
+verifyFalse(testCase, isfolder(fullfile(pwd, "exports", "pkg")));
+end
+
 % --- atomic publication --------------------------------------------------------------------------
 
 function testAFailureAfterTheDataLeavesAnAbsentDestinationAbsent(testCase)
@@ -478,6 +534,28 @@ verifyEqual(testCase, packageDigests(output), before);
 verifyError(testCase, @() runInternal(testCase, output, overwrite=true, ...
     before_publish_fcn=@(~) error("test:export:Injected", "Injected before publication.")), ...
     "test:export:Injected");
+verifyEqual(testCase, packageDigests(output), before);
+verifyEmpty(testCase, siblingsLeftBehind(testCase.TestData.area));
+end
+
+function testAFailedRenameOntoAnEmptyDestinationLeavesItEmpty(testCase)
+% Removing the staged package just before publication makes the final rename
+% itself fail, after the empty destination has been removed to make way.
+output = fullfile(testCase.TestData.area, "empty");
+mkdir(output);
+verifyError(testCase, @() runInternal(testCase, output, tables="projects", ...
+    before_publish_fcn=@(staging) rmdir(staging, "s")), "vawlume:export:PublicationFailed");
+verifyTrue(testCase, isfolder(output), "The empty destination must be put back.");
+verifyEmpty(testCase, packageFiles(output));
+verifyEmpty(testCase, siblingsLeftBehind(testCase.TestData.area));
+end
+
+function testAFailedRenameOverAPreviousPackageRestoresIt(testCase)
+output = fullfile(testCase.TestData.area, "pkg");
+[~] = vawlume.export.database(testCase.TestData.fixture, Output=output, Tables="projects");
+before = packageDigests(output);
+verifyError(testCase, @() runInternal(testCase, output, overwrite=true, tables="detections", ...
+    before_publish_fcn=@(staging) rmdir(staging, "s")), "vawlume:export:PublicationFailed");
 verifyEqual(testCase, packageDigests(output), before);
 verifyEmpty(testCase, siblingsLeftBehind(testCase.TestData.area));
 end
@@ -539,6 +617,25 @@ for k = 1:numel(listing)
     files(k) = replace(extractAfter(full, prefix - 1), "\", "/");
 end
 files = sort(files);
+end
+
+function project = enterProject(testCase)
+% A disposable project directory holding data/study.sqlite and exports/, made
+% the current folder for the rest of the test and left again on teardown.
+project = fullfile(testCase.TestData.area, "project");
+mkdir(fullfile(project, "data"));
+mkdir(fullfile(project, "exports"));
+copyfile(testCase.TestData.fixture, fullfile(project, "data", "study.sqlite"));
+userDir = string(java.lang.System.getProperty("user.dir"));
+previous = cd(project);
+testCase.addTeardown(@() cd(previous));
+assumeNotEqual(testCase, lower(canonicalPath(pwd)), lower(canonicalPath(userDir)), ...
+    "The current folder must differ from the JVM's user.dir to exercise relative paths.");
+end
+
+function value = canonicalPath(path)
+% Only ever called with an absolute path, so user.dir cannot affect it.
+value = string(java.io.File(char(path)).getCanonicalPath());
 end
 
 function names = siblingsLeftBehind(area)

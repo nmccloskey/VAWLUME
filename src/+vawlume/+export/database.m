@@ -24,7 +24,10 @@ function result = database(dbPath, options)
 %
 %   Name-value arguments:
 %     Output                      destination directory. REQUIRED; there is no
-%                                 default. Its parent must exist.
+%                                 default. Its parent must exist. A relative
+%                                 Output or DBPATH is resolved against the
+%                                 current folder; on Windows, "C:x" and "\x"
+%                                 are refused as ambiguous.
 %     Format                      "csv" (default), the only implemented format.
 %                                 Any other value fails before anything is read
 %                                 or written.

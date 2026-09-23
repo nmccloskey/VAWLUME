@@ -35,6 +35,9 @@ function result = runExport(request)
 %   On ANY failure the staging directory is removed and the destination is
 %   untouched: absent, still empty, or still the previous valid package
 %   (contract §F.4). The source database is never written.
+%
+%   A relative db_path or output is resolved against MATLAB's current folder,
+%   once, never against the JVM's user.dir (exportResolvePath).
 
 arguments
     request (1,1) struct
@@ -48,7 +51,12 @@ repoRoot = request.repo_root;
 
 sourcePath = "";
 if mode == "normal"
+    % Resolved once, against the current folder. Every later step (this check,
+    % the destination guard, the reader) is given this same absolute path.
     sourcePath = string(request.db_path);
+    if strlength(strtrim(sourcePath)) > 0
+        sourcePath = exportResolvePath(sourcePath, "The database path");
+    end
     if ~isfile(sourcePath)
         error("vawlume:export:SourceNotFound", ...
             "No database file at ""%s"". The exporter opens an existing database " + ...
@@ -143,9 +151,17 @@ switch current.state
         moveOrFail(staging, current.path);
     case "empty"
         % Non-recursive: rmdir without "s" cannot remove a directory that has
-        % gained content.
+        % gained content. If the rename then fails, the empty directory is put
+        % back, so the destination is left as it was found (contract §F.4).
         rmdir(current.path);
-        moveOrFail(staging, current.path);
+        try
+            moveOrFail(staging, current.path);
+        catch exception
+            if ~isfolder(current.path)
+                mkdir(current.path);
+            end
+            rethrow(exception);
+        end
     case "package"
         previous = current.path + "." + token + ".previous";
         moveOrFail(current.path, previous);

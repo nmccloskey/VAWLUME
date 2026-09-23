@@ -29,7 +29,8 @@ function record = writeObjects(dbPath, stagingRoot, options)
 %   SOURCE SAFETY (contract §E.6). There is one read-only connection for the
 %   whole export; a write through it is refused by SQLite. A path that does not
 %   exist is refused before anything is opened, and read-only mode cannot create
-%   a file in any case. There is no read transaction: in MATLAB's driver one
+%   a file in any case. A relative DBPATH is resolved against the current
+%   folder. There is no read transaction: in MATLAB's driver one
 %   leaves the connection unclosable and blocks concurrent writers. Instead,
 %   PRAGMA data_version is read before the first object and after the last. If
 %   it changed, the export fails with vawlume:export:SourceChangedDuringExport.
@@ -322,10 +323,13 @@ value = string(rows.(rows.Properties.VariableNames{1})(1));
 end
 
 function path = absolutePath(path)
-if ismissing(path) || strlength(path) == 0
+% A relative path is resolved against the current folder, not the JVM's
+% user.dir (exportResolvePath). Empty input is returned as is and refused by
+% the caller.
+if ismissing(path) || strlength(strtrim(path)) == 0
     return
 end
-path = string(java.io.File(char(path)).getAbsolutePath());
+path = exportResolvePath(path, "The path");
 end
 
 function removeCreatedDirectory(csvDir)

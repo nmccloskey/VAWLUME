@@ -1808,18 +1808,18 @@ and `database`.
 Normal export writes every base table and no views by default:
 
 ```matlab
-addpath(src)
-result = vawlume.export.database(data/study.sqlite, ...
-    Output=exports/study_csv, Format=csv);
+addpath("src")
+result = vawlume.export.database("data/study.sqlite", ...
+    Output="exports/study_csv", Format="csv");
 ```
 
 Select exact, case-sensitive table and view names with `Tables`. An explicitly
 named view is exported even though `IncludeViews` defaults to `false`:
 
 ```matlab
-result = vawlume.export.database(data/study.sqlite, ...
-    Output=exports/detection_subset, ...
-    Tables=[detections, v_detection_core]);
+result = vawlume.export.database("data/study.sqlite", ...
+    Output="exports/detection_subset", ...
+    Tables=["detections", "v_detection_core"]);
 ```
 
 For the most accessible repository-supported schema reference, omit the
@@ -1828,7 +1828,7 @@ database and request schema-only mode. It exports no data and creates no
 
 ```matlab
 result = vawlume.export.database( ...
-    Output=exports/vawlume_schema, SchemaOnly=true);
+    Output="exports/vawlume_schema", SchemaOnly=true);
 ```
 
 The runnable [`csv_export_demo`](../../examples/csv_export_demo.m) builds the
@@ -1881,7 +1881,7 @@ into the source SQLite database.
 
 #### Fidelity and strict reading
 
-SQL NULL is a bare empty field; empty text is the quoted field `"`. Every
+SQL NULL is a bare empty field; empty text is the quoted field `""`. Every
 non-NULL value is quoted using RFC 4180 rules. INTEGER values use full decimal
 text, REAL values use SQLite `printf('%!.17g')`, and BLOBs use uppercase
 hexadecimal. Files are UTF-8 without a BOM and use CRLF record terminators.
@@ -1893,16 +1893,19 @@ looks numeric. Force every variable to string when exact lexical values and the
 NULL-versus-empty distinction matter:
 
 ```matlab
-file = exports/study_csv/csv/event_measurements.csv;
-opts = detectImportOptions(file, Delimiter=,, TextType=string);
-opts = setvartype(opts, string);
+file = "exports/study_csv/csv/event_measurements.csv";
+opts = detectImportOptions(file, Delimiter=",", TextType="string");
+opts = setvartype(opts, "string");
 rows = readtable(file, opts);
 ```
 
 #### Destination, overwrite, and version behavior
 
-`Output` is mandatory and its parent must already exist. An absent or empty
-destination is accepted. A non-empty destination is refused by default.
+`Output` is mandatory and its parent must already exist. A relative database
+path or `Output`, as in the examples above, is resolved against the current
+MATLAB folder; on Windows, a drive-relative path such as `C:data\study.sqlite`
+or a rooted one without a drive such as `\data\study.sqlite` is refused with
+`vawlume:export:AmbiguousPath`. An absent or empty destination is accepted. A non-empty destination is refused by default.
 `Overwrite=true` replaces only an empty directory or a previous package that is
 recognized by both `README.md` and a `meta/manifest.csv` whose package format is
 `vawlume_csv_export`; it never authorizes deletion of an arbitrary directory.

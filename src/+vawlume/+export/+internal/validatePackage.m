@@ -3,14 +3,21 @@ function validatePackage(root, record)
 %
 %   vawlume.export.internal.validatePackage(ROOT, RECORD)
 %
-%   Reads the staged files back and checks that they say what the record says:
+%   Reads the staged files back and checks their shape against the record:
 %
 %     - every file the record lists exists, and nothing else is in csv/;
 %     - schema-only packages have no csv/ directory at all, not even an empty one;
 %     - meta/tables.csv has one row per supported object, and its exported rows
 %       match the exported count and name files that exist;
 %     - meta/columns.csv and meta/relationships.csv have their full row counts;
-%     - meta/manifest.csv has the record's rows and identifies the package format.
+%     - meta/manifest.csv has as many rows as the record's manifest and
+%       identifies the package format.
+%
+%   It does NOT compare fact values: not the manifest's counts, source, or
+%   versions, and not README.md, which is only checked to exist. Those cannot
+%   disagree with the record unless a renderer is changed, because every file
+%   is rendered from the one record (contract §G.1); test_export_package and
+%   test_csv_export_demo catch such a change.
 %
 %   Raises vawlume:export:PackageInvalid naming every failed check. This is the
 %   last gate before a staged package is renamed onto the destination.

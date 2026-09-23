@@ -3,7 +3,8 @@ function destination = checkDestination(output, overwrite, sourcePath)
 %
 %   DESTINATION = vawlume.export.internal.checkDestination(OUTPUT, OVERWRITE, SOURCEPATH)
 %
-%   Returns a struct with `path` (the absolute, canonical destination) and
+%   Returns a struct with `path` (the absolute, canonical destination; a
+%   relative OUTPUT or SOURCEPATH is resolved against the current folder) and
 %   `state`, which is one of:
 %
 %     "absent"   nothing is there; publication is a rename onto it
@@ -13,6 +14,8 @@ function destination = checkDestination(output, overwrite, sourcePath)
 %   Everything else is refused before anything is written (contract §§F.1-F.2):
 %
 %     vawlume:export:OutputRequired             OUTPUT is empty or missing
+%     vawlume:export:AmbiguousPath              OUTPUT is drive-relative ("C:x")
+%                                               or rooted without a drive ("\x")
 %     vawlume:export:DestinationUnsafe          a filesystem or drive root; the
 %         home directory; a repository root; an ancestor of any of these; the
 %         directory holding the source database, or any directory containing it;
@@ -48,7 +51,8 @@ if isempty(output) || ~(isstring(output) || ischar(output)) || ...
         "There is no default destination.");
 end
 
-path = canonical(string(output));
+% A relative Output is resolved against the current folder (exportResolvePath).
+path = exportResolvePath(string(output), "Output");
 destination = struct(path=path, state="");
 
 if isRoot(path)
@@ -67,7 +71,7 @@ if isSameOrAncestor(path, repository)
     unsafe(path, "it contains the VAWLUME repository");
 end
 if sourcePath ~= ""
-    source = canonical(sourcePath);
+    source = exportResolvePath(sourcePath, "The database path");
     % The source lies inside its own directory, so this also refuses that
     % directory itself.
     if isSameOrAncestor(path, source)
@@ -131,6 +135,8 @@ end
 end
 
 function path = canonical(path)
+% Only for paths already known to be absolute (home, this repository). A
+% caller-supplied path goes through exportResolvePath instead.
 path = string(java.io.File(char(path)).getCanonicalPath());
 end
 
