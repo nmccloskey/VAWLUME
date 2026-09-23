@@ -6,10 +6,12 @@
 > transparency and reuse, not a released or validated tool. The schema,
 > configuration contracts, and `vawlume.*` API are design hypotheses and may
 > change substantially. Every numeric threshold shipped here is an illustrative
-> demonstration value chosen to exercise algorithm behaviour on synthetic
-> fixtures — none is empirically calibrated. Validation to date is entirely
-> synthetic: no real paired extractor session and no real manually reviewed
-> reference subset has been available.
+> demonstration value — none is empirically calibrated. The extractor-
+> consilience exploration workflow has completed operational acceptance on one
+> real Pilot 3 recording containing DeepSqueak, MUPET, and USVSEG outputs. That
+> run is evidence that the software path works on real imported data, not
+> scientific validation: no comprehensive manually reviewed ground-truth
+> reference or threshold calibration has been completed.
 
 VAWLUME is a MATLAB-centered, relational framework that maps heterogeneous project and extractor semantics into a provenance-aware common model, so vocalization detections can be compared and validated across extractors without erasing how those data were originally produced.
 
@@ -645,9 +647,10 @@ and
 
 **Every matching, tolerance, and manual-reference threshold shipped with the
 prototype is provisional.** They are deterministic demonstration values chosen
-to exercise algorithm behaviour on synthetic fixtures. Calibration requires a
-genuine paired extractor session and an independent manually reviewed reference
-subset, neither of which exists yet, so no configuration should be reported as
+to exercise algorithm behaviour. One real paired-extractor recording has now
+exercised the consilience workflow operationally, but calibration still requires
+independent, comprehensive manual ground truth and broader multi-recording
+validation; neither has been completed. No configuration should be reported as
 optimal, validated, or recommended.
 
 The dual-extractor result is worth stating precisely, because it is what

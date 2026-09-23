@@ -59,6 +59,7 @@ checks(end+1) = checkExampleTestCoverage(repoRoot, inventory);
 checks(end+1) = checkConfigInventory(repoRoot, inventory);
 checks(end+1) = checkRelativeLinks(repoRoot, inventory);
 checks(end+1) = checkNoUnverifiedSuiteCounts(repoRoot);
+checks(end+1) = checkConsilienceExplorationOutputPaths(repoRoot);
 
 report = struct();
 report.inventory = inventory;
@@ -284,6 +285,44 @@ end
 
 detail = sprintf("%d current-state documents scanned", numel(documents));
 check = makeCheck("no hand-maintained suite counts", isempty(failures), detail, failures);
+end
+
+function check = checkConsilienceExplorationOutputPaths(repoRoot)
+% Bind the published output tree to the three roots the implementation uses.
+documentPath = fullfile(repoRoot, "docs", "development", ...
+    "35_consilience_exploration_workflow.md");
+document = string(fileread(documentPath));
+runner = string(fileread(fullfile(repoRoot, "src", "+vawlume", "+eda", ...
+    "runExploration.m")));
+materializer = string(fileread(fullfile(repoRoot, "src", "+vawlume", "+eda", ...
+    "materializeConfigurations.m")));
+
+failures = strings(0, 1);
+documentClaims = [
+    "three sibling locations under `<OutputRoot>`"
+    "`<OutputRoot>/exploration/<run key>/specs/`"
+    "`<OutputRoot>/exports/`"
+    "`<OutputRoot>/gallery/`"];
+for k = 1:numel(documentClaims)
+    if ~contains(document, documentClaims(k))
+        failures(end+1, 1) = ... %#ok<AGROW>
+            "consilience workflow guide omits " + documentClaims(k);
+    end
+end
+
+implementationClaims = [
+    contains(materializer, 'fullfile(outputRoot, "exploration", runKey, "specs")')
+    contains(runner, 'fullfile(state.reference.output_root, "exports")')
+    contains(runner, 'fullfile(state.reference.output_root, "gallery")')];
+if ~all(implementationClaims)
+    failures(end+1, 1) = ...
+        "consilience output-root implementation no longer matches the checked layout";
+end
+
+detail = "three documented output roots checked against runExploration and " + ...
+    "materializeConfigurations";
+check = makeCheck("consilience exploration output paths match implementation", ...
+    isempty(failures), detail, failures);
 end
 
 % ---------------------------------------------------------------------------

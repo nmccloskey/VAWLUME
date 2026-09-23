@@ -225,6 +225,15 @@ partial correlation needs to know whether the metric was constant in this
 dataset or whether the matrix was too ill-conditioned to invert; those imply
 different next steps. **An undefined value is a finding, not a gap.**
 
+The real Pilot 3 acceptance run exercised the latter case. Sixteen metrics and
+263 complete cases survived against a required minimum of 26, but several pairs
+were exactly redundant, including `temporal_iou`/`candidate_score` and each
+absolute temporal difference with its corresponding feature discrepancy. The
+implementation therefore reached the pre-inversion reciprocal-condition-number
+guard and returned matrix-level reason `ill_conditioned`; every partial entry
+remained `NaN`. This is the expected refusal for a singular or near-singular
+metric set, not an insufficient-N result or an MVP blocker.
+
 Missing values follow a two-stage policy, and `observation_policy.mode` records
 which ran, because the two give different matrices and the numbers alone do not
 say which. Primary is listwise deletion over the retained metrics — one sample
@@ -650,6 +659,13 @@ mixture is the honest picture, and the legend says so in words
 Rectangles for DeepSqueak and MUPET are **summary-value extents, not native
 contours**. The MVP renders what the ingested data represent.
 
+That distinction includes literal zero-height extents. In the real Pilot 3
+acceptance gallery, one DeepSqueak Stats row reported identical low, high, and
+principal frequencies with `Delta Freq = 0`, while the DeepSqueak GUI displayed
+a nonzero-height annotation around the same region. VAWLUME correctly rendered
+the exported summary as a horizontal zero-height extent. It must not infer a
+taller box from spectrogram appearance or native GUI geometry.
+
 ### 9.3 The example index
 
 A fixed 22-column, comma-delimited, UTF-8 CSV (`example_index.csv`), written
@@ -667,16 +683,28 @@ column, because the column set is fixed and a review-like addition is forbidden.
 
 ## 10. Outputs and provenance
 
-`runExploration` writes, under `<OutputRoot>/exploration/<run key>/`:
+`runExploration` writes to three sibling locations under `<OutputRoot>`:
 
 ```
-specs/      one generated matching specification per configuration
-gallery/    example_index.csv, example_index_caution.txt, images/*.png
-exports/
-  tables/   one CSV per computed table, each with a provenance header line
-  figures/  one PNG per figure family
-  exploration_provenance.json
+<OutputRoot>/
+|-- exploration/
+|   `-- <run key>/
+|       `-- specs/     one generated matching specification per configuration
+|-- exports/
+|   |-- tables/       one CSV per computed table, each with a provenance header
+|   |-- figures/      one PNG per figure family
+|   `-- exploration_provenance.json
+`-- gallery/
+    |-- example_index.csv
+    |-- example_index_caution.txt
+    `-- images/*.png
 ```
+
+The exact roots are:
+
+- Generated matching specifications: `<OutputRoot>/exploration/<run key>/specs/`
+- Table and figure exports: `<OutputRoot>/exports/`
+- Representative gallery: `<OutputRoot>/gallery/`
 
 Every exported CSV begins with one line,
 `# vawlume_table_export=<JSON>`, carrying the run identity and the canonical
@@ -767,6 +795,37 @@ infer wrongly from an output that looks authoritative.
    replication.
 10. **Every empirical statement is about one dataset.** Nothing here generalizes
     to an extractor's behaviour in general.
+11. **Real-data operational acceptance currently covers one recording.** The
+    whole-data screen and subset probe used the same frame, so their perfect
+    concordance is non-informative about subset representativeness or stability
+    across recordings.
+12. **Real-data execution is materially expensive.** The one-recording Pilot 3
+    run took roughly 5.8 hours overall: about 3.62 hours for the 16-configuration
+    screen and 2.09 hours for the same-recording 16-configuration subset probe.
+    Profile or estimate cost before scaling to the four-recording pilot dataset.
+13. **Gallery review is limited.** Real audio rendering was spot-checked, not
+    comprehensively adjudicated. A zero-height DeepSqueak extent was traced to
+    the source Stats export and is not a VAWLUME rendering defect.
+14. **Operational acceptance is not scientific calibration.** Matching
+    thresholds and interpretations remain uncalibrated, and no comprehensive
+    manually reviewed ground-truth validation has been completed.
+
+### 12.1 Real-data acceptance status
+
+The complete workflow has run on one real Pilot 3 recording containing 848
+DeepSqueak, 1,317 MUPET, and 1,159 USVSEG detections. It completed dataset
+resolution, reference matching/agreement, diagnostics, four-factor probe
+resolution, a 16-configuration whole-data screen, the same-size subset probe,
+concordance, all seven exact extractor-set populations, feature
+characterization, representative-example selection, exports, and every
+analysis-figure family.
+
+This closes the synthetic-only **software/workflow acceptance** gap. It does not
+close multi-recording stratified sampling, meaningful concordance across
+different recording sets, broader gallery adjudication, runtime scaling, or
+paper-grade scientific validation. Those remain deliberate later acceptance
+tasks for the available four-recording Pilot 3 dataset rather than poster-MVP
+implementation blockers.
 
 ## 13. Explicit non-goals
 

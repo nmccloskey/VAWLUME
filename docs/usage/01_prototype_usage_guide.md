@@ -107,8 +107,12 @@ this prototype estimates who called.
 - **Sequence, bout, motif, and hierarchy-aware analyses are not implemented.**
   The `sequences`, `sequence_members`, `bouts`, and `bout_members` tables exist
   in the schema and are used by no code.
-- **All validation to date is synthetic.** No real paired extractor session and
-  no real manually reviewed reference subset has been available.
+- **Real-data acceptance is operational, not scientific validation.** The
+  extractor-consilience exploration workflow has run end to end on one real
+  Pilot 3 recording with DeepSqueak, MUPET, and USVSEG outputs. No comprehensive
+  manually reviewed ground-truth reference or threshold calibration has been
+  completed, and the multi-recording sampling path remains untested on real
+  data.
 - **Channel-response estimates are not caller evidence.** VAWLUME now reads
   bounded audio windows and measures declared references on explicit channels,
   but the result is uncalibrated response/QC evidence about the channels. It is
@@ -744,6 +748,11 @@ provenance record. A normal run configures a seed and nothing else.
 8. **Renders a representative spectrogram gallery** from the original audio.
 9. **Exports** tables, figures, the example index and a provenance record.
 
+Generated specifications, exports, and the gallery use three sibling locations
+under `OutputRoot`: `exploration/<run key>/specs/`, `exports/`, and `gallery/`.
+The tables, figures, provenance JSON, example index, and images are therefore
+not nested under the run-key specification directory.
+
 Each stage can be run on its own. `Stages="diagnostics"` gives you the cheap
 first look without building a design or executing a probe, and `Apply=false`
 prices every probe without writing anything — worth doing before you commit to a
@@ -809,6 +818,10 @@ to fit.
 - **Agreement between the two probes does not remove the need for calibration.**
   They share every assumption of the matching and agreement layers and neither
   observes ground truth.
+- **A one-recording screen/subset comparison cannot test subset
+  representativeness.** In the real Pilot 3 acceptance run the subset was the
+  whole frame, so identical response and effect behavior was expected and is
+  not evidence that the richer-subset strategy is stable across recordings.
 - **A fractional design aliases effects it cannot separate.** Read the alias
   table before reading a main effect.
 - **The duration screen is scale-dependent.**
@@ -832,6 +845,30 @@ to fit.
 - **The gallery is illustrative, not a review form.** There is no verdict column
   and no re-import path, and an extractor set with too few members yields what it
   has plus a reported shortfall rather than being padded from a neighbour.
+
+#### Real-data acceptance boundary
+
+One real Pilot 3 recording containing 3,324 detections traversed the complete
+workflow, produced every analysis-figure family, and rendered a usable gallery
+after real audio/channel metadata were registered. The full run took roughly
+5.8 hours: about 3.62 hours for the 16-configuration whole-data screen and 2.09
+hours for a 16-configuration subset probe over the same recording. Treat that as
+a scaling warning before running the four-recording pilot dataset, not as a
+default-runtime promise.
+
+The run also established two interpretation boundaries. First, the partial-
+correlation matrix was intentionally undefined with reason `ill_conditioned`:
+263 complete cases exceeded the required minimum, but exact redundant metrics
+made the correlation matrix unsuitable for inversion. Second, a DeepSqueak
+detection whose exported low and high frequencies were identical rendered as a
+literal zero-height extent. Native GUI geometry may differ from exported summary
+features; VAWLUME renders the exported measurements and does not infer a taller
+box.
+
+Still open are real multi-recording stratified-subset acceptance, a meaningful
+whole-versus-subset comparison on different recording sets, broader manual
+gallery adjudication, runtime scaling, and paper-grade threshold or ground-truth
+validation.
 
 [`../development/35_consilience_exploration_workflow.md`](../development/35_consilience_exploration_workflow.md)
 documents the stages, the designs, the coverage vocabulary, the provenance
