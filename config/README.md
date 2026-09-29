@@ -286,6 +286,13 @@ participate, which of them is the reference, and where each event and anchor
 table plus its mapping profile lives. It points at data and never embeds event
 rows.
 
+In manifest schema `0.1-draft`, omitted timebase `scope` means `recording`.
+Use `"scope": "project"` only for a clock intentionally shared across
+recordings; a recording-native clock cannot be project-scoped. Existing logical
+streams are immutable registrations: reusing a stream key requires the same
+timebase, declaration, source identity/checksum, source role, mapping-profile
+version/checksum, and mapped population. Revised evidence uses a new stream key.
+
 Alignment intake registers the manifest as a checksummed `source_files` row and
 links it to the alignment set, so the exact request stays reconstructable. The
 reusable half — how to read an event or anchor table — remains a versioned

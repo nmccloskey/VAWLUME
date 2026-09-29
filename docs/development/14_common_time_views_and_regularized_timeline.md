@@ -80,7 +80,10 @@ caller may request a warning for audit workflows. Events never extend coverage.
 
 The regularizer considers a bin covered only when one observed interval contains
 the complete bin. This conservative rule prevents a partially observed bin or a
-gap between segments from becoming an observed zero.
+gap between segments from becoming an observed zero. Boundary comparisons allow
+only scale-aware numeric roundoff,
+`max(1e-9 s, 32*eps(max(1, compared time scale)))`; this does not merge adjacent
+partial intervals or turn a real positive coverage gap into coverage.
 
 ## Regularization semantics
 

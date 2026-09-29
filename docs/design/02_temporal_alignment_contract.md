@@ -226,7 +226,11 @@ unnecessary: `config_profiles.profile_kind` already offers
 already carry path plus SHA-256 for the session-specific half.
 
 A manifest designates a reference timebase and participating sources. It does
-not embed table data.
+not embed table data. In `0.1-draft`, every timebase defaults to recording scope;
+project scope is an explicit opt-in for a genuinely shared clock. Reusing a
+clock or logical stream is an immutable-evidence operation: materially changed
+clock metadata, stream declaration, source/profile provenance, or mapped
+population requires a new logical key rather than in-place replacement.
 
 ## Supported transform scope
 
@@ -287,6 +291,12 @@ For each source → reference fit, an included logical anchor resolves to one
 included source observation and one included reference observation. Where
 duplicate observations make the pair ambiguous, explicit resolution or exclusion
 is required, and all observations are preserved for auditing.
+
+When an anchor observation cites an event, mapping resolves the event's logical
+stream and stream-scoped native ID once and carries that identity forward. The
+current citation basis is event onset: normalized observation time and event
+start time must agree within numeric-roundoff tolerance. Another phase such as
+midpoint or offset requires an explicit future time-basis contract.
 
 ## QC contract
 

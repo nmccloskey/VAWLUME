@@ -534,11 +534,16 @@ nativeId = presentText(row.event_native_event_id(1));
 if strlength(nativeId) == 0
     return
 end
-streamKey = presentText(row.stream_key(1));
+streamKey = presentText(row.event_stream_key(1));
 candidate = streamKey + "|" + nativeId;
 if isKey(lookup, candidate)
     value = lookup(candidate);
+    return
 end
+error("vawlume:ingest:AlignmentEventReferenceUnresolved", ...
+    ['Mapped event reference ''%s'' in stream ''%s'' did not resolve to a ' ...
+    'persisted event. Apply refuses to store a silent NULL event link.'], ...
+    nativeId, streamKey);
 end
 
 function [plan, counts] = applyTransformRuns(conn, plan, counts)

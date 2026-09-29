@@ -747,7 +747,7 @@ report = finalizeReport(report);
                 end
             end
             for name = ["observation_role", "included_in_fit", "uncertainty", ...
-                    "event_reference", "event_source_key"]
+                    "evidence_class", "event_reference", "event_source_key"]
                 if hasField(entry.columns, name) && isstruct(entry.columns.(char(name)))
                     validateColumnRule(entry.columns.(char(name)), ...
                         location + ".columns." + name, false);

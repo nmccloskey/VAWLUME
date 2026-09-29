@@ -8,11 +8,18 @@ tests = functiontests({ ...
     @testManifestRegistersTheWholeSessionAtomically, ...
     @testPlanningWritesNothing, ...
     @testIdenticalManifestIsIdempotent, ...
+    @testNonNativeTimebasesDefaultToRecordingScope, ...
+    @testExplicitProjectScopedTimebaseIsShared, ...
+    @testConflictingTimebaseDeclarationIsRejectedBeforeWrites, ...
     @testChangedReferenceTimebaseConflicts, ...
     @testChangedSourceContentIsRejected, ...
+    @testChangedStreamSourceEvidenceIsRejectedBeforeWrites, ...
+    @testChangedStreamProfileEvidenceIsRejectedBeforeWrites, ...
     @testMissingDeclaredSourceFailsBeforeAnyWrite, ...
     @testUnknownAnchorTimebaseFailsBeforeAnyWrite, ...
     @testUnresolvedEventReferenceBlocksApply, ...
+    @testMappedEventReferenceUsesResolvedEventStream, ...
+    @testCitedEventTimeMismatchBlocksApply, ...
     @testUnresolvedDuplicateObservationsAreKeptButNotFitReady, ...
     @testInducedFailureRollsBackEveryRegisteredRow, ...
     @testNativeTimebaseIsEnsuredOnceForAPreExistingRecording, ...
@@ -104,6 +111,59 @@ verifyEqual(testCase, result.anchor_summary.anchor_count, 3);
 clear cleanup
 end
 
+function testNonNativeTimebasesDefaultToRecordingScope(testCase)
+[fixture, cleanup] = setUpFixture();
+first = applyManifest(fixture);
+seedSecondRecording(fixture.conn);
+fixture = rewriteManifest(fixture, '"alignment_key": "synthetic_session_01_alignment"', ...
+    '"alignment_key": "synthetic_session_02_alignment"');
+fixture = rewriteManifest(fixture, '"native_recording_id": "REC_SESSION_01"', ...
+    '"native_recording_id": "REC_SESSION_02"');
+second = applyManifest(fixture);
+firstVideo = first.timebases(first.timebases.timebase_key == "video_native", :);
+secondVideo = second.timebases(second.timebases.timebase_key == "video_native", :);
+verifyNotEqual(testCase, secondVideo.timebase_id, firstVideo.timebase_id);
+verifyEqual(testCase, secondVideo.action, "create");
+verifyEqual(testCase, count(fixture.conn, "timebases", ...
+    "timebase_name = 'video_native' AND recording_id IS NOT NULL"), 2);
+clear cleanup
+end
+
+function testExplicitProjectScopedTimebaseIsShared(testCase)
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+first = applyManifest(fixture);
+seedSecondRecording(fixture.conn);
+fixture = rewriteManifest(fixture, ...
+    '"alignment_key": "synthetic_session_01_alignment"', ...
+    '"alignment_key": "synthetic_session_02_alignment"');
+fixture = rewriteManifest(fixture, ...
+    '"native_recording_id": "REC_SESSION_01"', ...
+    '"native_recording_id": "REC_SESSION_02"');
+second = applyManifest(fixture);
+firstNeural = first.timebases(first.timebases.timebase_key == "neural_native", :);
+secondNeural = second.timebases(second.timebases.timebase_key == "neural_native", :);
+verifyEqual(testCase, secondNeural.timebase_id, firstNeural.timebase_id);
+verifyEqual(testCase, secondNeural.action, "reuse");
+verifyEqual(testCase, count(fixture.conn, "timebases", ...
+    "timebase_name = 'neural_native' AND recording_id IS NULL"), 1);
+clear cleanup
+end
+
+function testConflictingTimebaseDeclarationIsRejectedBeforeWrites(testCase)
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+applyManifest(fixture);
+before = alignmentRowTotal(fixture.conn);
+fixture = rewriteManifest(fixture, ...
+    '"alignment_key": "synthetic_session_01_alignment"', ...
+    '"alignment_key": "synthetic_session_01_alignment_v2"');
+fixture = rewriteManifest(fixture, ...
+    '"nominal_rate_hz": 30000', '"nominal_rate_hz": 29999');
+verifyError(testCase, @() planManifest(fixture), ...
+    "vawlume:ingest:AlignmentTimebaseConflict");
+verifyEqual(testCase, alignmentRowTotal(fixture.conn), before);
+clear cleanup
+end
+
 % --------------------------------------------------- idempotency and conflict ---
 
 function testIdenticalManifestIsIdempotent(testCase)
@@ -154,6 +214,37 @@ verifyError(testCase, @() planManifest(fixture), ...
 clear cleanup
 end
 
+function testChangedStreamSourceEvidenceIsRejectedBeforeWrites(testCase)
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+applyManifest(fixture);
+before = alignmentRowTotal(fixture.conn);
+writeTableFile(fixture.workspace, "video_events_v2.csv", editedBehaviorTable());
+fixture = rewriteManifest(fixture, ...
+    '"alignment_key": "synthetic_session_01_alignment"', ...
+    '"alignment_key": "synthetic_session_01_alignment_v2"');
+fixture = rewriteManifest(fixture, ...
+    '"source": "video_events.csv"', '"source": "video_events_v2.csv"');
+verifyError(testCase, @() planManifest(fixture), ...
+    "vawlume:ingest:AlignmentStreamEvidenceConflict");
+verifyEqual(testCase, alignmentRowTotal(fixture.conn), before);
+clear cleanup
+end
+
+function testChangedStreamProfileEvidenceIsRejectedBeforeWrites(testCase)
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+applyManifest(fixture);
+before = alignmentRowTotal(fixture.conn);
+profilePath = writeRevisedBehaviorProfile(fixture);
+fixture = useBehaviorProfile(fixture, profilePath);
+fixture = rewriteManifest(fixture, ...
+    '"alignment_key": "synthetic_session_01_alignment"', ...
+    '"alignment_key": "synthetic_session_01_alignment_v2"');
+verifyError(testCase, @() planManifest(fixture), ...
+    "vawlume:ingest:AlignmentStreamEvidenceConflict");
+verifyEqual(testCase, alignmentRowTotal(fixture.conn), before);
+clear cleanup
+end
+
 function testMissingDeclaredSourceFailsBeforeAnyWrite(testCase)
 [fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
 delete(fullfile(fixture.workspace, "neural_events.csv"));
@@ -172,6 +263,7 @@ function testUnknownAnchorTimebaseFailsBeforeAnyWrite(testCase)
 fixture = rewriteManifest(fixture, ...
     ['    {' newline '      "timebase_key": "audio_native",' newline ...
     '      "timebase_kind": "audio_sample_clock",' newline ...
+    '      "scope": "recording",' newline ...
     '      "recording_native": true,' newline '      "native_unit": "s",' newline ...
     '      "origin_description": "Recording file time zero."' newline '    },' newline], "");
 verifyError(testCase, @() applyManifest(fixture), ...
@@ -194,6 +286,34 @@ verifyTrue(testCase, any(result.issues.code == "EVENT_REFERENCE_UNRESOLVED"));
 verifyError(testCase, @() applyManifest(fixture), "vawlume:ingest:AlignmentNotReady");
 verifyEqual(testCase, alignmentRowTotal(fixture.conn), 0);
 
+clear cleanup
+end
+
+function testMappedEventReferenceUsesResolvedEventStream(testCase)
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+profilePath = writeAnchorProfileWithObservationAlias(fixture);
+fixture = useAnchorProfile(fixture, profilePath);
+result = applyManifest(fixture);
+verifyEqual(testCase, result.status, "committed");
+verifyEqual(testCase, count(fixture.conn, "alignment_anchor_observations", ...
+    "external_event_id IS NOT NULL"), 3);
+verifyEqual(testCase, height(fetch(fixture.conn, "PRAGMA foreign_key_check")), 0);
+clear cleanup
+end
+
+function testCitedEventTimeMismatchBlocksApply(testCase)
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+anchors = anchorTable();
+neuralRows = find(anchors.stream == "neural");
+% The 1 ms contradiction is smaller than the declared 2 ms measurement
+% uncertainty; identity consistency deliberately does not use that uncertainty.
+anchors.timestamp_s(neuralRows(1)) = "121.483";
+writeTableFile(fixture.workspace, "sync_anchors.csv", anchors);
+result = planManifest(fixture);
+verifyFalse(testCase, result.valid_for_ingest);
+verifyTrue(testCase, any(result.issues.code == "EVENT_REFERENCE_TIME_MISMATCH"));
+verifyError(testCase, @() applyManifest(fixture), "vawlume:ingest:AlignmentNotReady");
+verifyEqual(testCase, alignmentRowTotal(fixture.conn), 0);
 clear cleanup
 end
 
@@ -251,6 +371,11 @@ function testNativeTimebaseIsEnsuredOnceForAPreExistingRecording(testCase)
 % The recording predates Phase 7 and has no clock of its own.
 verifyEqual(testCase, count(fixture.conn, "timebases", "1=1"), 0);
 applyManifest(fixture);
+streamRows = count(fixture.conn, "external_streams", "1=1");
+sourceRows = count(fixture.conn, "external_stream_sources", "1=1");
+coverageRows = count(fixture.conn, "external_stream_coverage", "1=1");
+eventRows = count(fixture.conn, "external_events", "1=1");
+attributeRows = count(fixture.conn, "external_event_attributes", "1=1");
 
 % Intake creates exactly one, inheriting the recording's sample rate.
 verifyEqual(testCase, count(fixture.conn, "timebases", ...
@@ -264,6 +389,11 @@ second = applyManifest(fixture);
 verifyEqual(testCase, second.status, "committed");
 verifyEqual(testCase, count(fixture.conn, "timebases", "is_recording_native = 1"), 1);
 verifyEqual(testCase, count(fixture.conn, "alignment_sets", "1=1"), 2);
+verifyEqual(testCase, count(fixture.conn, "external_streams", "1=1"), streamRows);
+verifyEqual(testCase, count(fixture.conn, "external_stream_sources", "1=1"), sourceRows);
+verifyEqual(testCase, count(fixture.conn, "external_stream_coverage", "1=1"), coverageRows);
+verifyEqual(testCase, count(fixture.conn, "external_events", "1=1"), eventRows);
+verifyEqual(testCase, count(fixture.conn, "external_event_attributes", "1=1"), attributeRows);
 nativeRow = second.timebases(second.timebases.recording_native, :);
 verifyEqual(testCase, nativeRow.action, "reuse");
 
@@ -341,6 +471,15 @@ execute(conn, "INSERT INTO experimental_entities(project_id, entity_type_id, nat
     "VALUES (1, 1, 'F01')");
 end
 
+function seedSecondRecording(conn)
+execute(conn, "INSERT INTO source_files(project_id, file_role, path_or_uri, relative_path) " + ...
+    "VALUES (1, 'recording_audio', 'synthetic/session02.wav', 'session02.wav')");
+execute(conn, "INSERT INTO recordings(project_id, source_file_id, " + ...
+    "native_recording_id, sample_rate_hz) SELECT 1, source_file_id, " + ...
+    "'REC_SESSION_02', 250000 FROM source_files " + ...
+    "WHERE path_or_uri='synthetic/session02.wav'");
+end
+
 % -------------------------------------------------------- synthetic tables ---
 
 function tbl = behaviorTable()
@@ -415,6 +554,45 @@ fprintf(fileId, "%s", text);
 clear cleaner
 fixture.manifest_path = string(path);
 fixture.revision = revision;
+end
+
+function path = writeRevisedBehaviorProfile(fixture)
+source = fullfile(fixture.repo_root, "config", "01_mapping_profiles", ...
+    "external_streams", "behavior_video_event_mapping_profile.json");
+document = jsondecode(fileread(source));
+document.profile.profile_version = "0.2.0";
+path = fullfile(fixture.workspace, "behavior_video_event_mapping_profile_v2.json");
+writeJson(path, document);
+end
+
+function fixture = useBehaviorProfile(fixture, profilePath)
+old = """mapping_profile"": ""config/01_mapping_profiles/external_streams/" + ...
+    "behavior_video_event_mapping_profile.json""";
+new = """mapping_profile"": """ + replace(profilePath, filesep, "/") + """";
+fixture = rewriteManifest(fixture, old, new);
+end
+
+function fixture = useAnchorProfile(fixture, profilePath)
+old = """mapping_profile"": ""config/01_mapping_profiles/alignment_anchors/" + ...
+    "long_anchor_mapping_profile.json""";
+new = """mapping_profile"": """ + replace(profilePath, filesep, "/") + """";
+fixture = rewriteManifest(fixture, old, new);
+end
+
+function writeJson(path, document)
+fileId = fopen(path, "w");
+cleaner = onCleanup(@() fclose(fileId));
+fprintf(fileId, "%s\n", jsonencode(document, PrettyPrint=true));
+clear cleaner
+end
+
+function path = writeAnchorProfileWithObservationAlias(fixture)
+source = fullfile(fixture.repo_root, "config", "01_mapping_profiles", ...
+    "alignment_anchors", "long_anchor_mapping_profile.json");
+document = jsondecode(fileread(source));
+document.context.stream_timebases(3).stream_key = "neural_observation_alias";
+path = fullfile(fixture.workspace, "long_anchor_mapping_profile_alias.json");
+writeJson(path, document);
 end
 
 function value = count(conn, tableName, whereClause)

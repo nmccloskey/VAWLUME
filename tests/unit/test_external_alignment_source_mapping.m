@@ -8,8 +8,10 @@ tests = functiontests({ ...
     @testDuplicateObservationsRequireExplicitResolution, ...
     @testAnchorProblemsProduceStructuredIssues, ...
     @testEventLinkedAnchorReferencesUseMappedSourceContext, ...
+    @testEventLinkedAnchorRequiresOnsetConsistency, ...
     @testWideMissingDeclaredColumnIsStructured, ...
-    @testProfileValidationRejectsUnsupportedUnitsAndUnknownTargets});
+    @testProfileValidationRejectsUnsupportedUnitsAndUnknownTargets, ...
+    @testProfileValidationChecksEvidenceClassColumnRule});
 end
 
 function testShippedExternalAndAnchorProfilesLoad(testCase)
@@ -232,6 +234,8 @@ linked = vawlume.source_mapping.mapTableToIR(tbl, ...
 verifyTrue(testCase, linked.valid_for_ingest);
 verifyEqual(testCase, linked.anchor_observations.event_native_event_id(neuralRows), ...
     ["n1"; "n2"; "n3"]);
+verifyEqual(testCase, linked.anchor_observations.event_stream_key(neuralRows), ...
+    repmat("neural_ttl", 3, 1));
 
 tbl.event_id(find(neuralRows, 1)) = "missing_event";
 unresolved = vawlume.source_mapping.mapTableToIR(tbl, ...
@@ -239,6 +243,29 @@ unresolved = vawlume.source_mapping.mapTableToIR(tbl, ...
 verifyFalse(testCase, unresolved.valid_for_ingest);
 verifyTrue(testCase, any(unresolved.issues.code == "EVENT_REFERENCE_UNRESOLVED"));
 
+clear cleanupPath
+end
+
+function testEventLinkedAnchorRequiresOnsetConsistency(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+events = neuralIR(repoRoot);
+tbl = longAnchorTable();
+neuralRows = find(tbl.stream == "neural");
+tbl.event_id(neuralRows) = ["n1"; "n2"; "n3"];
+tbl.timestamp_s(neuralRows(1)) = 121.482 + 5e-10;
+roundoff = vawlume.source_mapping.mapTableToIR(tbl, ...
+    anchorProfilePath(repoRoot, "long"), RepoRoot=repoRoot, EventContext=events);
+verifyTrue(testCase, roundoff.valid_for_ingest);
+tbl.timestamp_s(neuralRows(1)) = 121.483;
+mismatch = vawlume.source_mapping.mapTableToIR(tbl, ...
+    anchorProfilePath(repoRoot, "long"), RepoRoot=repoRoot, EventContext=events);
+verifyFalse(testCase, mismatch.valid_for_ingest);
+row = mismatch.issues(mismatch.issues.code == "EVENT_REFERENCE_TIME_MISMATCH", :);
+verifyEqual(testCase, height(row), 1);
+verifyTrue(testCase, contains(row.message, "neural_ttl"));
+verifyTrue(testCase, contains(row.message, "n1"));
 clear cleanupPath
 end
 
@@ -279,6 +306,23 @@ verifyFalse(testCase, report.is_valid);
 verifyTrue(testCase, any(string(report.issue_table.code) == ...
     "NORMALIZED_EVENT_TARGET_UNKNOWN"));
 
+clear cleanupPath
+end
+
+function testProfileValidationChecksEvidenceClassColumnRule(testCase)
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+[loaded, ~] = vawlume.source_mapping.loadProfile(anchorProfilePath(repoRoot, "long"));
+document = loaded.document;
+document.columns.evidence_class.transform = "not_a_registered_transform";
+report = vawlume.source_mapping.validateProfile(document, ...
+    ExpectedKind="alignment_anchor_mapping");
+verifyFalse(testCase, report.is_valid);
+issue = report.issue_table(report.issue_table.code == "PROFILE_UNKNOWN_TRANSFORM", :);
+verifyEqual(testCase, height(issue), 1);
+verifyTrue(testCase, contains(issue.profile_location, ...
+    ".columns.evidence_class.transform"));
 clear cleanupPath
 end
 

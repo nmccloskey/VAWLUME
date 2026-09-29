@@ -267,7 +267,10 @@ imply continuous observation, so a gap between segments remains unavailable.
 timestamp. `result.anchor_observations` carries each clock reading with distinct
 stream/timebase keys, native and normalized time, role, tri-state inclusion while
 resolution is pending, uncertainty, source locator, and optional logical event
-reference (`event_source_key` plus native event ID).
+reference (`event_source_key` plus native event ID). When that reference resolves
+uniquely, `event_stream_key` carries the resolved logical event stream separately
+from the observation's own `stream_key`; database linkage consumes the resolved
+field rather than interpreting the source key again.
 
 Long profiles map an explicit observation-identity column through declared
 stream/timebase context. Wide profiles enumerate every clock column in

@@ -177,13 +177,27 @@ for rowIndex = 1:height(tbl)
     if strlength(eventSource) == 0
         eventSource = optionalText(entry.context, "event_source_key_default");
     end
-    if strlength(eventReference) > 0 && ...
-            ~eventReferenceExists(eventContext, eventSource, eventReference)
-        issue = makeIssue("error", "EVENT_REFERENCE_UNRESOLVED", locator, ...
-            "Event reference cannot be resolved in the supplied mapped event context: " + ...
-            eventReference + ".");
-        result = addIssues(result, issue, sourceKey, recordKey);
-        observationStatus = "invalid";
+    eventStream = "";
+    if strlength(eventReference) > 0
+        [eventStream, eventStartSeconds, eventStartNative, eventNativeUnit, eventOk] = ...
+            resolveEventReference(eventContext, eventSource, eventReference);
+        if ~eventOk
+            issue = makeIssue("error", "EVENT_REFERENCE_UNRESOLVED", locator, ...
+                "Event reference cannot be resolved in the supplied mapped event context: " + ...
+                eventReference + ".");
+            result = addIssues(result, issue, sourceKey, recordKey);
+            observationStatus = "invalid";
+        elseif abs(observedSeconds - eventStartSeconds) > ...
+                eventTimeTolerance(observedSeconds, eventStartSeconds)
+            message = compose("Anchor observation %.17g s does not match cited " + ...
+                "event onset %.17g s for stream '%s', native event ID '%s' " + ...
+                "(event native onset %.17g %s).", observedSeconds, ...
+                eventStartSeconds, eventStream, eventReference, ...
+                eventStartNative, eventNativeUnit);
+            issue = makeIssue("error", "EVENT_REFERENCE_TIME_MISMATCH", locator, message);
+            result = addIssues(result, issue, sourceKey, recordKey);
+            observationStatus = "invalid";
+        end
     end
 
     observationKey = sourceKey + "|observation:row:" + compose("%08d", rowIndex);
@@ -191,7 +205,7 @@ for rowIndex = 1:height(tbl)
         sourceKey, rowIndex, locator, streamKey, timebaseKey, observedNative, ...
         observedSeconds, nativeUnit, timeTransform, timestampField, timestampResolution, ...
         role, included, ...
-        uncertaintySeconds, evidenceClass, eventSource, eventReference, ...
+        uncertaintySeconds, evidenceClass, eventSource, eventStream, eventReference, ...
         "layout.long", observationStatus};
 end
 end
@@ -267,7 +281,7 @@ for rowIndex = 1:height(tbl)
             optionalText(rule, "stream_key"), string(rule.timebase_key), ...
             observedNative, observedSeconds, nativeUnit, timeTransform, actualField, ...
             actualResolutions(streamIndex), "primary", ...
-            1, NaN, "", "", "", "layout.wide.stream_columns(" + streamIndex + ")", ...
+            1, NaN, "", "", "", "", "layout.wide.stream_columns(" + streamIndex + ")", ...
             observationStatus};
     end
 end
@@ -398,8 +412,13 @@ for groupIndex = 1:numel(groups)
 end
 end
 
-function tf = eventReferenceExists(eventContext, eventSource, eventReference)
-tf = false;
+function [streamKey, startSeconds, startNative, nativeUnit, ok] = ...
+        resolveEventReference(eventContext, eventSource, eventReference)
+streamKey = "";
+startSeconds = NaN;
+startNative = NaN;
+nativeUnit = "";
+ok = false;
 if ~isstruct(eventContext) || ~isfield(eventContext, "events") || ...
         ~istable(eventContext.events) || isempty(eventContext.events)
     return
@@ -409,7 +428,20 @@ matches = rows.native_event_id == eventReference;
 if strlength(eventSource) > 0
     matches = matches & rows.source_key == eventSource;
 end
-tf = nnz(matches) == 1;
+if nnz(matches) ~= 1
+    return
+end
+row = find(matches, 1);
+streamKey = string(rows.stream_key(row));
+startSeconds = double(rows.start_time_s(row));
+startNative = double(rows.start_time_native(row));
+nativeUnit = string(rows.native_time_unit(row));
+ok = strlength(streamKey) > 0 && isfinite(startSeconds);
+end
+
+function value = eventTimeTolerance(observedSeconds, eventStartSeconds)
+scale = max(abs([observedSeconds, eventStartSeconds]));
+value = max(1e-9, 32 * eps(max(1, scale)));
 end
 
 function [included, ok] = includedValue(tbl, field, rowIndex)

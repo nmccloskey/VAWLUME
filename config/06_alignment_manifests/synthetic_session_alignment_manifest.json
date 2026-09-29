@@ -18,6 +18,7 @@
     {
       "timebase_key": "audio_native",
       "timebase_kind": "audio_sample_clock",
+      "scope": "recording",
       "recording_native": true,
       "native_unit": "s",
       "origin_description": "Recording file time zero."
@@ -32,6 +33,7 @@
     {
       "timebase_key": "neural_native",
       "timebase_kind": "acquisition_clock",
+      "scope": "project",
       "native_unit": "s",
       "nominal_rate_hz": 30000,
       "clock_identifier": "ACQ_A"

@@ -61,7 +61,7 @@ It points at data rather than embedding it:
   },
   "reference_timebase": "neural_native",
   "method": "affine",
-  "timebases": [ { "timebase_key": "...", "timebase_kind": "...", "recording_native": true } ],
+  "timebases": [ { "timebase_key": "...", "timebase_kind": "...", "scope": "recording", "recording_native": true } ],
   "streams":   [ { "stream_key": "...", "timebase_key": "...", "source": "...", "mapping_profile": "..." } ],
   "anchors":     { "source": "...", "mapping_profile": "..." }
 }
@@ -73,7 +73,8 @@ No synthetic filename is hard-coded anywhere in product logic.
 
 Validation is strict and happens before any database work: the schema version
 must be supported, the reference timebase must be among the declared timebases,
-timebase and stream keys must be unique, at most one timebase may claim
+timebase and stream keys must be unique, scope must be `recording` or `project`,
+at most one timebase may claim
 `recording_native`, every stream's timebase must be declared, the recording must
 be named exactly one way, and the method must be in the closed vocabulary.
 
@@ -115,14 +116,18 @@ needed an ensurer.
 
 ## Timebase scope
 
-A clock declared `recording_native` is scoped to its recording. Every other
-declared clock is project-scoped, registered by `timebase_name` under
-`recording_id IS NULL`.
+Every declared clock defaults to `scope: "recording"`, including non-native
+clocks. Existing `0.1-draft` manifests are interpreted under this safer default;
+the manifest schema version is unchanged. An intentionally shared controller or
+master clock must opt in with `scope: "project"`. A `recording_native` clock is
+always recording-scoped and a project-scoped native declaration is invalid.
 
-Two streams may therefore share one `neural_native` clock, which is the common
-case for a neural file carrying several event series. Registering an existing
-project clock with a different `timebase_kind` raises rather than rewriting the
-earlier declaration.
+Recording-scoped clocks are resolved by recording plus `timebase_name`.
+Project-scoped clocks use `recording_id IS NULL` and may be reused across
+recordings only when explicitly declared. Reuse also requires the existing
+clock's kind, native unit, nominal rate, recording-native flag, origin, clock
+identifier, and notes to match. A material mismatch raises during planning
+rather than rewriting prior clock provenance.
 
 ## What one apply registers
 
@@ -156,7 +161,18 @@ synthetic native ID is invented**, because a fabricated identifier would later b
 indistinguishable from one the source actually provided.
 
 Anchor observations that cite an event resolve it by stream-scoped native ID,
-because native IDs are unique only within their own source.
+because native IDs are unique only within their own source. Source mapping
+resolves the event's logical stream once and carries that identity in the IR;
+apply does not reconstruct it from the observation stream.
+
+A citation currently means event onset. The normalized observation time must
+match the cited event's normalized start time within
+`max(1e-9 s, 32*eps(max(1, time scale)))`. This tolerance absorbs numeric
+representation roundoff only. A mismatch is a mapping error that reports both
+times, the resolved stream, and native event ID, and blocks apply. Declared
+measurement uncertainty is preserved independently and never excuses a
+contradictory event citation. Citing midpoint, offset, or another event phase
+requires a future explicit time-basis contract.
 
 ### Entity links
 
@@ -171,6 +187,14 @@ A logical stream belongs to its recording, not to one alignment set. A second
 alignment over the same session reuses the existing stream and does **not**
 re-insert its coverage, events, or attributes; it resolves the already-registered
 events for anchor references instead.
+
+Reuse is allowed only for materially identical immutable evidence: recording and
+logical stream identity; resolved timebase; stream kind, modality, and units;
+registered source identity, SHA-256, and source role; mapping-profile version and
+SHA-256; and the exact stored coverage, event, and attribute population. Any
+mismatch raises `AlignmentStreamEvidenceConflict` during planning and instructs
+the caller to use a new `stream_key`. Intake never deletes, replaces, or versions
+an existing stream in place.
 
 ## Fit readiness
 
@@ -209,6 +233,10 @@ Conflicts are explicit and never repaired in place:
 | Declared source missing | raises `AlignmentSourceNotFound` |
 | Anchor observes an undeclared clock | raises `AlignmentTimebaseUndeclared` |
 | Existing project clock with a different kind | raises `AlignmentTimebaseConflict` |
+| Existing clock with any materially different declaration field | raises `AlignmentTimebaseConflict` |
+| Existing logical stream with different source/profile/timebase/declaration/population evidence | raises `AlignmentStreamEvidenceConflict`; use a new `stream_key` |
+| Event citation unresolved or ambiguous | mapped input is not ready; apply refuses |
+| Event citation time differs materially from event onset | `EVENT_REFERENCE_TIME_MISMATCH`; apply refuses |
 | Mapped inputs not ready | raises `AlignmentNotReady` on apply |
 
 Every one of these is detected during planning, before the transaction opens, so
