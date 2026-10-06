@@ -1409,12 +1409,13 @@ the point is that a reader holding only the database can tell whose number this
 was. No column records the exporting system, so without this the semantics string
 would be the only place it appears.
 
-**What is not recorded is which evidence the exporter used.** An imported score is
-somebody else's combination and nothing says what went into it. You can see the
-score, and separately whichever of the four dimensions this run holds; you cannot
-tell which of them the exporter had already used. Take that into account before
-putting an imported score beside VAWLUME evidence and reading them as
-independent.
+**What is not recorded for an imported run is which evidence the exporter used.**
+An imported score is somebody else's combination and the imported profile has no
+way to say what went into it. You can see the score, and separately whichever of
+the evidence dimensions this run holds; you cannot tell which of them the
+exporter had already used. Take that into account before putting an imported
+score beside VAWLUME evidence and reading them as independent. (A backend profile
+*can* declare it, through `declared_inputs`; see the backend subsection below.)
 
 **Caller labels resolve only as the profile declares.** A label is a string in
 somebody else's file. Nothing infers which entity it denotes, and nothing creates
@@ -1503,6 +1504,37 @@ event. See
 [`../development/36_backend_attribution_intake.md`](../development/36_backend_attribution_intake.md).
 
 A backend import also applies once per run (`ImportAlreadyApplied`).
+
+**Promoting backend material onto a target is explicit.** After the windows have
+been related to targets with `correspondWindows`, a stored estimate becomes
+evidence through `addEvidence`, as a `source_localization` row that cites it and
+declares the frame you are reasoning in:
+
+```matlab
+row = struct(evidence_dimension="source_localization", ...
+    evidence_kind="backend_source_location", ...
+    attribution_localization_estimate_id=estimateId, ...
+    coordinate_system_key="arena_floor");
+vawlume.attribution.addEvidence(conn, struct(attribution_candidate_id=candidateId), ...
+    row, Apply=true);
+```
+
+The row carries no value or units: the estimate is their authority. It is
+refused when the declared frame is unknown (`LocalizationFrameUnknown`) or another
+project's (`LocalizationFrameScopeMismatch`); when it is not the estimate's frame,
+or when the target already holds source-localization evidence in another frame
+(`vawlume:geometry:CoordinateSystemMismatch`, from the shared geometry check,
+since nothing is ever converted between frames); when the estimate's window has no
+stored correspondence to the target (`LocalizationNotCorresponded`); and when the
+backend tied the estimate to a different claimed caller than the candidate
+(`LocalizationCallerMismatch`).
+
+A per-channel value kept at intake as `channel:<index>:<kind>` becomes evidence
+the same way. Write an ordinary row with its value, units and the companion
+`...:semantics` text, and name the channel with `recording_channel_id`, which
+must belong to the run's recording (`EvidenceChannelScopeMismatch`). A track
+reference becomes identity evidence through an explicit
+`tracking_identity_association_id` that you choose.
 
 Imported windows arrive related to nothing. Relating them to the events VAWLUME
 knows about is an explicit, separate step:
@@ -1665,8 +1697,8 @@ candidates and evidence rows are refused — but deliberately not the decision
 set, because applying another policy to frozen candidates is the point.
 
 **What a decision is not.** It is not a probability that the selected entity
-called, it is not calibrated, and it is not a combination of the four evidence
-dimensions: the policy reads one candidate column and no evidence row. No status
+called, it is not calibrated, and it is not a combination of any of the five
+evidence dimensions: the policy reads one candidate column and no evidence row. No status
 means `validated`, and the vocabulary does not contain the word.
 
 ### Reading a run back
@@ -1706,8 +1738,14 @@ multiplicities and neither is collapsed — but count correspondences from
 **All candidates appear.** Nothing marks one as the answer. If you want the
 highest-scoring one, sort by `score` yourself and know that you did.
 
-**The four evidence dimensions stay separate**, as rows carrying their own
-`evidence_dimension`, units and semantics. `qc.evidence_by_dimension` counts each
+**The five evidence dimensions stay separate** (temporal alignment, pose
+localization, visual identity, acoustic, and source localization), as rows
+carrying their own `evidence_dimension`, units and semantics. A source
+localization is where a *sound* came from per an external estimate, not where a
+bodypart is; its row cites the stored estimate, whose frame, position, confidence
+and semantics it carries no copy of. The upstream *uncertainty sources* of plan
+§4.6 remain four; the fifth evidence dimension is a producer's output, not one of
+them. `qc.evidence_by_dimension` counts each
 one; there is no total, no coverage fraction, and no field spanning two. An
 `imported_composite` row is somebody else's already-combined number, stored with
 its producer named — VAWLUME did not compute it and does not decompose it.
@@ -2326,12 +2364,15 @@ exported tables, figures, an example index and a provenance record.
   no paging, filtering or projection. It has been exercised at synthetic-fixture
   scale only; whether it is usable over a session with thousands of
   claim-correspondence rows is untested.
-- **Nothing records which evidence an exporting system used.** An imported score
-  is a combination somebody else already performed, and no column or profile
-  field says which modalities went into it. VAWLUME's own four dimensions sit
-  beside it unmerged, but you cannot tell which of them the exporter had already
-  consumed — so an imported score and a VAWLUME dimension are not safely
-  independent evidence.
+- **For an imported run, nothing records which evidence the exporting system
+  used.** An imported score is a combination somebody else already performed,
+  and the imported profile has no field saying which modalities went into it.
+  VAWLUME's own evidence dimensions sit beside it unmerged, but you cannot tell
+  which of them the exporter had already consumed — so an imported score and a
+  VAWLUME dimension are not safely independent evidence. A backend profile may
+  declare it per uncertainty source (`declared_inputs`, stored in
+  `attribution_run_declared_inputs`); a source it leaves out is unknown, not
+  "not used".
 - The exporting system's identity lives in the rendered semantics string and in
   `attribution_runs.method`, not in a column of its own. Recording it
   relationally on `imported_attribution_windows` would be cleaner and costs a

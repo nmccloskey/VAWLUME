@@ -7,7 +7,7 @@ assertWritableRun(plan.run);
 plan.evidence = normalizeEvidence(inputEvidence, ...
     plan.target.attribution_target_id, ...
     plan.candidate.attribution_candidate_id);
-validateSources(conn, plan);
+plan = validateSources(conn, plan);
 plan.has_conflicts = false;
 plan.conflicts = strings(0, 1);
 end
@@ -29,7 +29,9 @@ allowed = ["evidence_dimension", "evidence_kind", "value_real", ...
     "value_text", "value_units", "value_semantics", ...
     "identity_statement_kind", "tracking_identity_association_id", ...
     "external_event_id", "alignment_run_id", "source_file_id", ...
-    "mapping_profile_version_id", "source_locator", "notes"];
+    "mapping_profile_version_id", "source_locator", "notes", ...
+    "attribution_localization_estimate_id", "coordinate_system_key", ...
+    "recording_channel_id"];
 unknown = setdiff(string(rows.Properties.VariableNames), allowed);
 if ~isempty(unknown)
     error("vawlume:attribution:EvidenceSpecInvalid", ...
@@ -45,9 +47,13 @@ end
 count = height(rows);
 dimensions = textColumn(rows, "evidence_dimension", strings(count, 1));
 kinds = textColumn(rows, "evidence_kind", strings(count, 1));
+% Five separated evidence dimensions -- temporal_alignment, pose_localization,
+% visual_identity, acoustic and source_localization -- plus two members that are
+% not dimensions. source_localization was widened in deliberately at 0.12-draft:
+% where a SOUND originated per an external estimate, not where a bodypart is.
 allowedDimensions = ["temporal_alignment", "pose_localization", ...
     "visual_identity", "acoustic", "correspondence", ...
-    "imported_composite"];
+    "imported_composite", "source_localization"];
 if any(~ismember(dimensions, allowedDimensions))
     error("vawlume:attribution:EvidenceDimensionInvalid", ...
         "evidence_dimension must use the closed attribution vocabulary.");
@@ -56,6 +62,7 @@ if any(strlength(kinds) == 0)
     error("vawlume:attribution:EvidenceSpecInvalid", ...
         "evidence_kind must be nonempty free text.");
 end
+isLocalization = dimensions == "source_localization";
 
 realValues = numericColumn(rows, "value_real", NaN(count, 1));
 textValues = rawTextColumn(rows, "value_text", strings(count, 1));
@@ -65,19 +72,53 @@ if any(hasReal & ~isfinite(realValues))
     error("vawlume:attribution:EvidenceSpecInvalid", ...
         "value_real must be finite when present.");
 end
-if any(hasReal == hasText)
+units = textColumn(rows, "value_units", strings(count, 1));
+semantics = textColumn(rows, "value_semantics", strings(count, 1));
+% A source_localization row CITES its estimate and copies nothing. Its position,
+% confidence, frame and their semantics live on the estimate, and a second copy
+% here would be a second authority that could drift from the first.
+if any(isLocalization & (hasReal | hasText | strlength(units) > 0))
+    error("vawlume:attribution:EvidenceValueInvalid", ...
+        "A source_localization row cites its estimate and carries no value " + ...
+        "or units of its own; the estimate is their authority.");
+end
+if any(~isLocalization & (hasReal == hasText))
     error("vawlume:attribution:EvidenceValueInvalid", ...
         "Every evidence row must contain exactly one of value_real or value_text.");
 end
-units = textColumn(rows, "value_units", strings(count, 1));
-semantics = textColumn(rows, "value_semantics", strings(count, 1));
-if any(strlength(units) == 0)
+if any(~isLocalization & strlength(units) == 0)
     error("vawlume:attribution:EvidenceUnitsRequired", ...
         "Every evidence value requires explicit units; use 'unitless' or 'category' when appropriate.");
 end
-if any(strlength(semantics) == 0)
+if any(~isLocalization & strlength(semantics) == 0)
     error("vawlume:attribution:EvidenceSemanticsRequired", ...
         "Every evidence value requires value_semantics.");
+end
+
+estimateIds = numericColumn(rows, "attribution_localization_estimate_id", NaN(count, 1));
+frameKeys = textColumn(rows, "coordinate_system_key", strings(count, 1));
+channelIds = numericColumn(rows, "recording_channel_id", NaN(count, 1));
+if any(isLocalization & isnan(estimateIds))
+    error("vawlume:attribution:LocalizationEstimateRequired", ...
+        "A source_localization row must cite the localization estimate it rests on.");
+end
+if any(~isLocalization & ~isnan(estimateIds))
+    error("vawlume:attribution:LocalizationEstimateMisplaced", ...
+        "Only a source_localization row may cite a localization estimate. A " + ...
+        "sound-source position cited as another dimension would make it read as " + ...
+        "something it is not.");
+end
+% The frame is part of the coordinate, so the caller says which frame they are
+% reasoning in. It is checked against the estimate's stored frame; it is never
+% used to convert anything.
+if any(isLocalization & strlength(frameKeys) == 0)
+    error("vawlume:attribution:LocalizationFrameRequired", ...
+        "A source_localization row must declare coordinate_system_key: the frame " + ...
+        "its estimate is expressed in. A position without a frame is not a position.");
+end
+if any(~isLocalization & strlength(frameKeys) > 0)
+    error("vawlume:attribution:EvidenceSpecInvalid", ...
+        "coordinate_system_key applies only to source_localization rows.");
 end
 
 identityKinds = textColumn(rows, "identity_statement_kind", strings(count, 1));
@@ -88,7 +129,7 @@ alignmentIds = numericColumn(rows, "alignment_run_id", NaN(count, 1));
 sourceFileIds = numericColumn(rows, "source_file_id", NaN(count, 1));
 profileIds = numericColumn(rows, "mapping_profile_version_id", NaN(count, 1));
 for values = {associationIds, externalEventIds, alignmentIds, ...
-        sourceFileIds, profileIds}
+        sourceFileIds, profileIds, estimateIds, channelIds}
     value = values{1};
     if any(~isnan(value) & (~isfinite(value) | value < 1 | fix(value) ~= value))
         error("vawlume:attribution:EvidenceSpecInvalid", ...
@@ -139,7 +180,7 @@ end
 locators = rawTextColumn(rows, "source_locator", strings(count, 1));
 hasPointer = ~isnan(associationIds) | ~isnan(externalEventIds) | ...
     ~isnan(alignmentIds) | ~isnan(sourceFileIds) | ~isnan(profileIds) | ...
-    strlength(strtrim(locators)) > 0;
+    ~isnan(estimateIds) | strlength(strtrim(locators)) > 0;
 if any(~hasPointer)
     error("vawlume:attribution:EvidenceSourceRequired", ...
         "Every evidence row must retain a source identifier or source_locator.");
@@ -150,6 +191,7 @@ evidence = table(NaN(count, 1), repmat(targetId, count, 1), ...
     realValues, textValues, units, semantics, identityKinds, ...
     associationIds, externalEventIds, alignmentIds, sourceFileIds, ...
     profileIds, locators, rawTextColumn(rows, "notes", strings(count, 1)), ...
+    estimateIds, frameKeys, NaN(count, 1), channelIds, ...
     repmat("create", count, 1), ...
     VariableNames=["attribution_evidence_id", "attribution_target_id", ...
     "attribution_candidate_id", "evidence_ordinal", "evidence_dimension", ...
@@ -157,10 +199,12 @@ evidence = table(NaN(count, 1), repmat(targetId, count, 1), ...
     "value_semantics", "identity_statement_kind", ...
     "tracking_identity_association_id", "external_event_id", ...
     "alignment_run_id", "source_file_id", "mapping_profile_version_id", ...
-    "source_locator", "notes", "action"]);
+    "source_locator", "notes", "attribution_localization_estimate_id", ...
+    "coordinate_system_key", "coordinate_system_id", "recording_channel_id", ...
+    "action"]);
 end
 
-function validateSources(conn, plan)
+function plan = validateSources(conn, plan)
 for index = 1:height(plan.evidence)
     row = plan.evidence(index, :);
     validateSourceFile(conn, row.source_file_id, plan.run.project_id);
@@ -170,7 +214,125 @@ for index = 1:height(plan.evidence)
         plan.run.recording_id, plan.candidate.entity_id);
     validateExternalEvent(conn, row.external_event_id, ...
         plan.run.recording_id, plan.candidate.entity_id);
+    validateChannel(conn, row.recording_channel_id, plan.run.recording_id);
+    if row.evidence_dimension == "source_localization"
+        plan.evidence.coordinate_system_id(index) = validateLocalization(conn, plan, row);
+    end
 end
+assertOneFramePerTarget(conn, plan);
+end
+
+function validateChannel(conn, id, recordingId)
+% A channel index is the caller's assertion about the acquisition; this checks
+% only that the channel exists on the run's recording. Nothing inspects audio to
+% confirm the producer's numbering.
+if isnan(id), return, end
+rows = fetch(conn, "SELECT recording_id FROM recording_channels " + ...
+    "WHERE recording_channel_id=" + string(id));
+if isempty(rows) || height(rows) == 0
+    sourceError("recording_channel_id", id, "does not exist");
+end
+if double(rows.recording_id(1)) ~= recordingId
+    error("vawlume:attribution:EvidenceChannelScopeMismatch", ...
+        "recording_channel_id %d belongs to a different recording than the run's.", id);
+end
+end
+
+function frameId = validateLocalization(conn, plan, row)
+%VALIDATELOCALIZATION Promote one stored estimate onto this target, or refuse.
+%
+% The schema refuses an estimate from another run. These are the refusals it
+% cannot express: the frame the caller declares must be the estimate's frame,
+% the estimate's window must already correspond to this target, and an estimate
+% the producer tied to a claimed caller may support only that caller.
+estimateId = row.attribution_localization_estimate_id;
+rows = fetch(conn, "SELECT le.coordinate_system_id AS frame, " + ...
+    "le.imported_attribution_window_id AS window_id, " + ...
+    "IFNULL(le.imported_attribution_claim_id,-1) AS claim_id, " + ...
+    "w.attribution_run_id AS run_id " + ...
+    "FROM attribution_localization_estimates le " + ...
+    "JOIN imported_attribution_windows w " + ...
+    "ON w.imported_attribution_window_id = le.imported_attribution_window_id " + ...
+    "WHERE le.attribution_localization_estimate_id=" + string(estimateId));
+if isempty(rows) || height(rows) == 0
+    sourceError("attribution_localization_estimate_id", estimateId, "does not exist");
+end
+if double(rows.run_id(1)) ~= plan.run.attribution_run_id
+    error("vawlume:attribution:LocalizationEstimateNotInRun", ...
+        "Localization estimate %d belongs to another attribution run.", estimateId);
+end
+
+declaredFrame = resolveDeclaredFrame(conn, row.coordinate_system_key, ...
+    plan.run.project_id);
+% Identity of the declared frame, never structural similarity: the existing
+% geometry primitive decides, and nothing is converted to make them agree.
+vawlume.geometry.assertCompatible(conn, [declaredFrame, double(rows.frame(1))], ...
+    Context="source_localization evidence for estimate " + string(estimateId));
+frameId = double(rows.frame(1));
+
+corresponded = fetch(conn, "SELECT COUNT(*) AS n FROM attribution_window_correspondences " + ...
+    "WHERE imported_attribution_window_id=" + string(double(rows.window_id(1))) + ...
+    " AND attribution_target_id=" + string(plan.target.attribution_target_id));
+if double(corresponded.n(1)) == 0
+    error("vawlume:attribution:LocalizationNotCorresponded", ...
+        "Localization estimate %d was computed over a window with no stored " + ...
+        "correspondence to target %d. Relate the window first with " + ...
+        "vawlume.attribution.correspondWindows; evidence about a different " + ...
+        "sound is not evidence about this one.", estimateId, ...
+        plan.target.attribution_target_id);
+end
+
+claimId = double(rows.claim_id(1));
+if claimId > 0 && ~isnan(plan.candidate.entity_id)
+    claim = fetch(conn, "SELECT IFNULL(entity_id,-1) AS entity_id " + ...
+        "FROM imported_attribution_claims WHERE imported_attribution_claim_id=" + ...
+        string(claimId));
+    if double(claim.entity_id(1)) ~= plan.candidate.entity_id
+        error("vawlume:attribution:LocalizationCallerMismatch", ...
+            "Localization estimate %d was tied by its producer to another claimed " + ...
+            "caller, so it cannot support candidate %d.", estimateId, ...
+            plan.candidate.attribution_candidate_id);
+    end
+end
+end
+
+function frameId = resolveDeclaredFrame(conn, key, projectId)
+% An unknown frame and another project's frame are different problems with
+% different fixes, so they are different errors.
+rows = fetch(conn, "SELECT coordinate_system_id, project_id FROM coordinate_systems " + ...
+    "WHERE coordinate_system_key='" + replace(key, "'", "''") + "'");
+if isempty(rows) || height(rows) == 0
+    error("vawlume:attribution:LocalizationFrameUnknown", ...
+        "coordinate_system_key '%s' names no declared frame.", key);
+end
+own = find(double(rows.project_id) == projectId, 1);
+if isempty(own)
+    error("vawlume:attribution:LocalizationFrameScopeMismatch", ...
+        "coordinate_system_key '%s' names a frame declared only for another project.", key);
+end
+frameId = double(rows.coordinate_system_id(own));
+end
+
+function assertOneFramePerTarget(conn, plan)
+% Source-localization evidence on one target is compared by anyone who reads it
+% together, so it must all be in one declared frame: the rows in this batch and
+% any already stored. Refused through the geometry primitive, never reconciled.
+newFrames = plan.evidence.coordinate_system_id( ...
+    plan.evidence.evidence_dimension == "source_localization");
+if isempty(newFrames)
+    return
+end
+stored = fetch(conn, "SELECT le.coordinate_system_id AS frame " + ...
+    "FROM attribution_evidence ev JOIN attribution_localization_estimates le " + ...
+    "ON le.attribution_localization_estimate_id = ev.attribution_localization_estimate_id " + ...
+    "WHERE ev.attribution_target_id=" + string(plan.target.attribution_target_id));
+frames = newFrames(:)';
+if ~isempty(stored) && height(stored) > 0
+    frames = [frames, double(stored.frame)'];
+end
+vawlume.geometry.assertCompatible(conn, frames, ...
+    Context="source_localization evidence on target " + ...
+    string(plan.target.attribution_target_id));
 end
 
 function validateSourceFile(conn, id, projectId)

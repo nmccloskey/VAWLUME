@@ -190,6 +190,12 @@ count. It is not treated as zero and not treated as one.
 
 ## Four dimensions, none combined
 
+This demonstration is the imported path's, and it exercises the four evidence
+dimensions that correspond to plan §4.6's uncertainty sources. The vocabulary's
+fifth, `source_localization` (added at schema version `0.12-draft`), is produced
+only by a localization backend and is not exercised here; see
+[`36_backend_attribution_intake.md`](36_backend_attribution_intake.md).
+
 One candidate carries evidence in all four:
 
 | Dimension | Kind | Value | Units |

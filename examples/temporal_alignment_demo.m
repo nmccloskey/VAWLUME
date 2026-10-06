@@ -12,7 +12,7 @@ function demonstration = temporal_alignment_demo(options)
 % anchor, and both recorded and absent anchor uncertainty. All inputs are created
 % under the system temporary directory and removed before return.
 %
-% Four evidence dimensions are displayed side by side and never combined:
+% The four upstream uncertainty sources are displayed side by side and never combined:
 % temporal-alignment residual/QC, pose confidence, visual-identity evidence,
 % and acoustic/channel evidence. No caller is named or inferred.
 %

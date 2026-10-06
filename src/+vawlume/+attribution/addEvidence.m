@@ -6,14 +6,43 @@ function result = addEvidence(conn, ref, evidence, options)
 %
 % REF names either a target (the same forms accepted by addCandidates) or one
 % candidate through attribution_candidate_id. EVIDENCE is a table or struct
-% array. Every row requires evidence_dimension, evidence_kind, exactly one of
-% value_real/value_text, value_units, value_semantics, and a source pointer or
-% source_locator.
+% array. Every row requires evidence_dimension, evidence_kind, and a source
+% pointer or source_locator. Every row except a source_localization row also
+% requires exactly one of value_real/value_text, value_units and value_semantics.
 %
 % evidence_dimension is one of temporal_alignment, pose_localization,
-% visual_identity, acoustic, correspondence, or imported_composite. The first
-% four remain separate rows. imported_composite stores a value another system
-% already combined; this function computes no value from evidence.
+% visual_identity, acoustic, source_localization, correspondence, or
+% imported_composite. The first five are separate evidence dimensions and remain
+% separate rows; nothing here combines any two of them. imported_composite
+% stores a value another system already combined; this function computes no
+% value from evidence.
+%
+% SOURCE_LOCALIZATION -- where a sound originated, per an external estimate; not
+% where a bodypart is, which is pose_localization. A source_localization row
+% cites a stored estimate through attribution_localization_estimate_id and
+% carries no value_real, value_text or value_units of its own: the estimate's
+% position, confidence, frame and semantics are the authority. The row must
+% also declare coordinate_system_key, the frame the caller is reasoning in, and
+% is refused unless:
+%
+%   the key names a declared frame        vawlume:attribution:LocalizationFrameUnknown
+%   ...of this run's project              vawlume:attribution:LocalizationFrameScopeMismatch
+%   it is the estimate's own frame, and   vawlume:geometry:CoordinateSystemMismatch
+%   every source_localization row on the  (through vawlume.geometry.assertCompatible;
+%   target is in that one frame           identity, never structural similarity)
+%   the estimate belongs to this run      vawlume:attribution:LocalizationEstimateNotInRun
+%   its window has a stored correspondence vawlume:attribution:LocalizationNotCorresponded
+%     to this target
+%   a claim-tied estimate supports only   vawlume:attribution:LocalizationCallerMismatch
+%     the caller its producer tied it to
+%
+% Nothing is transformed between frames and no distance is computed.
+%
+% recording_channel_id names the recording channel per-channel evidence came
+% from, on any dimension; it must belong to the run's recording
+% (vawlume:attribution:EvidenceChannelScopeMismatch). A channel index is the
+% producer's assertion about the acquisition, and nothing inspects audio to
+% confirm it.
 %
 % Candidate-level identity evidence may cite a declared_entity_link through
 % external_event_id, or an identity_association through

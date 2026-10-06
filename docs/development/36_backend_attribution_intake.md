@@ -205,7 +205,19 @@ association only on `attribution_evidence`, which is about a VAWLUME target, and
 intake has no target. They are therefore preserved as native fields under the
 reserved prefixes above, **after** intake has verified that the channel and the
 association exist. They become relational citations when explicit promotion
-writes target-grain evidence (itinerary 5.5).
+writes target-grain evidence through `vawlume.attribution.addEvidence`, added
+at itinerary 5.5:
+
+- a channel value is written as an ordinary evidence row with its value, units
+  and the `...:semantics` text, naming `recording_channel_id`, which is
+  scope-guarded to the run's recording (`EvidenceChannelScopeMismatch`);
+- a track reference is written as `visual_identity` evidence citing a
+  `tracking_identity_association_id` the caller chooses. Choosing the association
+  valid at the call's time is the caller's declared act, because intake compares
+  no clocks;
+- a localization estimate is written as a `source_localization` row citing it,
+  declaring its frame, refused across frames by `vawlume.geometry.assertCompatible`,
+  and refused unless the estimate's window corresponds to the target.
 
 ### What intake does not write
 
