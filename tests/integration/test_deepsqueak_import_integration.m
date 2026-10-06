@@ -352,8 +352,10 @@ function testTransactionOwnershipAndConnectionContract(testCase)
 
 % Exactly one function per import path in the ingest namespace owns a
 % transaction: project intake's applier, the DeepSqueak applier, the MUPET
-% applier, the alignment-registration applier, and the imported-attribution
-% applier. No resolver or registrar commits independently, no shared helper opens
+% applier, the alignment-registration applier, the imported-attribution
+% applier, and (Phase 5.4) the backend-attribution applier. No resolver or
+% registrar commits independently, no shared helper -- including the
+% attributionIntake* helpers both attribution appliers call -- opens
 % a transaction of its own, and semantic seed registration is never called from
 % inside an import transaction.
 %
@@ -362,7 +364,8 @@ function testTransactionOwnershipAndConnectionContract(testCase)
 owners = transactionOwners(fixture.repo_root);
 verifyEqual(testCase, sort(owners), ...
     sort(["applyEntityPlan.m"; "deepsqueakApplyPlan.m"; "mupetApplyPlan.m"; ...
-    "alignmentApplyPlan.m"; "attributionImportApplyPlan.m"]));
+    "alignmentApplyPlan.m"; "attributionImportApplyPlan.m"; ...
+    "attributionBackendApplyPlan.m"]));
 importerText = readAll(fullfile(fixture.repo_root, "src", "+vawlume", "+ingest"));
 verifyFalse(testCase, contains(importerText, "registerBuiltinSemantics("), ...
     "The importer must not invoke semantic seed registration inside its transaction.");

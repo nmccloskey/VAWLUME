@@ -479,6 +479,16 @@ So a Phase 4 attribution result carries **both**: the imported score with its
 provenance, and the four dimensions separately. Neither is derived from the other, and
 neither says anything about the other's inputs.
 
+**Corrected at 5.9.** "The four dimensions" in this section means plan §4.6's four
+upstream uncertainty sources, which remain four. The evidence vocabulary itself now
+has **five** separated dimensions: Phase 5 added `source_localization`, a backend's
+estimate of where a sound came from
+([`05_backend_localization_contract.md`](05_backend_localization_contract.md) D3).
+VAWLUME still combines none of them. The statement that nothing records which
+dimensions an exporting system used remains true **for an imported run**. A backend
+profile may now declare it per uncertainty source (D7, `attribution_run_declared_inputs`).
+The original sentences are left visible, following the 4.12a precedent above.
+
 ### What a later phase must state to exercise the permission
 
 Recorded here so Phase 6 inherits a usable standard rather than a prohibition nobody

@@ -58,8 +58,15 @@ Concretely, the prototype can today:
   direct inputs and participating entities before any caller is scored; and
 - **append** several candidate callers per target with distinct score and
   probability semantics, plus separately readable temporal-alignment,
-  pose/localization, visual-identity, acoustic, correspondence, or imported
-  composite evidence;
+  pose/localization, visual-identity, acoustic, source-localization,
+  correspondence, or imported composite evidence;
+- **import** a localization backend's export through a versioned
+  `attribution_backend_mapping` profile: its own windows, caller scores,
+  localization estimates in a declared coordinate system (2D or 3D), per-channel
+  values, video-track references and producer-native fields, each key resolved or
+  refused by name, every number stored exactly as written; and **promote** an
+  estimate, a per-channel value or a track reference onto a VAWLUME event as
+  evidence, explicitly and within one declared frame;
 - **import** an external caller-attribution table through a versioned mapping
   profile, storing every number exactly as the file carried it beside the
   semantics that say what it meant there, resolving caller labels only as the
@@ -441,6 +448,7 @@ agreement_filter_demo          % + agreement populations joined to context and f
 temporal_alignment_demo        % + manifest registration, transform fitting, common time
 multimodal_integration_demo    % geometry, tracking, visual identity, acoustic response
 caller_attribution_demo        % + imported caller attribution, correspondence, decisions
+backend_localization_demo      % + localization backend: frames, estimates, five dimensions
 consilience_exploration_demo   % + diagnostics, threshold screen, subset probe, gallery
 ```
 
@@ -448,7 +456,7 @@ Each returns a struct and prints a compact report; pass `Print=false` to
 suppress the printing. Every one is covered by an integration test, so the
 numbers they print are asserted rather than merely observed.
 
-Five are worth reading first. `matching_consensus_demo` is the complete
+Six are worth reading first. `matching_consensus_demo` is the complete
 **pairwise** path, including consilience and threshold sensitivity.
 `multi_extractor_agreement_demo` is the complete **three-extractor** path:
 it imports all three extractors onto one recording, runs all three pairwise
@@ -478,6 +486,18 @@ keeps none. It decides the same candidates twice under different thresholds, so
 you can see the decision move while the candidates do not, and it demonstrates
 four named refusals beside the successes. See
 [`../development/34_integrated_caller_attribution_demonstration.md`](../development/34_integrated_caller_attribution_demonstration.md).
+
+`backend_localization_demo` is the complete **localization-backend** path. A
+synthetic backend's export, on the backend's own clock, is previewed and then
+imported, corresponded across a fitted piecewise clock, and promoted explicitly:
+caller scores into candidates, and a localization estimate, a per-channel value
+and a track reference into evidence. One candidate then carries all five evidence
+dimensions side by side, nothing combined, and the five decision statuses are
+reached from the backend's own numbers. A second, structurally different backend
+(3D, localization only, several ranked sources, covariance instead of a scalar
+confidence) reads back through the same fields. It demonstrates five named
+refusals. See
+[`../development/37_integrated_backend_localization_demonstration.md`](../development/37_integrated_backend_localization_demonstration.md).
 
 `consilience_exploration_demo` is the complete **extractor-consilience
 exploration** path, and it is the slowest of the set because it really executes
@@ -1825,6 +1845,54 @@ clock, and an IoU against a group's union extent is not the IoU against its
 intersection extent. A single run-wide distribution would average quantities that
 measure different things, so none is offered.
 
+### 7.8 Attribute calls from a localization backend
+
+A **localization backend** is an external system that reports, for windows of
+time it segmented itself, where it estimates a sound came from. Optionally it
+also reports which animal it attributes the sound to, per-microphone values, and
+video-track associations. VAWLUME does not run the backend: it reads the
+backend's export through a versioned `attribution_backend_mapping` profile, into
+the same representation the imported path uses.
+
+**What a localization estimate is:** one position the backend reported for one of
+its windows, stored exactly as written, in a coordinate system that must already
+be declared for the project, with the backend's confidence on the backend's own
+scale and semantics naming the backend. Several estimates per window are kept,
+and none is preferred.
+
+**What it is not:** it is not a bodypart position (that is `pose_localization`,
+evidence about where a tracked animal is). It is not a caller probability, and it
+is not evidence about any VAWLUME event until you promote it onto one. It is not
+converted into any other frame, and VAWLUME computes no distance from it. A
+position without a declared frame is refused, not stored.
+
+The path, in order:
+
+1. Declare the frame (`vawlume.geometry.registerCoordinateSystem`), the channels
+   (`registerRecordingChannel`), and any tracking stream and identity association
+   the backend refers to.
+2. Create a run with `attribution_path="backend"`
+   (`vawlume.attribution.createRun`).
+3. Plan, then apply, the import with `vawlume.ingest.backendAttribution`
+   (§7.7, "Importing a localization backend's export").
+4. Relate the backend's windows to your events with `correspondWindows`,
+   declaring the clock (`AlignmentRun` or `SameClock`).
+5. Promote explicitly: claims to candidates with `addCandidates`; an estimate, a
+   per-channel value or a track reference to evidence with `addEvidence`
+   (§7.7, "Promoting backend material onto a target is explicit").
+6. Decide with `decide`, and read the whole run back with `report`, which
+   returns the estimates, the native fields and the declared inputs beside
+   everything else.
+
+`backend_localization_demo` runs this path end to end. Two templates ship:
+`generic_backend_attribution_profile.json` (2D, caller-scoring) and
+`generic_array_backend_attribution_profile.json` (3D, localization only). Neither
+is a real product's format, and no real backend export has been tested; adapt a
+template to your backend's columns. See
+[`../development/36_backend_attribution_intake.md`](../development/36_backend_attribution_intake.md)
+for the full contract, including what a backend can report that VAWLUME cannot
+hold.
+
 ---
 
 ## 8. Outputs and data model
@@ -2235,6 +2303,13 @@ caller-attribution tables with verbatim source values, declared-only label
 resolution, and per-row issue reporting; correspondence of imported windows to
 detection, consensus-event, and multi-basis agreement-group targets under an
 explicitly declared clock with preserved ambiguity and extrapolation flags;
+profile-driven import of localization-backend exports (windows, caller claims,
+2D and 3D localization estimates in declared, project-checked frames,
+per-channel values, track references, typed producer-native fields, and
+three-state declared inputs) with every key resolved or refused by name;
+explicit promotion of estimates, channel values and track references into
+source-localization, channel-cited and identity evidence, refused across frames
+through the shared geometry check;
 policy-governed decisions carrying the versioned policy and the threshold that
 bound each one; one read-only report returning the whole run with counts,
 memberships and observed ranges as its only QC; and one automated
@@ -2414,6 +2489,32 @@ exported tables, figures, an example index and a provenance record.
   `attribution_runs.method`, not in a column of its own. Recording it
   relationally on `imported_attribution_windows` would be cleaner and costs a
   schema version bump; it is deferred, not rejected.
+- **The backend path has only ever read synthetic exports written by this
+  repository.** Two structurally different templates map through the same
+  machinery, but no real localization backend's export has been tested, so
+  nothing here establishes that any real format maps, or that any backend's
+  positions, confidences or scores are accurate or calibrated.
+- **A coordinate's frame is a declaration VAWLUME checks by identity, not a
+  measurement it verifies.** It confirms that the estimate and the tracker cite
+  the same declared frame; it cannot confirm they measured in it. A channel
+  index is likewise the backend's assertion, checked only for existence.
+- **Per-channel values and track references have no relational home before
+  promotion.** At intake they are window- and claim-owned native attributes
+  (`channel:<index>:<kind>`, `track_reference:<stream>`); they become relational
+  citations only when promoted to evidence on an event.
+- **A track reference is checked, never resolved by time.** Intake confirms an
+  identity association exists for the stream and track; choosing the one valid
+  at a call's time is your declared act when promoting, because it would
+  otherwise compare the backend's clock with the tracker's.
+- **Positional uncertainty richer than one number** (per-axis variance,
+  covariance) is preserved term by term as native attributes and has no
+  canonical column. Nothing derives a scalar confidence from it.
+- **A backend must report each window's times.** One that reports only a
+  VAWLUME event reference has nothing the representation can hold, and an echoed
+  event id is never used as a key. Exports with one score column per animal are
+  not expressible; reshape them upstream.
+- **Whether an estimate's ordinal was the backend's own or assigned in file
+  order** is known in the mapping IR but not stored.
 - `vawlume.db.registerProfileVersion` registers a profile version and validates
   nothing about the file's contents. Each consuming layer still validates its own
   profile grammar, and the existing registrars inside the matching, agreement and
@@ -2435,10 +2536,11 @@ reference-response path: the shipped metric definitions are the three acoustic
 ones registered by `vawlume.db.registerBuiltinSemantics`, and no other analysis
 writes a derived measurement.
 
-Every caller-attribution table is now written by a public code path. What the
-schema still represents and no code produces is a **non-imported** attribution
-path: `attribution_runs.attribution_path` admits `backend` and `native_estimate`
-for Phases 5 and 6, and only `imported` is reachable today.
+Every caller-attribution table is now written by a public code path, and both
+the `imported` and the `backend` attribution paths are reachable. What the schema
+still represents and no code produces is the **native estimate**:
+`attribution_runs.attribution_path` admits `native_estimate` for Phase 6, and
+`createRun` refuses it until something produces one.
 
 ### Deliberately deferred
 
@@ -2447,7 +2549,13 @@ and string methods; sequence clustering; peri-event summaries; machine learning;
 continuous-signal ingestion; full acquisition synchronization; automatic outlier
 rejection in matching; a universal experimental ontology; a GUI; a CLI or batch
 wrapper; exhaustive extractor support; automatic biological interpretation of
-extractor-native classes; publication artefacts.
+extractor-native classes; publication artefacts. For caller attribution:
+estimating a caller from VAWLUME's own evidence (Phase 6); any distance, angle
+or other geometric derivation from stored positions, and any transformation
+between coordinate frames; combining any evidence dimensions; comparing a
+backend's result with an imported one, and sensitivity analysis across paths
+(Phase 7); paging or filtering in `report`; a standalone read-back table of
+backend windows.
 
 ---
 
@@ -2489,6 +2597,8 @@ extractor-native classes; publication artefacts.
 - [`../development/32_imported_attribution_intake.md`](../development/32_imported_attribution_intake.md) — the imported path, declared-only label resolution, and why intake relates a window to no event
 - [`../development/33_attribution_correspondence.md`](../development/33_attribution_correspondence.md) — the declared clock, the eligibility rule, the two bases, and preserved ambiguity
 - [`../development/34_integrated_caller_attribution_demonstration.md`](../development/34_integrated_caller_attribution_demonstration.md) — the integrated caller-attribution example, its two target kinds, the refusals it demonstrates, and what it cannot show
+- [`../development/36_backend_attribution_intake.md`](../development/36_backend_attribution_intake.md) — the localization-backend adapter: profile, IR, intake, the two shapes, and what a backend can report that VAWLUME cannot hold
+- [`../development/37_integrated_backend_localization_demonstration.md`](../development/37_integrated_backend_localization_demonstration.md) — the integrated backend/localization example, its five dimensions, its refusals, and what it cannot show
 - [`../development/35_consilience_exploration_workflow.md`](../development/35_consilience_exploration_workflow.md) — the exploratory workflow: its stages, the analysis-cost arithmetic, the diagnostic battery and what an undefined partial correlation means, fractional-factorial aliasing, subset sampling, the two support-pattern vocabularies, the thin shared feature space, the USVSEG frequency-extent limitation, and its explicit non-goals
 
 ### Configuration and schema
