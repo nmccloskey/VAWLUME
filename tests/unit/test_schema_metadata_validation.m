@@ -45,7 +45,7 @@ verifyTrue(testCase, report.passed, ...
     "The committed semantic metadata no longer matches the committed schema: " + ...
     newline + strjoin(report.findings.detail, newline));
 verifyEqual(testCase, report.mode, "identity");
-verifyEqual(testCase, report.structural_objects, 107);
+verifyEqual(testCase, report.structural_objects, 110);
 end
 
 % ---------------------------------------------------------------------------
@@ -185,7 +185,7 @@ end
 % ---------------------------------------------------------------------------
 
 function testOneRunReportsEveryFinding(testCase)
-% Somebody describing 1,155 columns needs one run to name all of it. A
+% Somebody describing 1,193 columns needs one run to name all of it. A
 % validator that stopped at the first fault would make that a fifty-run loop.
 cleanup = addSourcePath(); %#ok<NASGU>
 

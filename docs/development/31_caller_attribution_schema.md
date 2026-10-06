@@ -8,8 +8,18 @@ Added at schema version `0.10-draft`: `imported_attribution_claims` and
 `v_attribution_window_correspondences`, and the removal of
 `imported_attribution_windows.source_caller_label`.
 
+Added at schema version `0.12-draft`: the backend/localization slice.
+`attribution_localization_estimates`, `attribution_native_attributes`
+and `attribution_run_declared_inputs` are new. `attribution_evidence` gains
+the `source_localization` dimension, `recording_channel_id` and
+`attribution_localization_estimate_id`, and `config_profiles.profile_kind` gains
+`attribution_backend_mapping`. See
+[The backend/localization slice](#the-backendlocalization-slice).
+
 The design reasoning lives in
-[`../design/04_caller_attribution_contract.md`](../design/04_caller_attribution_contract.md).
+[`../design/04_caller_attribution_contract.md`](../design/04_caller_attribution_contract.md),
+extended for the backend path by
+[`../design/05_backend_localization_contract.md`](../design/05_backend_localization_contract.md).
 This document is the data dictionary: what each table holds, what the schema
 enforces, and — the section worth reading twice — what it does not.
 
@@ -119,9 +129,10 @@ retain the raw score and omit rank.
 
 Long-form evidence supporting a candidate, or the target as a whole.
 
-`evidence_dimension` is a **closed** vocabulary — `temporal_alignment`,
+`evidence_dimension` is a **closed** vocabulary: `temporal_alignment`,
 `pose_localization`, `visual_identity`, `acoustic`, `correspondence`,
-`imported_composite`. `evidence_kind` is **free text**. The asymmetry is
+`imported_composite`, and `source_localization`, the last added at
+`0.12-draft`. `evidence_kind` is **free text**. The asymmetry is
 deliberate: the phase's separation claim is only checkable if the dimensions are
 enumerable, while a closed *kind* would force an unfamiliar upstream system into
 the wrong category — the reasoning
@@ -130,6 +141,32 @@ its own open vocabularies.
 
 `imported_composite` is how somebody else's already-combined score is stored
 without VAWLUME computing one.
+
+`source_localization` means **where a sound originated**, as an external
+spatial-acoustic system estimated it. It is not `pose_localization`, which means
+where a tracked bodypart is. How close a sound source lies to a snout is the
+hypothesis an attribution analysis tests, and storing one quantity as the other
+would make that hypothesis look like its own evidence. It is not `acoustic`
+either, which is a measurement rather than a position.
+
+**There are therefore five separated evidence dimensions** (temporal alignment,
+pose localization, visual identity, acoustic, and source localization), while
+the upstream *uncertainty sources* of plan §4.6 stay four. `correspondence` and
+`imported_composite` are not dimensions. Nothing combines any of the five.
+
+A `source_localization` row **cites** its estimate through
+`attribution_localization_estimate_id` and copies nothing: `value_real` and
+`value_text` stay NULL, because the estimate is the authority. A two-way CHECK
+requires the citation on a `source_localization` row and forbids it on every
+other dimension. `trg_attribution_evidence_localization_scope` and its `_update`
+twin require the estimate to come from the same attribution run as the row's
+target.
+
+`recording_channel_id` names the channel per-channel evidence came from, as
+`derived_measurements.recording_channel_id` does. It is `ON DELETE CASCADE`,
+because the channel is part of what the row *is*.
+`trg_attribution_evidence_channel_scope` and its `_update` twin require the
+channel to belong to the run's recording.
 
 `identity_statement_kind` closes **A-1**. **Required whenever
 `evidence_dimension` is `visual_identity`** (4.7): that dimension rests on an
@@ -156,11 +193,14 @@ duplicates the evidence. This differs from candidate rows, whose target/entity
 key supports exact reuse.
 
 The schema has direct evidence FKs for an alignment run, source file, mapping
-profile, external event and tracking identity association. It has no evidence FK
-for a general analysis run, artifact, or external stream. Those sources use a
-stable `source_locator` today. The first real attribution exporter in 4.8 must
-report whether that loses a source identity it needs; the closure gate should not
-infer a junction design before then.
+profile, external event, tracking identity association, recording channel, and
+localization estimate. It has no evidence FK for a general analysis run,
+artifact, or external stream. Those sources use a stable `source_locator`
+today. This is **P4-3**, and it was **declined** for the `0.12-draft` bump
+(backend/localization contract D8). No backend evidence row needs it once
+estimates, channels and identity associations are citable, and its first real
+consumer is the native estimator of a later phase, which may need a different
+citation entirely.
 
 ### `attribution_decisions` and `attribution_decision_candidates`
 
@@ -246,6 +286,11 @@ correspondence row, not an edit.
 
 Which caller was claimed over a window is `imported_attribution_claims`.
 
+**"Imported" means produced outside VAWLUME and brought in through a mapping
+profile.** It does not mean "written by the imported path". A localization
+backend's own segmentation has that property and lands in this table too. Which
+kind of external system produced a run is `attribution_runs.attribution_path`.
+
 ### `imported_attribution_claims`
 
 One row per *(window, claimed caller)* — the shape the source has, since the
@@ -295,6 +340,90 @@ IoU of the native ones when a breakpoint falls between them.
 
 Ambiguity is preserved — one window may correspond to several targets, and nothing
 here chooses.
+
+## The backend/localization slice
+
+Added at schema version `0.12-draft`, for the backend path. The governing
+decisions are in
+[`../design/05_backend_localization_contract.md`](../design/05_backend_localization_contract.md).
+None of these tables or columns is named after a backend, and a backend run uses
+every table above unchanged.
+
+### Two grains, and nothing crosses between them implicitly
+
+A producer's output arrives at **window grain**: its caller scores are about
+(window, claimed caller) and its localization estimates are about (window,
+optionally a claimed caller). Attribution works at **target grain**: candidates
+are about (target, entity), and evidence is about a target or a candidate. Which
+event a window refers to is correspondence, decided later.
+
+So a backend's caller scores land in `imported_attribution_claims`, exactly as
+an imported exporter's do, and its estimates land in
+`attribution_localization_estimates`. A claim becomes a candidate only through
+`vawlume.attribution.addCandidates`. An estimate reaches a target only through an
+explicitly written `source_localization` evidence row that cites it. The schema
+holds both grains and promotes nothing.
+
+### `attribution_localization_estimates`
+
+One position a producer estimated a sound came from, keyed to the window it was
+computed over.
+
+| Column | Holds |
+|---|---|
+| `imported_attribution_window_id` | the producer's window (required) |
+| `imported_attribution_claim_id` | the claimed caller the producer tied this estimate to, if any; it must be a claim over the same window |
+| `estimate_ordinal`, `native_estimate_id` | the producer's own order and identifier; `UNIQUE(window, estimate_ordinal)`. Several estimates per window coexist and nothing ranks them |
+| `coordinate_system_id` | the declared frame (**required**, `ON DELETE RESTRICT`) |
+| `position_x`, `position_y` | required, exactly as reported, in the frame's unit |
+| `position_z` | only under a 3D frame; NULL for a 2D estimate, **never `0`** |
+| `position_semantics` | required: what point this is and who computed it |
+| `confidence`, `confidence_semantics` | the producer's localization confidence on its own unbounded scale, with its semantics required whenever present. **Not a caller probability** |
+| `source_file_id`, `mapping_profile_version_id`, `source_locator`, `notes` | provenance, as on the windows |
+
+**The frame is part of the coordinate.** Compatibility with any other spatial
+fact is identity of `coordinate_system_id`, never matching units or
+dimensionality ([`23_spatial_geometry_schema.md`](23_spatial_geometry_schema.md)).
+Nothing in VAWLUME transforms an estimate between frames or computes a distance
+from it.
+
+**A row is a window-level summary.** A time-resolved localization track is dense
+data and stays in the registered artifact. Positional uncertainty richer than
+one scalar, such as a covariance or a per-axis error, is preserved as native
+attributes of the estimate, not as canonical columns.
+
+### `attribution_native_attributes`
+
+A producer's own fields, preserved where its mapping profile asked. They are
+kept apart from every canonical column, so a producer's `conf_v2` cannot be read
+as a canonical confidence.
+
+- **Exactly one owner**: a window, a claim, or an estimate. This uses the
+  exclusive CHECK construction `attribution_targets` uses.
+- **Typed** like `external_event_attributes`: `value_type` is `text`, `real`,
+  `integer`, `boolean` or `missing`, with exactly one value column filled unless
+  the type is `missing`. **There is no `json` type.** P4-2 is the ledger item
+  created by choosing JSON once. A structured field is preserved as several
+  named scalars, or verbatim in `native_raw_token`.
+- **One value per (owner, `attribute_name`)**, enforced by three partial unique
+  indexes, because a UNIQUE across nullable owner columns constrains nothing in
+  SQLite.
+
+### `attribution_run_declared_inputs`
+
+What a producer declared it had already consumed, per upstream uncertainty
+source. This closes the gap the Phase 4 contract's 4.12a correction recorded:
+nothing used to say whether an exporter's score already consumed evidence that
+VAWLUME also holds.
+
+- `input_dimension` is one of the **four uncertainty sources**:
+  `temporal_alignment`, `pose_localization`, `visual_identity`, or `acoustic`.
+  It is not one of the five evidence dimensions, because `source_localization`
+  is a producer's output, not one of its inputs.
+- `declaration` is `used` or `not_used`. **No row means undeclared**, which is
+  unknown and is never `not_used`.
+- `declared_by_profile_version_id` is required and `ON DELETE RESTRICT`.
+- The primary key is `(attribution_run_id, input_dimension)`.
 
 ## `v_attribution_window_correspondences`
 
@@ -411,6 +540,24 @@ below; this is the exact shape that bites.
   points at that row;
 - no status anywhere means `validated`.
 
+Added at schema version `0.12-draft`, for the backend/localization slice:
+
+- a localization estimate names its frame, its position and its position
+  semantics; a confidence implies its semantics; a `z` requires a 3D frame, on
+  insert and on update; and the frame belongs to the project of the window's
+  recording;
+- an estimate tied to a claim is tied to a claim over its own window;
+- a `source_localization` evidence row cites an estimate, no other dimension may,
+  and the estimate comes from the evidence row's own run (on insert and on
+  update);
+- channel-cited evidence names a channel of its run's recording (on insert and on
+  update);
+- a native attribute has exactly one owner, a declared type, no JSON, and one
+  value per owner and name;
+- a declared input is one of the four uncertainty sources, is `used` or
+  `not_used`, names the profile version that declared it, and appears at most
+  once per run.
+
 ## What the schema does **not** enforce
 
 This is the half that stops a later reader assuming a guarantee that was never
@@ -430,12 +577,31 @@ there.
 - **Cross-table scope is enforced on INSERT only**, following the repository-wide
   convention documented in the trigger section of `schema/schema.sql`. A direct
   `UPDATE` outside the public API can still move a row across a boundary.
-  `PRAGMA foreign_key_check` will not see it.
+  `PRAGMA foreign_key_check` will not see it. The `0.12-draft` exceptions are
+  estimate dimensionality and evidence channel and localization scope, which
+  carry `_update` twins; an estimate's frame project and claim scope do not.
 - **`agreement_extent_method` is not checked against the view.** A target may name
   an extent method for a group whose members were since deleted.
 - **Nothing constrains `evidence_kind`, `method`, or any semantics string** to a
   vocabulary. That openness is deliberate and its cost is that spelling is a
   convention, not a guarantee.
+
+For the backend/localization slice (`0.12-draft`):
+
+- **Nothing confirms that a coordinate was measured in the frame it cites.**
+  VAWLUME confirms that two facts name one declared frame. It cannot confirm
+  that the producer and the tracker actually used it. A `px` frame is legal and
+  supports no real-distance claim.
+- **Nothing confirms a channel's numbering.** The scope guard confirms the
+  channel exists on the run's recording. Whether the producer's channel 2 is
+  the recording's channel 2 is a caller assertion.
+- **Nothing in the schema requires that a cited estimate's window corresponds to
+  the evidence row's target**, or that an estimate tied to a claimed caller
+  supports only that caller's candidate. Those are write-path refusals: the
+  schema refuses false claims, and the API refuses unsupported ones.
+- **Nothing checks that a native attribute means what its name suggests**, or
+  that a declared input is true. Both are the producer's statements, recorded
+  with their provenance.
 
 ## Phase 3 debts closed here
 
@@ -486,6 +652,8 @@ dangerous half: the NULL trap raises, this one returns a wrong number.
 ## Related documents
 
 - [`../design/04_caller_attribution_contract.md`](../design/04_caller_attribution_contract.md) — the decisions and their reasons
+- [`../design/05_backend_localization_contract.md`](../design/05_backend_localization_contract.md) — the backend/localization decisions behind the `0.12-draft` slice
+- [`23_spatial_geometry_schema.md`](23_spatial_geometry_schema.md) — coordinate systems, and why compatibility is identity
 - [`22_phase1_correspondence_boundaries.md`](22_phase1_correspondence_boundaries.md) — the orientation document and the layer separation this slice inherits
 - [`25_visual_identity_association.md`](25_visual_identity_association.md) — identity evidence, A-1, and the open-vocabulary reasoning
 - [`11_temporal_alignment_schema.md`](11_temporal_alignment_schema.md) — the alignment data dictionary this one is modelled on

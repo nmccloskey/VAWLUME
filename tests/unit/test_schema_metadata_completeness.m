@@ -101,14 +101,14 @@ verifyEqual(testCase, report.described_relationships, report.structural_relation
 end
 
 function testAPartialDocumentPassesIdentityButClaimsNothing(testCase)
-% A document describing three of 107 objects is not wrong, it is unfinished.
+% A document describing three of 110 objects is not wrong, it is unfinished.
 % Identity mode must not confuse the two, or Part 3's subparts could never run.
 cleanup = addSourcePath(); %#ok<NASGU>
 
 report = validateFixture(testCase, validDocument(), "identity");
 verifyTrue(testCase, report.passed);
 verifyEqual(testCase, report.described_objects, 2);
-verifyEqual(testCase, report.structural_objects, 107);
+verifyEqual(testCase, report.structural_objects, 110);
 end
 
 % ---------------------------------------------------------------------------
@@ -128,7 +128,7 @@ report = validateFixture(testCase, document, "complete");
 verifyFalse(testCase, report.passed);
 verifyEqual(testCase, unique(report.findings.code), "vawlume:schema:MetadataIncomplete");
 % Grouped by object and naming what is absent: a completeness failure over
-% 1,155 columns is only actionable if it says which ones.
+% 1,193 columns is only actionable if it says which ones.
 detail = char(strjoin(report.findings.detail, " "));
 verifySubstring(testCase, detail, "projects");
 verifySubstring(testCase, detail, "archived_at_utc");
@@ -190,8 +190,8 @@ report = validateFixture(testCase, document, "complete");
 verifyFalse(testCase, report.passed);
 detail = char(strjoin(report.findings.detail, " "));
 verifySubstring(testCase, detail, "not described");
-% 107 structural objects, 3 described by the fixture.
-verifySubstring(testCase, detail, "104 object(s)");
+% 110 structural objects, 3 described by the fixture.
+verifySubstring(testCase, detail, "107 object(s)");
 end
 
 function testTheGlobalGateDetectsUndescribedRelationships(testCase)
@@ -208,9 +208,9 @@ report = validateFixture(testCase, document, "complete");
 relationshipFindings = report.findings.detail( ...
     contains(report.findings.detail, "relationship(s) have no description"));
 verifyNotEmpty(testCase, relationshipFindings, ...
-    "Every domain was claimed complete with 1 of 245 relationships described, " + ...
+    "Every domain was claimed complete with 1 of 257 relationships described, " + ...
     "and nothing was reported.");
-verifySubstring(testCase, char(relationshipFindings(1)), "244");
+verifySubstring(testCase, char(relationshipFindings(1)), "256");
 end
 
 % ---------------------------------------------------------------------------
@@ -218,7 +218,7 @@ end
 % ---------------------------------------------------------------------------
 
 function document = validDocument()
-% Partial by construction: two objects of 107, and no domain claimed.
+% Partial by construction: two objects of 110, and no domain claimed.
 document = struct();
 document.metadata_version = "0.1.0";
 document.schema_version = vawlume.schema.repositoryVersion(RepoRoot=repoRootForTest());

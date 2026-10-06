@@ -17,9 +17,9 @@ workstream bumped the schema to `0.11-draft` (`PRAGMA user_version = 11`) for
 schema hygiene. That bump included the third decision-cardinality guard, on
 deleting a selection. Nothing caught the stale claim, because
 `check_repository_self_description` exempts `docs/design/` from its version
-check. The live schema is `0.11-draft`. Phase 5 extends this contract in
-[`05_backend_localization_contract.md`](05_backend_localization_contract.md) and
-plans one further bump, to `0.12-draft`. The original sentence is left visible
+check. Phase 5 extends this contract in
+[`05_backend_localization_contract.md`](05_backend_localization_contract.md), and
+its one bump, applied at 5.2, makes the live schema `0.12-draft`. The original sentence is left visible
 rather than rewritten away, following the 4.12a precedent below.
 
 The contract clauses below are frozen as written. This status block is not: it

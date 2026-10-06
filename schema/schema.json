@@ -224,7 +224,7 @@
         {
           "name": "-",
           "type": "CHECK",
-          "def": "CHECK (profile_kind IN ( 'project_input', 'extractor_output', 'extractor_settings', 'recording_device', 'experimental_setup', 'external_stream_mapping', 'alignment_anchor_mapping', 'tracking_input_mapping', 'analysis_settings', 'consilience_policy', 'attribution_input_mapping', 'attribution_policy', 'other' ))",
+          "def": "CHECK (profile_kind IN ( 'project_input', 'extractor_output', 'extractor_settings', 'recording_device', 'experimental_setup', 'external_stream_mapping', 'alignment_anchor_mapping', 'tracking_input_mapping', 'analysis_settings', 'consilience_policy', 'attribution_input_mapping', 'attribution_policy', 'attribution_backend_mapping', 'other' ))",
           "table": "config_profiles",
           "columns": [
             "profile_kind"
@@ -240,7 +240,7 @@
           ]
         }
       ],
-      "def": "CREATE TABLE config_profiles (\n    profile_id          INTEGER PRIMARY KEY,\n    project_id          INTEGER REFERENCES projects(project_id) ON DELETE CASCADE,\n    profile_key         TEXT NOT NULL,\n    profile_name        TEXT NOT NULL,\n    profile_kind        TEXT NOT NULL CHECK (profile_kind IN (\n                            'project_input',\n                            'extractor_output',\n                            'extractor_settings',\n                            'recording_device',\n                            'experimental_setup',\n                            'external_stream_mapping',\n                            'alignment_anchor_mapping',\n                            'tracking_input_mapping',\n                            'analysis_settings',\n                            'consilience_policy',\n                            'attribution_input_mapping',\n                            'attribution_policy',\n                            'other'\n                        )),\n    is_builtin          INTEGER NOT NULL DEFAULT 0 CHECK (is_builtin IN (0,1)),\n    description         TEXT,\n    created_at_utc      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),\n    UNIQUE(project_id, profile_key)\n)"
+      "def": "CREATE TABLE config_profiles (\n    profile_id          INTEGER PRIMARY KEY,\n    project_id          INTEGER REFERENCES projects(project_id) ON DELETE CASCADE,\n    profile_key         TEXT NOT NULL,\n    profile_name        TEXT NOT NULL,\n    profile_kind        TEXT NOT NULL CHECK (profile_kind IN (\n                            'project_input',\n                            'extractor_output',\n                            'extractor_settings',\n                            'recording_device',\n                            'experimental_setup',\n                            'external_stream_mapping',\n                            'alignment_anchor_mapping',\n                            'tracking_input_mapping',\n                            'analysis_settings',\n                            'consilience_policy',\n                            'attribution_input_mapping',\n                            'attribution_policy',\n                            'attribution_backend_mapping',\n                            'other'\n                        )),\n    is_builtin          INTEGER NOT NULL DEFAULT 0 CHECK (is_builtin IN (0,1)),\n    description         TEXT,\n    created_at_utc      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),\n    UNIQUE(project_id, profile_key)\n)"
     },
     {
       "name": "config_profile_versions",
@@ -12495,9 +12495,27 @@
           "name": "notes",
           "type": "TEXT",
           "nullable": true
+        },
+        {
+          "name": "recording_channel_id",
+          "type": "INTEGER",
+          "nullable": true
+        },
+        {
+          "name": "attribution_localization_estimate_id",
+          "type": "INTEGER",
+          "nullable": true
         }
       ],
       "indexes": [
+        {
+          "name": "idx_attribution_evidence_localization_estimate",
+          "def": "CREATE INDEX idx_attribution_evidence_localization_estimate\n    ON attribution_evidence(attribution_localization_estimate_id)",
+          "table": "attribution_evidence",
+          "columns": [
+            "attribution_localization_estimate_id"
+          ]
+        },
         {
           "name": "idx_attribution_evidence_candidate",
           "def": "CREATE INDEX idx_attribution_evidence_candidate ON attribution_evidence(attribution_candidate_id)",
@@ -12528,6 +12546,32 @@
         {
           "name": "- (Foreign key ID: 0)",
           "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (attribution_localization_estimate_id) REFERENCES attribution_localization_estimates (attribution_localization_estimate_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
+          "table": "attribution_evidence",
+          "referenced_table": "attribution_localization_estimates",
+          "columns": [
+            "attribution_localization_estimate_id"
+          ],
+          "referenced_columns": [
+            "attribution_localization_estimate_id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 1)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (recording_channel_id) REFERENCES recording_channels (recording_channel_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
+          "table": "attribution_evidence",
+          "referenced_table": "recording_channels",
+          "columns": [
+            "recording_channel_id"
+          ],
+          "referenced_columns": [
+            "recording_channel_id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 2)",
+          "type": "FOREIGN KEY",
           "def": "FOREIGN KEY (mapping_profile_version_id) REFERENCES config_profile_versions (profile_version_id) ON UPDATE NO ACTION ON DELETE SET NULL MATCH NONE",
           "table": "attribution_evidence",
           "referenced_table": "config_profile_versions",
@@ -12539,7 +12583,7 @@
           ]
         },
         {
-          "name": "- (Foreign key ID: 1)",
+          "name": "- (Foreign key ID: 3)",
           "type": "FOREIGN KEY",
           "def": "FOREIGN KEY (source_file_id) REFERENCES source_files (source_file_id) ON UPDATE NO ACTION ON DELETE SET NULL MATCH NONE",
           "table": "attribution_evidence",
@@ -12552,7 +12596,7 @@
           ]
         },
         {
-          "name": "- (Foreign key ID: 2)",
+          "name": "- (Foreign key ID: 4)",
           "type": "FOREIGN KEY",
           "def": "FOREIGN KEY (alignment_run_id) REFERENCES time_alignment_runs (alignment_run_id) ON UPDATE NO ACTION ON DELETE SET NULL MATCH NONE",
           "table": "attribution_evidence",
@@ -12565,7 +12609,7 @@
           ]
         },
         {
-          "name": "- (Foreign key ID: 3)",
+          "name": "- (Foreign key ID: 5)",
           "type": "FOREIGN KEY",
           "def": "FOREIGN KEY (external_event_id) REFERENCES external_events (external_event_id) ON UPDATE NO ACTION ON DELETE SET NULL MATCH NONE",
           "table": "attribution_evidence",
@@ -12578,7 +12622,7 @@
           ]
         },
         {
-          "name": "- (Foreign key ID: 4)",
+          "name": "- (Foreign key ID: 6)",
           "type": "FOREIGN KEY",
           "def": "FOREIGN KEY (tracking_identity_association_id) REFERENCES tracking_identity_associations (tracking_identity_association_id) ON UPDATE NO ACTION ON DELETE SET NULL MATCH NONE",
           "table": "attribution_evidence",
@@ -12591,7 +12635,7 @@
           ]
         },
         {
-          "name": "- (Foreign key ID: 5)",
+          "name": "- (Foreign key ID: 7)",
           "type": "FOREIGN KEY",
           "def": "FOREIGN KEY (attribution_candidate_id) REFERENCES attribution_candidates (attribution_candidate_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
           "table": "attribution_evidence",
@@ -12604,7 +12648,7 @@
           ]
         },
         {
-          "name": "- (Foreign key ID: 6)",
+          "name": "- (Foreign key ID: 8)",
           "type": "FOREIGN KEY",
           "def": "FOREIGN KEY (attribution_target_id) REFERENCES attribution_targets (attribution_target_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
           "table": "attribution_evidence",
@@ -12619,7 +12663,7 @@
         {
           "name": "-",
           "type": "CHECK",
-          "def": "CHECK (evidence_dimension IN ( 'temporal_alignment', 'pose_localization', 'visual_identity', 'acoustic', 'correspondence', 'imported_composite' ))",
+          "def": "CHECK (evidence_dimension IN ( 'temporal_alignment', 'pose_localization', 'visual_identity', 'acoustic', 'correspondence', 'imported_composite', 'source_localization' ))",
           "table": "attribution_evidence",
           "columns": [
             "evidence_dimension"
@@ -12647,6 +12691,16 @@
         {
           "name": "-",
           "type": "CHECK",
+          "def": "CHECK ((evidence_dimension = 'source_localization') = (attribution_localization_estimate_id IS NOT NULL))",
+          "table": "attribution_evidence",
+          "columns": [
+            "evidence_dimension",
+            "attribution_localization_estimate_id"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
           "def": "CHECK (identity_statement_kind IS NULL OR (identity_statement_kind = 'identity_association' AND tracking_identity_association_id IS NOT NULL) OR (identity_statement_kind = 'declared_entity_link' AND external_event_id IS NOT NULL))",
           "table": "attribution_evidence",
           "columns": [
@@ -12660,9 +12714,25 @@
         {
           "name": "trg_attribution_evidence_candidate_scope",
           "def": "CREATE TRIGGER trg_attribution_evidence_candidate_scope\nBEFORE INSERT ON attribution_evidence\nFOR EACH ROW\nWHEN NEW.attribution_candidate_id IS NOT NULL AND (\n    SELECT COUNT(*) FROM attribution_candidates ac\n    WHERE ac.attribution_candidate_id = NEW.attribution_candidate_id\n      AND ac.attribution_target_id = NEW.attribution_target_id\n) = 0\nBEGIN\n    SELECT RAISE(ABORT, 'Attribution evidence candidate belongs to a different target');\nEND"
+        },
+        {
+          "name": "trg_attribution_evidence_channel_scope",
+          "def": "CREATE TRIGGER trg_attribution_evidence_channel_scope\nBEFORE INSERT ON attribution_evidence\nFOR EACH ROW\nWHEN NEW.recording_channel_id IS NOT NULL AND (\n    SELECT rc.recording_id\n    FROM recording_channels rc\n    WHERE rc.recording_channel_id = NEW.recording_channel_id\n) \u003c\u003e (\n    SELECT ar.recording_id\n    FROM attribution_targets at\n    JOIN attribution_runs ar ON ar.attribution_run_id = at.attribution_run_id\n    WHERE at.attribution_target_id = NEW.attribution_target_id\n)\nBEGIN\n    SELECT RAISE(ABORT, 'Attribution evidence channel belongs to a different recording than its run');\nEND"
+        },
+        {
+          "name": "trg_attribution_evidence_channel_scope_update",
+          "def": "CREATE TRIGGER trg_attribution_evidence_channel_scope_update\nBEFORE UPDATE ON attribution_evidence\nFOR EACH ROW\nWHEN NEW.recording_channel_id IS NOT NULL AND (\n    SELECT rc.recording_id\n    FROM recording_channels rc\n    WHERE rc.recording_channel_id = NEW.recording_channel_id\n) \u003c\u003e (\n    SELECT ar.recording_id\n    FROM attribution_targets at\n    JOIN attribution_runs ar ON ar.attribution_run_id = at.attribution_run_id\n    WHERE at.attribution_target_id = NEW.attribution_target_id\n)\nBEGIN\n    SELECT RAISE(ABORT, 'Attribution evidence channel belongs to a different recording than its run');\nEND"
+        },
+        {
+          "name": "trg_attribution_evidence_localization_scope",
+          "def": "CREATE TRIGGER trg_attribution_evidence_localization_scope\nBEFORE INSERT ON attribution_evidence\nFOR EACH ROW\nWHEN NEW.attribution_localization_estimate_id IS NOT NULL AND (\n    SELECT iw.attribution_run_id\n    FROM attribution_localization_estimates le\n    JOIN imported_attribution_windows iw\n      ON iw.imported_attribution_window_id = le.imported_attribution_window_id\n    WHERE le.attribution_localization_estimate_id = NEW.attribution_localization_estimate_id\n) \u003c\u003e (\n    SELECT at.attribution_run_id\n    FROM attribution_targets at\n    WHERE at.attribution_target_id = NEW.attribution_target_id\n)\nBEGIN\n    SELECT RAISE(ABORT, 'Attribution evidence cites a localization estimate from a different attribution run');\nEND"
+        },
+        {
+          "name": "trg_attribution_evidence_localization_scope_update",
+          "def": "CREATE TRIGGER trg_attribution_evidence_localization_scope_update\nBEFORE UPDATE ON attribution_evidence\nFOR EACH ROW\nWHEN NEW.attribution_localization_estimate_id IS NOT NULL AND (\n    SELECT iw.attribution_run_id\n    FROM attribution_localization_estimates le\n    JOIN imported_attribution_windows iw\n      ON iw.imported_attribution_window_id = le.imported_attribution_window_id\n    WHERE le.attribution_localization_estimate_id = NEW.attribution_localization_estimate_id\n) \u003c\u003e (\n    SELECT at.attribution_run_id\n    FROM attribution_targets at\n    WHERE at.attribution_target_id = NEW.attribution_target_id\n)\nBEGIN\n    SELECT RAISE(ABORT, 'Attribution evidence cites a localization estimate from a different attribution run');\nEND"
         }
       ],
-      "def": "CREATE TABLE attribution_evidence (\n    attribution_evidence_id INTEGER PRIMARY KEY,\n    attribution_target_id INTEGER NOT NULL REFERENCES attribution_targets(attribution_target_id) ON DELETE CASCADE,\n    attribution_candidate_id INTEGER REFERENCES attribution_candidates(attribution_candidate_id) ON DELETE CASCADE,\n    evidence_dimension  TEXT NOT NULL CHECK (evidence_dimension IN (\n                            'temporal_alignment',\n                            'pose_localization',\n                            'visual_identity',\n                            'acoustic',\n                            'correspondence',\n                            'imported_composite'\n                        )),\n    evidence_kind       TEXT NOT NULL,\n    value_real          REAL,\n    value_text          TEXT,\n    value_units         TEXT,\n    value_semantics     TEXT,\n    identity_statement_kind TEXT CHECK (identity_statement_kind IS NULL OR identity_statement_kind IN (\n                            'declared_entity_link',\n                            'identity_association'\n                        )),\n    tracking_identity_association_id INTEGER REFERENCES tracking_identity_associations(tracking_identity_association_id) ON DELETE SET NULL,\n    external_event_id   INTEGER REFERENCES external_events(external_event_id) ON DELETE SET NULL,\n    alignment_run_id    INTEGER REFERENCES time_alignment_runs(alignment_run_id) ON DELETE SET NULL,\n    source_file_id      INTEGER REFERENCES source_files(source_file_id) ON DELETE SET NULL,\n    mapping_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,\n    source_locator      TEXT,\n    notes               TEXT,\n    CHECK (value_real IS NULL OR value_semantics IS NOT NULL),\n    -- An identity-derived row names which kind of statement it rests on, and\n    -- points at the row it read. A-1.\n    CHECK (identity_statement_kind IS NULL\n       OR (identity_statement_kind = 'identity_association'\n            AND tracking_identity_association_id IS NOT NULL)\n       OR (identity_statement_kind = 'declared_entity_link'\n            AND external_event_id IS NOT NULL))\n)"
+      "def": "CREATE TABLE attribution_evidence (\n    attribution_evidence_id INTEGER PRIMARY KEY,\n    attribution_target_id INTEGER NOT NULL REFERENCES attribution_targets(attribution_target_id) ON DELETE CASCADE,\n    attribution_candidate_id INTEGER REFERENCES attribution_candidates(attribution_candidate_id) ON DELETE CASCADE,\n    evidence_dimension  TEXT NOT NULL CHECK (evidence_dimension IN (\n                            'temporal_alignment',\n                            'pose_localization',\n                            'visual_identity',\n                            'acoustic',\n                            'correspondence',\n                            'imported_composite',\n                            'source_localization'\n                        )),\n    evidence_kind       TEXT NOT NULL,\n    value_real          REAL,\n    value_text          TEXT,\n    value_units         TEXT,\n    value_semantics     TEXT,\n    identity_statement_kind TEXT CHECK (identity_statement_kind IS NULL OR identity_statement_kind IN (\n                            'declared_entity_link',\n                            'identity_association'\n                        )),\n    tracking_identity_association_id INTEGER REFERENCES tracking_identity_associations(tracking_identity_association_id) ON DELETE SET NULL,\n    external_event_id   INTEGER REFERENCES external_events(external_event_id) ON DELETE SET NULL,\n    alignment_run_id    INTEGER REFERENCES time_alignment_runs(alignment_run_id) ON DELETE SET NULL,\n    source_file_id      INTEGER REFERENCES source_files(source_file_id) ON DELETE SET NULL,\n    mapping_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,\n    source_locator      TEXT,\n    notes               TEXT,\n    recording_channel_id INTEGER REFERENCES recording_channels(recording_channel_id) ON DELETE CASCADE,\n    attribution_localization_estimate_id INTEGER REFERENCES attribution_localization_estimates(attribution_localization_estimate_id) ON DELETE CASCADE,\n    CHECK (value_real IS NULL OR value_semantics IS NOT NULL),\n    -- A source localization cites the estimate it rests on, and only a source\n    -- localization may. CASCADE rather than SET NULL above, because this CHECK\n    -- makes an orphaned source_localization row illegal: evidence about an\n    -- estimate that no longer exists says nothing.\n    CHECK ((evidence_dimension = 'source_localization')\n         = (attribution_localization_estimate_id IS NOT NULL)),\n    -- An identity-derived row names which kind of statement it rests on, and\n    -- points at the row it read. A-1.\n    CHECK (identity_statement_kind IS NULL\n       OR (identity_statement_kind = 'identity_association'\n            AND tracking_identity_association_id IS NOT NULL)\n       OR (identity_statement_kind = 'declared_entity_link'\n            AND external_event_id IS NOT NULL))\n)"
     },
     {
       "name": "attribution_decisions",
@@ -13520,6 +13590,563 @@
         }
       ],
       "def": "CREATE TABLE attribution_window_correspondences (\n    attribution_window_correspondence_id INTEGER PRIMARY KEY,\n    imported_attribution_window_id INTEGER NOT NULL REFERENCES imported_attribution_windows(imported_attribution_window_id) ON DELETE CASCADE,\n    attribution_target_id INTEGER NOT NULL REFERENCES attribution_targets(attribution_target_id) ON DELETE CASCADE,\n    alignment_run_id    INTEGER REFERENCES time_alignment_runs(alignment_run_id) ON DELETE SET NULL,\n    aligned_start_s     REAL,\n    aligned_end_s       REAL,\n    temporal_overlap_s  REAL CHECK (temporal_overlap_s IS NULL OR temporal_overlap_s \u003e= 0),\n    temporal_iou        REAL CHECK (temporal_iou IS NULL OR (temporal_iou \u003e= 0 AND temporal_iou \u003c= 1)),\n    onset_difference_s  REAL,\n    offset_difference_s REAL,\n    iou_basis           TEXT NOT NULL CHECK (iou_basis IN ('native','aligned')),\n    start_extrapolated  INTEGER CHECK (start_extrapolated IS NULL OR start_extrapolated IN (0,1)),\n    end_extrapolated    INTEGER CHECK (end_extrapolated IS NULL OR end_extrapolated IN (0,1)),\n    eligibility_rule    TEXT NOT NULL,\n    min_temporal_iou    REAL,\n    notes               TEXT,\n    UNIQUE(imported_attribution_window_id, attribution_target_id),\n    CHECK (aligned_end_s IS NULL OR aligned_start_s IS NULL OR aligned_end_s \u003e= aligned_start_s),\n    -- An aligned basis means a transform was applied, so name it.\n    CHECK (iou_basis \u003c\u003e 'aligned' OR alignment_run_id IS NOT NULL)\n)"
+    },
+    {
+      "name": "attribution_localization_estimates",
+      "type": "table",
+      "columns": [
+        {
+          "name": "attribution_localization_estimate_id",
+          "type": "INTEGER",
+          "nullable": true
+        },
+        {
+          "name": "imported_attribution_window_id",
+          "type": "INTEGER",
+          "nullable": false
+        },
+        {
+          "name": "imported_attribution_claim_id",
+          "type": "INTEGER",
+          "nullable": true
+        },
+        {
+          "name": "estimate_ordinal",
+          "type": "INTEGER",
+          "nullable": false
+        },
+        {
+          "name": "native_estimate_id",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "coordinate_system_id",
+          "type": "INTEGER",
+          "nullable": false
+        },
+        {
+          "name": "position_x",
+          "type": "REAL",
+          "nullable": false
+        },
+        {
+          "name": "position_y",
+          "type": "REAL",
+          "nullable": false
+        },
+        {
+          "name": "position_z",
+          "type": "REAL",
+          "nullable": true
+        },
+        {
+          "name": "position_semantics",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "confidence",
+          "type": "REAL",
+          "nullable": true
+        },
+        {
+          "name": "confidence_semantics",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "source_file_id",
+          "type": "INTEGER",
+          "nullable": true
+        },
+        {
+          "name": "mapping_profile_version_id",
+          "type": "INTEGER",
+          "nullable": true
+        },
+        {
+          "name": "source_locator",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "notes",
+          "type": "TEXT",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_attribution_localization_estimates_system",
+          "def": "CREATE INDEX idx_attribution_localization_estimates_system\n    ON attribution_localization_estimates(coordinate_system_id)",
+          "table": "attribution_localization_estimates",
+          "columns": [
+            "coordinate_system_id"
+          ]
+        },
+        {
+          "name": "idx_attribution_localization_estimates_window",
+          "def": "CREATE INDEX idx_attribution_localization_estimates_window\n    ON attribution_localization_estimates(imported_attribution_window_id)",
+          "table": "attribution_localization_estimates",
+          "columns": [
+            "imported_attribution_window_id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_attribution_localization_estimates_1",
+          "def": "UNIQUE (imported_attribution_window_id, estimate_ordinal)",
+          "table": "attribution_localization_estimates",
+          "columns": [
+            "imported_attribution_window_id",
+            "estimate_ordinal"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "attribution_localization_estimate_id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (attribution_localization_estimate_id)",
+          "table": "attribution_localization_estimates",
+          "columns": [
+            "attribution_localization_estimate_id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (mapping_profile_version_id) REFERENCES config_profile_versions (profile_version_id) ON UPDATE NO ACTION ON DELETE SET NULL MATCH NONE",
+          "table": "attribution_localization_estimates",
+          "referenced_table": "config_profile_versions",
+          "columns": [
+            "mapping_profile_version_id"
+          ],
+          "referenced_columns": [
+            "profile_version_id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 1)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (source_file_id) REFERENCES source_files (source_file_id) ON UPDATE NO ACTION ON DELETE SET NULL MATCH NONE",
+          "table": "attribution_localization_estimates",
+          "referenced_table": "source_files",
+          "columns": [
+            "source_file_id"
+          ],
+          "referenced_columns": [
+            "source_file_id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 2)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (coordinate_system_id) REFERENCES coordinate_systems (coordinate_system_id) ON UPDATE NO ACTION ON DELETE RESTRICT MATCH NONE",
+          "table": "attribution_localization_estimates",
+          "referenced_table": "coordinate_systems",
+          "columns": [
+            "coordinate_system_id"
+          ],
+          "referenced_columns": [
+            "coordinate_system_id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 3)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (imported_attribution_claim_id) REFERENCES imported_attribution_claims (imported_attribution_claim_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
+          "table": "attribution_localization_estimates",
+          "referenced_table": "imported_attribution_claims",
+          "columns": [
+            "imported_attribution_claim_id"
+          ],
+          "referenced_columns": [
+            "imported_attribution_claim_id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 4)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (imported_attribution_window_id) REFERENCES imported_attribution_windows (imported_attribution_window_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
+          "table": "attribution_localization_estimates",
+          "referenced_table": "imported_attribution_windows",
+          "columns": [
+            "imported_attribution_window_id"
+          ],
+          "referenced_columns": [
+            "imported_attribution_window_id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_attribution_localization_estimates_1",
+          "type": "UNIQUE",
+          "def": "UNIQUE (imported_attribution_window_id, estimate_ordinal)",
+          "table": "attribution_localization_estimates",
+          "columns": [
+            "imported_attribution_window_id",
+            "estimate_ordinal"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (estimate_ordinal \u003e= 1)",
+          "table": "attribution_localization_estimates",
+          "columns": [
+            "estimate_ordinal"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (confidence IS NULL OR confidence_semantics IS NOT NULL)",
+          "table": "attribution_localization_estimates",
+          "columns": [
+            "confidence",
+            "confidence_semantics"
+          ]
+        }
+      ],
+      "triggers": [
+        {
+          "name": "trg_localization_estimate_dimensionality",
+          "def": "CREATE TRIGGER trg_localization_estimate_dimensionality\nBEFORE INSERT ON attribution_localization_estimates\nFOR EACH ROW\nWHEN NEW.position_z IS NOT NULL AND (\n    SELECT cs.dimensionality\n    FROM coordinate_systems cs\n    WHERE cs.coordinate_system_id = NEW.coordinate_system_id\n) \u003c\u003e 3\nBEGIN\n    SELECT RAISE(ABORT, 'Localization estimate declares a z coordinate under a coordinate system that is not 3-dimensional');\nEND"
+        },
+        {
+          "name": "trg_localization_estimate_dimensionality_update",
+          "def": "CREATE TRIGGER trg_localization_estimate_dimensionality_update\nBEFORE UPDATE ON attribution_localization_estimates\nFOR EACH ROW\nWHEN NEW.position_z IS NOT NULL AND (\n    SELECT cs.dimensionality\n    FROM coordinate_systems cs\n    WHERE cs.coordinate_system_id = NEW.coordinate_system_id\n) \u003c\u003e 3\nBEGIN\n    SELECT RAISE(ABORT, 'Localization estimate declares a z coordinate under a coordinate system that is not 3-dimensional');\nEND"
+        },
+        {
+          "name": "trg_localization_estimate_project_scope",
+          "def": "CREATE TRIGGER trg_localization_estimate_project_scope\nBEFORE INSERT ON attribution_localization_estimates\nFOR EACH ROW\nWHEN (\n    SELECT r.project_id\n    FROM imported_attribution_windows iw\n    JOIN recordings r ON r.recording_id = iw.recording_id\n    WHERE iw.imported_attribution_window_id = NEW.imported_attribution_window_id\n) \u003c\u003e (\n    SELECT cs.project_id\n    FROM coordinate_systems cs\n    WHERE cs.coordinate_system_id = NEW.coordinate_system_id\n)\nBEGIN\n    SELECT RAISE(ABORT, 'Localization estimate coordinate system belongs to a different project than its window''s recording');\nEND"
+        },
+        {
+          "name": "trg_localization_estimate_claim_scope",
+          "def": "CREATE TRIGGER trg_localization_estimate_claim_scope\nBEFORE INSERT ON attribution_localization_estimates\nFOR EACH ROW\nWHEN NEW.imported_attribution_claim_id IS NOT NULL AND (\n    SELECT c.imported_attribution_window_id\n    FROM imported_attribution_claims c\n    WHERE c.imported_attribution_claim_id = NEW.imported_attribution_claim_id\n) \u003c\u003e NEW.imported_attribution_window_id\nBEGIN\n    SELECT RAISE(ABORT, 'Localization estimate claim belongs to a different window');\nEND"
+        }
+      ],
+      "def": "CREATE TABLE attribution_localization_estimates (\n    attribution_localization_estimate_id INTEGER PRIMARY KEY,\n    imported_attribution_window_id INTEGER NOT NULL REFERENCES imported_attribution_windows(imported_attribution_window_id) ON DELETE CASCADE,\n    imported_attribution_claim_id INTEGER REFERENCES imported_attribution_claims(imported_attribution_claim_id) ON DELETE CASCADE,\n    estimate_ordinal    INTEGER NOT NULL CHECK (estimate_ordinal \u003e= 1),\n    native_estimate_id  TEXT,\n    coordinate_system_id INTEGER NOT NULL REFERENCES coordinate_systems(coordinate_system_id) ON DELETE RESTRICT,\n    position_x          REAL NOT NULL,\n    position_y          REAL NOT NULL,\n    position_z          REAL,\n    position_semantics  TEXT NOT NULL,\n    confidence          REAL,\n    confidence_semantics TEXT,\n    source_file_id      INTEGER REFERENCES source_files(source_file_id) ON DELETE SET NULL,\n    mapping_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,\n    source_locator      TEXT,\n    notes               TEXT,\n    UNIQUE(imported_attribution_window_id, estimate_ordinal),\n    -- A number without stated semantics is not interpretable evidence.\n    CHECK (confidence IS NULL OR confidence_semantics IS NOT NULL)\n)"
+    },
+    {
+      "name": "attribution_native_attributes",
+      "type": "table",
+      "columns": [
+        {
+          "name": "attribution_native_attribute_id",
+          "type": "INTEGER",
+          "nullable": true
+        },
+        {
+          "name": "imported_attribution_window_id",
+          "type": "INTEGER",
+          "nullable": true
+        },
+        {
+          "name": "imported_attribution_claim_id",
+          "type": "INTEGER",
+          "nullable": true
+        },
+        {
+          "name": "attribution_localization_estimate_id",
+          "type": "INTEGER",
+          "nullable": true
+        },
+        {
+          "name": "attribute_name",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "native_field_name",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "value_type",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "value_text",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "value_real",
+          "type": "REAL",
+          "nullable": true
+        },
+        {
+          "name": "value_integer",
+          "type": "INTEGER",
+          "nullable": true
+        },
+        {
+          "name": "value_boolean",
+          "type": "INTEGER",
+          "nullable": true
+        },
+        {
+          "name": "native_raw_token",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "unit",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "source_locator",
+          "type": "TEXT",
+          "nullable": true
+        },
+        {
+          "name": "mapping_rule_key",
+          "type": "TEXT",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "idx_attribution_native_attributes_estimate_name",
+          "def": "CREATE UNIQUE INDEX idx_attribution_native_attributes_estimate_name\n    ON attribution_native_attributes(attribution_localization_estimate_id, attribute_name)\n    WHERE attribution_localization_estimate_id IS NOT NULL",
+          "table": "attribution_native_attributes",
+          "columns": [
+            "attribution_localization_estimate_id",
+            "attribute_name"
+          ]
+        },
+        {
+          "name": "idx_attribution_native_attributes_claim_name",
+          "def": "CREATE UNIQUE INDEX idx_attribution_native_attributes_claim_name\n    ON attribution_native_attributes(imported_attribution_claim_id, attribute_name)\n    WHERE imported_attribution_claim_id IS NOT NULL",
+          "table": "attribution_native_attributes",
+          "columns": [
+            "imported_attribution_claim_id",
+            "attribute_name"
+          ]
+        },
+        {
+          "name": "idx_attribution_native_attributes_window_name",
+          "def": "CREATE UNIQUE INDEX idx_attribution_native_attributes_window_name\n    ON attribution_native_attributes(imported_attribution_window_id, attribute_name)\n    WHERE imported_attribution_window_id IS NOT NULL",
+          "table": "attribution_native_attributes",
+          "columns": [
+            "imported_attribution_window_id",
+            "attribute_name"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "attribution_native_attribute_id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (attribution_native_attribute_id)",
+          "table": "attribution_native_attributes",
+          "columns": [
+            "attribution_native_attribute_id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (attribution_localization_estimate_id) REFERENCES attribution_localization_estimates (attribution_localization_estimate_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
+          "table": "attribution_native_attributes",
+          "referenced_table": "attribution_localization_estimates",
+          "columns": [
+            "attribution_localization_estimate_id"
+          ],
+          "referenced_columns": [
+            "attribution_localization_estimate_id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 1)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (imported_attribution_claim_id) REFERENCES imported_attribution_claims (imported_attribution_claim_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
+          "table": "attribution_native_attributes",
+          "referenced_table": "imported_attribution_claims",
+          "columns": [
+            "imported_attribution_claim_id"
+          ],
+          "referenced_columns": [
+            "imported_attribution_claim_id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 2)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (imported_attribution_window_id) REFERENCES imported_attribution_windows (imported_attribution_window_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
+          "table": "attribution_native_attributes",
+          "referenced_table": "imported_attribution_windows",
+          "columns": [
+            "imported_attribution_window_id"
+          ],
+          "referenced_columns": [
+            "imported_attribution_window_id"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (value_type IN ('text','real','integer','boolean','missing'))",
+          "table": "attribution_native_attributes",
+          "columns": [
+            "value_type"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (value_boolean IS NULL OR value_boolean IN (0,1))",
+          "table": "attribution_native_attributes",
+          "columns": [
+            "value_boolean"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK ((imported_attribution_window_id IS NOT NULL) + (imported_attribution_claim_id IS NOT NULL) + (attribution_localization_estimate_id IS NOT NULL) = 1)",
+          "table": "attribution_native_attributes",
+          "columns": [
+            "imported_attribution_window_id",
+            "imported_attribution_claim_id",
+            "attribution_localization_estimate_id"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK ( (value_type = 'missing' AND value_text IS NULL AND value_real IS NULL AND value_integer IS NULL AND value_boolean IS NULL) OR (value_type \u003c\u003e 'missing' AND (value_text IS NOT NULL) + (value_real IS NOT NULL) + (value_integer IS NOT NULL) + (value_boolean IS NOT NULL) = 1) )",
+          "table": "attribution_native_attributes",
+          "columns": [
+            "value_type",
+            "value_text",
+            "value_real",
+            "value_integer",
+            "value_boolean"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE attribution_native_attributes (\n    attribution_native_attribute_id INTEGER PRIMARY KEY,\n    imported_attribution_window_id INTEGER REFERENCES imported_attribution_windows(imported_attribution_window_id) ON DELETE CASCADE,\n    imported_attribution_claim_id INTEGER REFERENCES imported_attribution_claims(imported_attribution_claim_id) ON DELETE CASCADE,\n    attribution_localization_estimate_id INTEGER REFERENCES attribution_localization_estimates(attribution_localization_estimate_id) ON DELETE CASCADE,\n    attribute_name      TEXT NOT NULL,\n    native_field_name   TEXT,\n    value_type          TEXT NOT NULL CHECK (value_type IN ('text','real','integer','boolean','missing')),\n    value_text          TEXT,\n    value_real          REAL,\n    value_integer       INTEGER,\n    value_boolean       INTEGER CHECK (value_boolean IS NULL OR value_boolean IN (0,1)),\n    native_raw_token    TEXT,\n    unit                TEXT,\n    source_locator      TEXT,\n    mapping_rule_key    TEXT,\n    CHECK ((imported_attribution_window_id IS NOT NULL)\n         + (imported_attribution_claim_id IS NOT NULL)\n         + (attribution_localization_estimate_id IS NOT NULL) = 1),\n    CHECK (\n      (value_type = 'missing' AND value_text IS NULL AND value_real IS NULL AND value_integer IS NULL AND value_boolean IS NULL)\n      OR\n      (value_type \u003c\u003e 'missing' AND\n       (value_text IS NOT NULL) + (value_real IS NOT NULL) + (value_integer IS NOT NULL) + (value_boolean IS NOT NULL) = 1)\n    )\n)"
+    },
+    {
+      "name": "attribution_run_declared_inputs",
+      "type": "table",
+      "columns": [
+        {
+          "name": "attribution_run_id",
+          "type": "INTEGER",
+          "nullable": false
+        },
+        {
+          "name": "input_dimension",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "declaration",
+          "type": "TEXT",
+          "nullable": false
+        },
+        {
+          "name": "declared_by_profile_version_id",
+          "type": "INTEGER",
+          "nullable": false
+        },
+        {
+          "name": "notes",
+          "type": "TEXT",
+          "nullable": true
+        }
+      ],
+      "indexes": [
+        {
+          "name": "sqlite_autoindex_attribution_run_declared_inputs_1",
+          "def": "PRIMARY KEY (attribution_run_id, input_dimension)",
+          "table": "attribution_run_declared_inputs",
+          "columns": [
+            "attribution_run_id",
+            "input_dimension"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "attribution_run_id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (attribution_run_id)",
+          "table": "attribution_run_declared_inputs",
+          "columns": [
+            "attribution_run_id"
+          ]
+        },
+        {
+          "name": "input_dimension",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (input_dimension)",
+          "table": "attribution_run_declared_inputs",
+          "columns": [
+            "input_dimension"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (declared_by_profile_version_id) REFERENCES config_profile_versions (profile_version_id) ON UPDATE NO ACTION ON DELETE RESTRICT MATCH NONE",
+          "table": "attribution_run_declared_inputs",
+          "referenced_table": "config_profile_versions",
+          "columns": [
+            "declared_by_profile_version_id"
+          ],
+          "referenced_columns": [
+            "profile_version_id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 1)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (attribution_run_id) REFERENCES attribution_runs (attribution_run_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
+          "table": "attribution_run_declared_inputs",
+          "referenced_table": "attribution_runs",
+          "columns": [
+            "attribution_run_id"
+          ],
+          "referenced_columns": [
+            "attribution_run_id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_attribution_run_declared_inputs_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (attribution_run_id, input_dimension)",
+          "table": "attribution_run_declared_inputs",
+          "columns": [
+            "attribution_run_id",
+            "input_dimension"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (input_dimension IN ( 'temporal_alignment', 'pose_localization', 'visual_identity', 'acoustic' ))",
+          "table": "attribution_run_declared_inputs",
+          "columns": [
+            "input_dimension"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (declaration IN ('used','not_used'))",
+          "table": "attribution_run_declared_inputs",
+          "columns": [
+            "declaration"
+          ]
+        }
+      ],
+      "def": "CREATE TABLE attribution_run_declared_inputs (\n    attribution_run_id  INTEGER NOT NULL REFERENCES attribution_runs(attribution_run_id) ON DELETE CASCADE,\n    input_dimension     TEXT NOT NULL CHECK (input_dimension IN (\n                            'temporal_alignment',\n                            'pose_localization',\n                            'visual_identity',\n                            'acoustic'\n                        )),\n    declaration         TEXT NOT NULL CHECK (declaration IN ('used','not_used')),\n    declared_by_profile_version_id INTEGER NOT NULL REFERENCES config_profile_versions(profile_version_id) ON DELETE RESTRICT,\n    notes               TEXT,\n    PRIMARY KEY(attribution_run_id, input_dimension)\n)"
     },
     {
       "name": "v_detection_core",
@@ -18245,6 +18872,32 @@
     {
       "table": "attribution_evidence",
       "columns": [
+        "attribution_localization_estimate_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "attribution_localization_estimates",
+      "parent_columns": [
+        "attribution_localization_estimate_id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (attribution_localization_estimate_id) REFERENCES attribution_localization_estimates (attribution_localization_estimate_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
+    },
+    {
+      "table": "attribution_evidence",
+      "columns": [
+        "recording_channel_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "recording_channels",
+      "parent_columns": [
+        "recording_channel_id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (recording_channel_id) REFERENCES recording_channels (recording_channel_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
+    },
+    {
+      "table": "attribution_evidence",
+      "columns": [
         "mapping_profile_version_id"
       ],
       "cardinality": "zero_or_more",
@@ -18514,6 +19167,136 @@
       ],
       "parent_cardinality": "exactly_one",
       "def": "FOREIGN KEY (imported_attribution_window_id) REFERENCES imported_attribution_windows (imported_attribution_window_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
+    },
+    {
+      "table": "attribution_localization_estimates",
+      "columns": [
+        "mapping_profile_version_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "config_profile_versions",
+      "parent_columns": [
+        "profile_version_id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (mapping_profile_version_id) REFERENCES config_profile_versions (profile_version_id) ON UPDATE NO ACTION ON DELETE SET NULL MATCH NONE"
+    },
+    {
+      "table": "attribution_localization_estimates",
+      "columns": [
+        "source_file_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "source_files",
+      "parent_columns": [
+        "source_file_id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (source_file_id) REFERENCES source_files (source_file_id) ON UPDATE NO ACTION ON DELETE SET NULL MATCH NONE"
+    },
+    {
+      "table": "attribution_localization_estimates",
+      "columns": [
+        "coordinate_system_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "coordinate_systems",
+      "parent_columns": [
+        "coordinate_system_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (coordinate_system_id) REFERENCES coordinate_systems (coordinate_system_id) ON UPDATE NO ACTION ON DELETE RESTRICT MATCH NONE"
+    },
+    {
+      "table": "attribution_localization_estimates",
+      "columns": [
+        "imported_attribution_claim_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "imported_attribution_claims",
+      "parent_columns": [
+        "imported_attribution_claim_id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (imported_attribution_claim_id) REFERENCES imported_attribution_claims (imported_attribution_claim_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
+    },
+    {
+      "table": "attribution_localization_estimates",
+      "columns": [
+        "imported_attribution_window_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "imported_attribution_windows",
+      "parent_columns": [
+        "imported_attribution_window_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (imported_attribution_window_id) REFERENCES imported_attribution_windows (imported_attribution_window_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
+    },
+    {
+      "table": "attribution_native_attributes",
+      "columns": [
+        "attribution_localization_estimate_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "attribution_localization_estimates",
+      "parent_columns": [
+        "attribution_localization_estimate_id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (attribution_localization_estimate_id) REFERENCES attribution_localization_estimates (attribution_localization_estimate_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
+    },
+    {
+      "table": "attribution_native_attributes",
+      "columns": [
+        "imported_attribution_claim_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "imported_attribution_claims",
+      "parent_columns": [
+        "imported_attribution_claim_id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (imported_attribution_claim_id) REFERENCES imported_attribution_claims (imported_attribution_claim_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
+    },
+    {
+      "table": "attribution_native_attributes",
+      "columns": [
+        "imported_attribution_window_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "imported_attribution_windows",
+      "parent_columns": [
+        "imported_attribution_window_id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (imported_attribution_window_id) REFERENCES imported_attribution_windows (imported_attribution_window_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
+    },
+    {
+      "table": "attribution_run_declared_inputs",
+      "columns": [
+        "declared_by_profile_version_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "config_profile_versions",
+      "parent_columns": [
+        "profile_version_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (declared_by_profile_version_id) REFERENCES config_profile_versions (profile_version_id) ON UPDATE NO ACTION ON DELETE RESTRICT MATCH NONE"
+    },
+    {
+      "table": "attribution_run_declared_inputs",
+      "columns": [
+        "attribution_run_id"
+      ],
+      "cardinality": "zero_or_one",
+      "parent_table": "attribution_runs",
+      "parent_columns": [
+        "attribution_run_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (attribution_run_id) REFERENCES attribution_runs (attribution_run_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
     }
   ],
   "driver": {

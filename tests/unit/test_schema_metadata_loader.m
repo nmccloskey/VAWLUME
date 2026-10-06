@@ -167,7 +167,7 @@ cleanup = addSourcePath(); %#ok<NASGU>
 % Five ways of appearing to have described a column without having done so.
 % The last is the one that matters at this scale: "Project key" as the
 % description of `project_key` is the filler that would otherwise accumulate
-% over 1,155 columns, and it is indistinguishable from real work in a diff.
+% over 1,193 columns, and it is indistinguishable from real work in a diff.
 cases = ["", "   ", "Too short.", "TODO: describe this column later.", "Project key"];
 reasons = ["empty", "whitespace only", "under the minimum length", ...
     "a placeholder marker", "restates the name and nothing else"];

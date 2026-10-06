@@ -1,6 +1,6 @@
 -- VAWLUME prototype relational schema
--- Version: 0.11-draft
--- Date: 2026-09-23
+-- Version: 0.12-draft
+-- Date: 2026-10-05
 -- Target: SQLite (MATLAB-centered workflow)
 --
 -- Design priorities:
@@ -47,9 +47,9 @@ CREATE TABLE schema_info (
 );
 
 INSERT OR IGNORE INTO schema_info(schema_version, description)
-VALUES ('0.11-draft', 'Schema hygiene: agreement summary patterns state their own aggregate order, cross-extractor feature pairs give one row per relationship from each feature''s latest mapping, an agreement run takes one extraction run per extractor, and removing a decision''s selection cannot contradict its status');
+VALUES ('0.12-draft', 'Backend/localization attribution: a localization estimate stored once, in a declared coordinate system, keyed to the external window it was computed over; source_localization as a separate evidence dimension whose rows cite their estimate; channel-cited evidence; long-form typed native attributes with no JSON value type; per-run declarations of which uncertainty sources a producer consumed; and an attribution_backend_mapping profile kind');
 
-PRAGMA user_version = 11;
+PRAGMA user_version = 12;
 
 -- ============================================================================
 -- 1. Project and configuration-profile infrastructure
@@ -83,6 +83,7 @@ CREATE TABLE config_profiles (
                             'consilience_policy',
                             'attribution_input_mapping',
                             'attribution_policy',
+                            'attribution_backend_mapping',
                             'other'
                         )),
     is_builtin          INTEGER NOT NULL DEFAULT 0 CHECK (is_builtin IN (0,1)),
@@ -1916,6 +1917,29 @@ CREATE TABLE attribution_candidates (
 -- calibration and no review state; a tracking_identity_associations row is
 -- identity evidence. Both may support an attribution claim. Neither may be used
 -- silently, so a row derived from one names which.
+--
+-- 'source_localization' was added at 0.12-draft. The closed vocabulary was
+-- widened deliberately, not quietly. It means WHERE A SOUND ORIGINATED, as an
+-- external spatial-acoustic system estimated it. That is not
+-- 'pose_localization', which means where a tracked bodypart is: the closeness
+-- of a sound source to a snout is the hypothesis an attribution analysis tests,
+-- and storing one as the other would make the hypothesis look like its own
+-- evidence. Nor is it 'acoustic', which is a measurement rather than a position.
+-- The separated evidence dimensions are therefore five - temporal_alignment,
+-- pose_localization, visual_identity, acoustic and source_localization - while
+-- the upstream uncertainty sources stay four. 'correspondence' and
+-- 'imported_composite' are not dimensions. VAWLUME combines none of the five.
+--
+-- A source_localization row CITES its estimate through
+-- attribution_localization_estimate_id and copies nothing: no coordinate, no
+-- confidence. The estimate is the authority, and a quantity readable from its
+-- authority does not get a second home here. The CHECK below makes the citation
+-- two-way: such a row must cite an estimate, and no other dimension may.
+--
+-- recording_channel_id (0.12-draft) names the channel per-channel evidence came
+-- from, as derived_measurements.recording_channel_id does. The channel is part
+-- of what such a row IS, not merely where it was read from, so the row does not
+-- outlive it. Scope is guarded by trigger in both directions.
 CREATE TABLE attribution_evidence (
     attribution_evidence_id INTEGER PRIMARY KEY,
     attribution_target_id INTEGER NOT NULL REFERENCES attribution_targets(attribution_target_id) ON DELETE CASCADE,
@@ -1926,7 +1950,8 @@ CREATE TABLE attribution_evidence (
                             'visual_identity',
                             'acoustic',
                             'correspondence',
-                            'imported_composite'
+                            'imported_composite',
+                            'source_localization'
                         )),
     evidence_kind       TEXT NOT NULL,
     value_real          REAL,
@@ -1944,7 +1969,15 @@ CREATE TABLE attribution_evidence (
     mapping_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,
     source_locator      TEXT,
     notes               TEXT,
+    recording_channel_id INTEGER REFERENCES recording_channels(recording_channel_id) ON DELETE CASCADE,
+    attribution_localization_estimate_id INTEGER REFERENCES attribution_localization_estimates(attribution_localization_estimate_id) ON DELETE CASCADE,
     CHECK (value_real IS NULL OR value_semantics IS NOT NULL),
+    -- A source localization cites the estimate it rests on, and only a source
+    -- localization may. CASCADE rather than SET NULL above, because this CHECK
+    -- makes an orphaned source_localization row illegal: evidence about an
+    -- estimate that no longer exists says nothing.
+    CHECK ((evidence_dimension = 'source_localization')
+         = (attribution_localization_estimate_id IS NOT NULL)),
     -- An identity-derived row names which kind of statement it rests on, and
     -- points at the row it read. A-1.
     CHECK (identity_statement_kind IS NULL
@@ -2025,6 +2058,13 @@ CREATE TABLE attribution_decision_candidates (
 --
 -- Times are NATIVE and are never overwritten. Expressing them on a VAWLUME clock
 -- produces an attribution_window_correspondences row, not an edit.
+--
+-- "Imported" means produced outside VAWLUME and brought in through a mapping
+-- profile. It does not mean "written by the imported path". A localization
+-- backend's own segmentation has exactly that property and lands here too; which
+-- kind of external system produced a run is attribution_runs.attribution_path.
+-- The native estimator never writes a row here, because it targets VAWLUME's own
+-- events directly.
 --
 -- A window is a statement about TIME only. Which caller was claimed over it, and
 -- with what number, is imported_attribution_claims - one row per claim, because
@@ -2139,6 +2179,157 @@ CREATE TABLE attribution_window_correspondences (
     -- An aligned basis means a transform was applied, so name it.
     CHECK (iou_basis <> 'aligned' OR alignment_run_id IS NOT NULL)
 );
+
+-- One localization estimate an external system reported: where it estimated a
+-- sound came from, in a declared spatial frame. Added at 0.12-draft.
+--
+-- Keyed to the external WINDOW it was computed over, not to a VAWLUME target or
+-- candidate. At intake neither exists: which event a window refers to is decided
+-- later by correspondence, possibly ambiguously, and keying an estimate to a
+-- target would force intake to choose. That is P4-5's grain problem - an
+-- exporter's number with nowhere to go before correspondence - answered from the
+-- start, the way imported_attribution_claims answers it for caller scores. An
+-- estimate reaches a target only when an attribution_evidence row of dimension
+-- source_localization cites it, written explicitly.
+--
+-- imported_attribution_claim_id is set when the producer tied this estimate to
+-- one of its claimed callers. A trigger requires that claim to belong to the
+-- same window.
+--
+-- estimate_ordinal is the producer's own order among several estimates for one
+-- window. A system may report several plausible sources; nothing here ranks
+-- them, and the ordinal is not a VAWLUME ranking.
+--
+-- THE FRAME IS PART OF THE COORDINATE. coordinate_system_id is NOT NULL: a pair
+-- of numbers with no declared frame is not a weak coordinate, it is not a
+-- coordinate. Compatibility is identity of coordinate_system_id, exactly as for
+-- channel_placements and tracking_streams, and RESTRICT keeps a cited frame
+-- from vanishing under its coordinates. VAWLUME transforms nothing between
+-- frames and computes no distance from these numbers.
+--
+-- position_z is permitted only under a 3-dimensional frame and is optional even
+-- then. A 2D estimate stores NULL, never 0: a zero would claim a measurement on
+-- a plane the producer never estimated.
+--
+-- confidence is the producer's number on the producer's scale, unconstrained
+-- for the reason attribution_candidates.score is. It is localization
+-- confidence - how sure the producer is WHERE - and is not a caller probability.
+-- Like every stored number it requires its semantics, and position_semantics
+-- says what point the coordinates describe and who computed it.
+--
+-- One row is a window-level summary. A time-resolved localization track is
+-- dense data and stays in the registered artifact, under the same policy as
+-- dense tracking samples. Positional uncertainty richer than one scalar - a
+-- covariance, per-axis error - is preserved in attribution_native_attributes,
+-- not given canonical columns here.
+CREATE TABLE attribution_localization_estimates (
+    attribution_localization_estimate_id INTEGER PRIMARY KEY,
+    imported_attribution_window_id INTEGER NOT NULL REFERENCES imported_attribution_windows(imported_attribution_window_id) ON DELETE CASCADE,
+    imported_attribution_claim_id INTEGER REFERENCES imported_attribution_claims(imported_attribution_claim_id) ON DELETE CASCADE,
+    estimate_ordinal    INTEGER NOT NULL CHECK (estimate_ordinal >= 1),
+    native_estimate_id  TEXT,
+    coordinate_system_id INTEGER NOT NULL REFERENCES coordinate_systems(coordinate_system_id) ON DELETE RESTRICT,
+    position_x          REAL NOT NULL,
+    position_y          REAL NOT NULL,
+    position_z          REAL,
+    position_semantics  TEXT NOT NULL,
+    confidence          REAL,
+    confidence_semantics TEXT,
+    source_file_id      INTEGER REFERENCES source_files(source_file_id) ON DELETE SET NULL,
+    mapping_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,
+    source_locator      TEXT,
+    notes               TEXT,
+    UNIQUE(imported_attribution_window_id, estimate_ordinal),
+    -- A number without stated semantics is not interpretable evidence.
+    CHECK (confidence IS NULL OR confidence_semantics IS NOT NULL)
+);
+
+-- A producer's own fields, preserved where its mapping profile asked, in long
+-- form. Added at 0.12-draft.
+--
+-- A native field is not a canonical field. Keeping these rows apart from every
+-- canonical column is what stops a producer's 'conf_v2' from being read as a
+-- canonical confidence. Nothing in this table is named after a producer, and
+-- nothing here is specific to one path: the table is path-neutral by name and
+-- by shape.
+--
+-- Exactly one owner, under the exclusive construction attribution_targets
+-- uses: a native field describes a window, a claim, or a localization estimate,
+-- and the row says which.
+--
+-- Follows external_event_attributes' typed-value convention, with one
+-- deliberate difference: there is NO 'json' value type. P4-2 is the ledger item
+-- created by choosing JSON once. A structured native field is preserved as
+-- several named scalar attributes, or verbatim in native_raw_token.
+-- value_type 'missing' keeps "the producer wrote nothing here" distinguishable
+-- from "this field was not preserved".
+--
+-- One value per (owner, attribute_name) is enforced by three partial unique
+-- indexes in section 16. A UNIQUE over nullable owner columns would constrain
+-- nothing, because SQLite treats NULLs as distinct.
+CREATE TABLE attribution_native_attributes (
+    attribution_native_attribute_id INTEGER PRIMARY KEY,
+    imported_attribution_window_id INTEGER REFERENCES imported_attribution_windows(imported_attribution_window_id) ON DELETE CASCADE,
+    imported_attribution_claim_id INTEGER REFERENCES imported_attribution_claims(imported_attribution_claim_id) ON DELETE CASCADE,
+    attribution_localization_estimate_id INTEGER REFERENCES attribution_localization_estimates(attribution_localization_estimate_id) ON DELETE CASCADE,
+    attribute_name      TEXT NOT NULL,
+    native_field_name   TEXT,
+    value_type          TEXT NOT NULL CHECK (value_type IN ('text','real','integer','boolean','missing')),
+    value_text          TEXT,
+    value_real          REAL,
+    value_integer       INTEGER,
+    value_boolean       INTEGER CHECK (value_boolean IS NULL OR value_boolean IN (0,1)),
+    native_raw_token    TEXT,
+    unit                TEXT,
+    source_locator      TEXT,
+    mapping_rule_key    TEXT,
+    CHECK ((imported_attribution_window_id IS NOT NULL)
+         + (imported_attribution_claim_id IS NOT NULL)
+         + (attribution_localization_estimate_id IS NOT NULL) = 1),
+    CHECK (
+      (value_type = 'missing' AND value_text IS NULL AND value_real IS NULL AND value_integer IS NULL AND value_boolean IS NULL)
+      OR
+      (value_type <> 'missing' AND
+       (value_text IS NOT NULL) + (value_real IS NOT NULL) + (value_integer IS NOT NULL) + (value_boolean IS NOT NULL) = 1)
+    )
+);
+
+-- What a producer declared it had already consumed, per uncertainty source.
+-- Added at 0.12-draft.
+--
+-- This closes the gap the Phase 4 contract recorded in its 4.12a correction:
+-- nothing said which evidence an external system's score already used, so a
+-- reader could not tell whether a producer's number and VAWLUME's own acoustic
+-- rows were independent. Keyed by run, not by path, so it serves any external
+-- producer.
+--
+-- THREE STATES, not two. 'used' and 'not_used' are declarations; NO ROW means
+-- undeclared, which is unknown and never 'not_used'. The declaration is
+-- optional in the profile because a user who does not know what a producer
+-- consumed must not be made to guess.
+--
+-- input_dimension is the four upstream uncertainty sources, not the five
+-- evidence dimensions. The question is what the producer consumed, and
+-- source_localization is a producer's output. A later phase whose producer
+-- consumes another system's source localization widens this deliberately.
+--
+-- A list in one attribution_runs column would be JSON (P4-2 again) or a
+-- delimited string (the '|'-join defect). Hence long form. The declaration
+-- names the profile version that made it, because a declaration with no source
+-- is an opinion with no provenance.
+CREATE TABLE attribution_run_declared_inputs (
+    attribution_run_id  INTEGER NOT NULL REFERENCES attribution_runs(attribution_run_id) ON DELETE CASCADE,
+    input_dimension     TEXT NOT NULL CHECK (input_dimension IN (
+                            'temporal_alignment',
+                            'pose_localization',
+                            'visual_identity',
+                            'acoustic'
+                        )),
+    declaration         TEXT NOT NULL CHECK (declaration IN ('used','not_used')),
+    declared_by_profile_version_id INTEGER NOT NULL REFERENCES config_profile_versions(profile_version_id) ON DELETE RESTRICT,
+    notes               TEXT,
+    PRIMARY KEY(attribution_run_id, input_dimension)
+);
 -- ============================================================================
 -- 14. Integrity triggers for cross-table invariants SQLite cannot express as CHECKs
 -- ============================================================================
@@ -2152,8 +2343,10 @@ CREATE TABLE attribution_window_correspondences (
 -- twin where getting them wrong would silently change the MEANING of a stored
 -- row rather than merely misfile it - the identity unresolved/candidate pairing,
 -- placement dimensionality, acoustic reference channel and event scope,
--- derived-measurement channel scope, and the channel-response estimate scopes.
--- Each of those states its own reason above itself.
+-- derived-measurement channel scope, the channel-response estimate scopes, and
+-- (0.12-draft) localization-estimate dimensionality and the attribution-evidence
+-- channel and localization scopes. Each of those states its own reason above
+-- itself.
 --
 -- The consequence, which is worth knowing before relying on it: a direct UPDATE
 -- issued outside the public API can still move an insert-guarded row across a
@@ -3181,6 +3374,155 @@ WHEN NEW.entity_id IS NOT NULL AND (
 ) = 0
 BEGIN
     SELECT RAISE(ABORT, 'Imported claim caller is not an entity linked to this recording');
+END;
+
+-- --- Backend/localization scope guards (0.12-draft) ------------------------
+--
+-- Scope comparisons below use <> rather than IS NOT, so a reference to a row
+-- that does not exist compares as NULL, the guard stays quiet, and the foreign
+-- key reports the real problem instead of a misleading scope message.
+
+-- A localization z is meaningful only under a 3-dimensional frame. The
+-- channel_placements guard pair, copied for the same reason: without the update
+-- twin a row inserted legally could later be given a z, or have its frame
+-- repointed at a 2D system.
+CREATE TRIGGER trg_localization_estimate_dimensionality
+BEFORE INSERT ON attribution_localization_estimates
+FOR EACH ROW
+WHEN NEW.position_z IS NOT NULL AND (
+    SELECT cs.dimensionality
+    FROM coordinate_systems cs
+    WHERE cs.coordinate_system_id = NEW.coordinate_system_id
+) <> 3
+BEGIN
+    SELECT RAISE(ABORT, 'Localization estimate declares a z coordinate under a coordinate system that is not 3-dimensional');
+END;
+
+CREATE TRIGGER trg_localization_estimate_dimensionality_update
+BEFORE UPDATE ON attribution_localization_estimates
+FOR EACH ROW
+WHEN NEW.position_z IS NOT NULL AND (
+    SELECT cs.dimensionality
+    FROM coordinate_systems cs
+    WHERE cs.coordinate_system_id = NEW.coordinate_system_id
+) <> 3
+BEGIN
+    SELECT RAISE(ABORT, 'Localization estimate declares a z coordinate under a coordinate system that is not 3-dimensional');
+END;
+
+-- An estimate's frame belongs to the project of the recording its window is
+-- about. The same class of guard as trg_channel_placement_project_scope: without
+-- it an estimate could cite another project's frame, and the two would look
+-- compatible to any check that compares identifiers.
+CREATE TRIGGER trg_localization_estimate_project_scope
+BEFORE INSERT ON attribution_localization_estimates
+FOR EACH ROW
+WHEN (
+    SELECT r.project_id
+    FROM imported_attribution_windows iw
+    JOIN recordings r ON r.recording_id = iw.recording_id
+    WHERE iw.imported_attribution_window_id = NEW.imported_attribution_window_id
+) <> (
+    SELECT cs.project_id
+    FROM coordinate_systems cs
+    WHERE cs.coordinate_system_id = NEW.coordinate_system_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Localization estimate coordinate system belongs to a different project than its window''s recording');
+END;
+
+-- An estimate tied to a claimed caller is tied to a claim made over the same
+-- window. A claim over another window is a statement about different sound.
+CREATE TRIGGER trg_localization_estimate_claim_scope
+BEFORE INSERT ON attribution_localization_estimates
+FOR EACH ROW
+WHEN NEW.imported_attribution_claim_id IS NOT NULL AND (
+    SELECT c.imported_attribution_window_id
+    FROM imported_attribution_claims c
+    WHERE c.imported_attribution_claim_id = NEW.imported_attribution_claim_id
+) <> NEW.imported_attribution_window_id
+BEGIN
+    SELECT RAISE(ABORT, 'Localization estimate claim belongs to a different window');
+END;
+
+-- Channel-cited evidence names a channel of the recording its run is about, the
+-- rule trg_derived_measurement_channel_scope applies. Guarded on update as well:
+-- repointing the channel changes what the row claims was measured, not merely
+-- where it is filed.
+CREATE TRIGGER trg_attribution_evidence_channel_scope
+BEFORE INSERT ON attribution_evidence
+FOR EACH ROW
+WHEN NEW.recording_channel_id IS NOT NULL AND (
+    SELECT rc.recording_id
+    FROM recording_channels rc
+    WHERE rc.recording_channel_id = NEW.recording_channel_id
+) <> (
+    SELECT ar.recording_id
+    FROM attribution_targets at
+    JOIN attribution_runs ar ON ar.attribution_run_id = at.attribution_run_id
+    WHERE at.attribution_target_id = NEW.attribution_target_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Attribution evidence channel belongs to a different recording than its run');
+END;
+
+CREATE TRIGGER trg_attribution_evidence_channel_scope_update
+BEFORE UPDATE ON attribution_evidence
+FOR EACH ROW
+WHEN NEW.recording_channel_id IS NOT NULL AND (
+    SELECT rc.recording_id
+    FROM recording_channels rc
+    WHERE rc.recording_channel_id = NEW.recording_channel_id
+) <> (
+    SELECT ar.recording_id
+    FROM attribution_targets at
+    JOIN attribution_runs ar ON ar.attribution_run_id = at.attribution_run_id
+    WHERE at.attribution_target_id = NEW.attribution_target_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Attribution evidence channel belongs to a different recording than its run');
+END;
+
+-- A source_localization row cites an estimate from its own run. This is a SCOPE
+-- rule: an estimate from another run is a false claim. Whether the estimate's
+-- window actually corresponds to this target, and whether an estimate tied to a
+-- claimed caller may support this candidate, are workflow rules the write path
+-- refuses - the schema refuses false claims, the API refuses unsupported ones.
+-- Guarded on update for the reason the channel guard is.
+CREATE TRIGGER trg_attribution_evidence_localization_scope
+BEFORE INSERT ON attribution_evidence
+FOR EACH ROW
+WHEN NEW.attribution_localization_estimate_id IS NOT NULL AND (
+    SELECT iw.attribution_run_id
+    FROM attribution_localization_estimates le
+    JOIN imported_attribution_windows iw
+      ON iw.imported_attribution_window_id = le.imported_attribution_window_id
+    WHERE le.attribution_localization_estimate_id = NEW.attribution_localization_estimate_id
+) <> (
+    SELECT at.attribution_run_id
+    FROM attribution_targets at
+    WHERE at.attribution_target_id = NEW.attribution_target_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Attribution evidence cites a localization estimate from a different attribution run');
+END;
+
+CREATE TRIGGER trg_attribution_evidence_localization_scope_update
+BEFORE UPDATE ON attribution_evidence
+FOR EACH ROW
+WHEN NEW.attribution_localization_estimate_id IS NOT NULL AND (
+    SELECT iw.attribution_run_id
+    FROM attribution_localization_estimates le
+    JOIN imported_attribution_windows iw
+      ON iw.imported_attribution_window_id = le.imported_attribution_window_id
+    WHERE le.attribution_localization_estimate_id = NEW.attribution_localization_estimate_id
+) <> (
+    SELECT at.attribution_run_id
+    FROM attribution_targets at
+    WHERE at.attribution_target_id = NEW.attribution_target_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Attribution evidence cites a localization estimate from a different attribution run');
 END;
 -- ============================================================================
 -- 15. Analysis-ready views
@@ -4278,5 +4620,22 @@ CREATE INDEX idx_imported_attribution_claims_window ON imported_attribution_clai
 CREATE INDEX idx_imported_attribution_claims_entity ON imported_attribution_claims(entity_id);
 CREATE INDEX idx_attribution_window_correspondences_target
     ON attribution_window_correspondences(attribution_target_id);
+CREATE INDEX idx_attribution_localization_estimates_window
+    ON attribution_localization_estimates(imported_attribution_window_id);
+CREATE INDEX idx_attribution_localization_estimates_system
+    ON attribution_localization_estimates(coordinate_system_id);
+CREATE INDEX idx_attribution_evidence_localization_estimate
+    ON attribution_evidence(attribution_localization_estimate_id);
+-- One value per (owner, attribute_name). Partial, because the three owner
+-- columns are nullable and a plain UNIQUE over them would constrain nothing.
+CREATE UNIQUE INDEX idx_attribution_native_attributes_window_name
+    ON attribution_native_attributes(imported_attribution_window_id, attribute_name)
+    WHERE imported_attribution_window_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_attribution_native_attributes_claim_name
+    ON attribution_native_attributes(imported_attribution_claim_id, attribute_name)
+    WHERE imported_attribution_claim_id IS NOT NULL;
+CREATE UNIQUE INDEX idx_attribution_native_attributes_estimate_name
+    ON attribution_native_attributes(attribution_localization_estimate_id, attribute_name)
+    WHERE attribution_localization_estimate_id IS NOT NULL;
 
 COMMIT;

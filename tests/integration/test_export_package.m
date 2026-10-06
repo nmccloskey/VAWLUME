@@ -117,7 +117,7 @@ verifyEqual(testCase, value("repository_schema_version"), ...
 verifyEqual(testCase, value("metadata_version"), testCase.TestData.metadata.metadata_version);
 verifyTrue(testCase, isBlank("vawlume_version"));
 verifyEqual(testCase, detail("vawlume_version"), "not_available");
-verifyEqual(testCase, value("supported_object_count"), "107");
+verifyEqual(testCase, value("supported_object_count"), "110");
 verifyEqual(testCase, value("selected_object_count"), "2");
 verifyEqual(testCase, value("exported_object_count"), "2");
 verifyEqual(testCase, value("exported_row_total"), string(result.exported_row_total));
@@ -185,7 +185,7 @@ verifyEqual(testCase, unique(tablesCsv.column("exported", ~exported)), "false");
 verifyFalse(testCase, any(tablesCsv.quoted(~exported, 5)) || any(tablesCsv.quoted(~exported, 6)));
 verifyEqual(testCase, result.objects.exported, exported);
 % The metadata still describes the whole schema.
-verifyEqual(testCase, tablesCsv.count, 107);
+verifyEqual(testCase, tablesCsv.count, 110);
 verifyEqual(testCase, readCsv(fullfile(output, "meta", "relationships.csv")).count, ...
     height(testCase.TestData.structure.relations));
 end
@@ -205,7 +205,7 @@ verifyEqual(testCase, [result.selected_object_count, result.exported_object_coun
     result.exported_row_total], [0 0 0]);
 
 tablesCsv = readCsv(fullfile(output, "meta", "tables.csv"));
-verifyEqual(testCase, tablesCsv.count, 107);
+verifyEqual(testCase, tablesCsv.count, 110);
 verifyEqual(testCase, unique(tablesCsv.column("exported")), "false");
 verifyFalse(testCase, any(tablesCsv.quoted(:, 5)) || any(tablesCsv.quoted(:, 6)), ...
     "No row count or filename may appear in schema-only mode.");
@@ -393,7 +393,7 @@ vawlume.export.internal.writePackageFiles(record, staging);
 
 tablesCsv = readCsv(fullfile(staging, "meta", "tables.csv"));
 verifyEqual(testCase, tablesCsv.values(1, 3), awkward);
-verifyEqual(testCase, tablesCsv.count, 107);
+verifyEqual(testCase, tablesCsv.count, 110);
 columnsCsv = readCsv(fullfile(staging, "meta", "columns.csv"));
 verifyTrue(testCase, columnsCsv.quoted(2, 4));
 verifyEqual(testCase, columnsCsv.values(2, 4), "");
@@ -564,7 +564,7 @@ function testCallingWithoutAnOutputArgumentPrintsASummary(testCase)
 output = fullfile(testCase.TestData.area, "pkg"); %#ok<NASGU> used inside evalc
 printed = evalc("vawlume.export.database(testCase.TestData.fixture, Output=output, Tables=""projects"")");
 verifySubstring(testCase, printed, "VAWLUME CSV export written");
-verifySubstring(testCase, printed, "1 of 107 objects");
+verifySubstring(testCase, printed, "1 of 110 objects");
 end
 
 % --- helpers --------------------------------------------------------------------------------------
