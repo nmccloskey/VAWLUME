@@ -183,6 +183,11 @@ value = vawlume.attribution.report(fixture.conn, ...
     struct(attribution_run_id=backend.run_id));
 
 verifyEqual(testCase, value.attribution_path, "backend");
+% One read surface for every path: the closed field lists asserted on an
+% imported run hold unchanged for a backend run. A path-conditional field would
+% be the beginning of a parallel result model.
+verifyEqual(testCase, sort(string(fieldnames(value)))', expectedReportFields());
+verifyEqual(testCase, sort(string(fieldnames(value.qc)))', expectedQcFields());
 verifyEqual(testCase, height(value.localization_estimates), 2);
 estimate2d = value.localization_estimates( ...
     value.localization_estimates.coordinate_system_key == "arena_floor", :);

@@ -527,9 +527,10 @@ The profile loader should reject or clearly flag:
 The current source-mapping preview surfaces mapping conflicts and readiness
 diagnostics without performing database insertion.
 
-`vawlume.source_mapping.loadProfile` accepts four source-mapping kinds:
-`project_input`, `extractor_output`, `external_stream_mapping`, and
-`alignment_anchor_mapping`. Settings profiles and the matching and
+`vawlume.source_mapping.loadProfile` accepts seven source-mapping kinds:
+`project_input`, `extractor_output`, `external_stream_mapping`,
+`alignment_anchor_mapping`, `tracking_input_mapping`,
+`attribution_input_mapping`, and `attribution_backend_mapping`. Settings profiles and the matching and
 consilience specification are not source-mapping profiles: they declare no
 fields, transforms, or discovery rules, and are read directly with `fileread`
 and `jsondecode`, then registered as checksum-bearing `config_profile_versions`

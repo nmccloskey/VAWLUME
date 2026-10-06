@@ -716,6 +716,15 @@ What Phase 5 builds on, and what it must not disturb.
   `createRun` does not constrain the path. No schema change is needed to create a
   backend run. `createRun`'s help text still says *"currently imported"*, which is
   stale (5.6).
+
+  **Corrected at 5.10a.** The second sentence of this bullet was wrong about the
+  tree it audited. The schema admitted `backend`, but `createRun` did constrain
+  the path: before Phase 5 its plan builder refused every `attribution_path`
+  except `imported` ("Phase 4 creates imported attribution runs only"). The help
+  text was accurate, not stale. Itinerary 5.4 found this (F5.4-1) and admitted
+  `backend`; `native_estimate` is still refused. The gap table's `createRun` row
+  below therefore understated the gap: it was a two-line code change owned by 5.4,
+  not a help-text change owned by 5.6. No schema change was needed, as stated.
 - **`imported_attribution_windows`**: native times, never overwritten, keyed by
   `native_window_id` per run. It holds a backend's segmentation unchanged (D5).
 - **`imported_attribution_claims`**: (window, entity) grain, score and

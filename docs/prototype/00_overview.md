@@ -20,10 +20,10 @@ The project is currently organized around six linked goals.
 
 | Goal | Current prototype status |
 |---|---|
-| **1. Relational ingestion of USV and other data** | Implemented for project metadata, DeepSqueak, MUPET, USVSEG, external events/alignment anchors, spatial/tracking inputs, acoustic-reference evidence, and imported caller-attribution outputs. |
+| **1. Relational ingestion of USV and other data** | Implemented for project metadata, DeepSqueak, MUPET, USVSEG, external events/alignment anchors, spatial/tracking inputs, acoustic-reference evidence, imported caller-attribution outputs, and localization-backend outputs. |
 | **2. Extractor consilience exploration / data-validation support** | Implemented for pairwise correspondence, ambiguity-preserving match groups, arbitrary-N agreement, feature comparison where semantics support it, independent manual-reference evaluation, and threshold sensitivity. |
 | **3. Multimodal temporal alignment** | Implemented as user-anchored source-to-reference clock alignment with native timestamps retained, fit/QC evidence preserved, and common-time projection exposed downstream. |
-| **4. Caller-attribution support** | Partially implemented. VAWLUME can represent spatial, tracking, identity, acoustic, correspondence, and imported attribution evidence and can apply declared decision policies. It does not yet estimate callers natively. |
+| **4. Caller-attribution support** | Partially implemented. VAWLUME can represent spatial, tracking, identity, acoustic, source-localization, correspondence, and imported attribution evidence, import a localization backend's claims and estimates, and apply declared decision policies. It does not yet estimate callers natively. |
 | **5. Incorporating sequence / bout analysis** | Planned. Storage concepts exist, but no current workflow populates sequence or bout analyses. Future grouping rules must be explicit and provenance-bearing. |
 | **6. Niche EDA for the above** | Early implementation exists for consilience-oriented exploration, support-pattern characterization, feature disagreement, threshold screening, metadata-aware sampling, and spectrogram examples. This area is expected to grow with the other goals. |
 
@@ -63,7 +63,7 @@ Manual reference events and manual adjudication therefore remain independent of 
 
 ### 3.5 Keep uncertainty dimensions separate until a declared method combines them
 
-Temporal-alignment uncertainty, pose/localization evidence, visual-identity evidence, acoustic evidence, correspondence evidence, and imported caller-attribution scores have different semantics. VAWLUME stores them separately rather than averaging them into a generic confidence value.
+Temporal-alignment uncertainty, pose-localization evidence, visual-identity evidence, acoustic evidence, source-localization evidence, correspondence evidence, and imported caller-attribution scores have different semantics. VAWLUME stores them separately rather than averaging them into a generic confidence value.
 
 A later analysis may combine them, but that combination should itself be explicit, versioned, and reproducible.
 
@@ -190,10 +190,11 @@ The current prototype can represent or register:
 - acoustic-reference intervals and per-channel response/QC measurements;
 - attribution targets based on detections, consensus events, or agreement-group event sets;
 - multiple candidate callers per target;
-- separately typed attribution evidence; and
-- imported attribution claims produced by an external system.
+- separately typed attribution evidence, including source localization that cites a stored estimate;
+- imported attribution claims produced by an external system; and
+- a localization backend's export: its windows and caller scores, localization estimates in a declared 2D or 3D coordinate system, per-channel values, track references, producer-native fields, and its declaration of which upstream evidence it consumed.
 
-VAWLUME currently **does not estimate who called from those multimodal inputs**. The implemented attribution path preserves an external system's claims, relates its time windows to VAWLUME events under an explicit clock/correspondence rule, and can apply a declared decision policy. That policy does not implicitly combine pose, identity, alignment, acoustic, and correspondence evidence into one probability.
+VAWLUME currently **does not estimate who called from those multimodal inputs**. The two implemented attribution paths, imported and backend, preserve an external system's claims, relate its time windows to VAWLUME events under an explicit clock/correspondence rule, and can apply a declared decision policy. That policy does not implicitly combine pose, identity, alignment, acoustic, source-localization, and correspondence evidence into one probability. VAWLUME computes no distance and transforms no coordinate frame.
 
 This keeps the architecture compatible with external localization/attribution systems while leaving room for a later VAWLUME-native estimator.
 
@@ -257,6 +258,8 @@ The prototype has extensive synthetic demonstrations and regression/integration 
 
 That real-data run establishes that the software path can execute on real imported data. It does **not** establish scientific validity, calibrated correspondence thresholds, calibrated feature tolerances, or generalization across recordings, experiments, laboratories, or extractor configurations.
 
+Caller-attribution validation is entirely synthetic: no real external attribution table or localization-backend export has been imported.
+
 Comprehensive manually reviewed ground truth and broader real-data validation remain necessary before any threshold or configuration can be described as validated or recommended.
 
 ## 14. Relationship to external extractors
@@ -287,6 +290,8 @@ Use the documentation by purpose:
 - [`../design/01_prototype_development_outline.md`](../design/01_prototype_development_outline.md) — prototype development plan.
 - [`../design/02_temporal_alignment_contract.md`](../design/02_temporal_alignment_contract.md) — temporal-alignment contract.
 - [`../design/03_multimodal_input_contract.md`](../design/03_multimodal_input_contract.md) — multimodal-input contract.
+- [`../design/04_caller_attribution_contract.md`](../design/04_caller_attribution_contract.md) — caller-attribution contract.
+- [`../design/05_backend_localization_contract.md`](../design/05_backend_localization_contract.md) — backend/localization attribution contract.
 - [`../development/22_phase1_correspondence_boundaries.md`](../development/22_phase1_correspondence_boundaries.md) — orientation to native detections, pairwise correspondence, arbitrary-N agreement, and attribution boundaries.
 - [`../development/35_consilience_exploration_workflow.md`](../development/35_consilience_exploration_workflow.md) — consilience-oriented exploratory workflow.
 - [`../development/`](../development/) — implementation contracts and completed development work.

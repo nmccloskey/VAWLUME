@@ -232,8 +232,12 @@ not identity evidence, and a declared entity link and an inferred association ar
 different strengths of claim.
 
 The correspondence layer writes its own `correspondence`-dimension evidence at
-target level, which is why `evidence_by_dimension` shows five dimensions rather
-than four. It is a fifth kind of evidence, not a combination of the other four.
+target level, which is why this demonstration's `evidence_by_dimension` shows five
+`evidence_dimension` values rather than four. Correspondence is evidence of its
+own kind, not a combination of the other four, and it is not one of the five
+separated evidence dimensions: since `0.12-draft` those are the four shown here
+plus `source_localization`, which only a backend run supplies
+([`37_integrated_backend_localization_demonstration.md`](37_integrated_backend_localization_demonstration.md)).
 
 ## Refusals, beside the successes
 
@@ -276,7 +280,8 @@ but correspondences are counted from `correspondences`, and QC does exactly that
 
 ## Boundaries the example does not cross
 
-- No caller is estimated. The only implemented path is the imported one.
+- No caller is estimated. At Phase 4 the only implemented path was the imported
+  one; Phase 5 added the backend path, which estimates no caller either.
 - No imported claim becomes a candidate. The candidate set is authored
   independently, and `c02` proves it: that target is reached by a corresponded
   claim and still has no candidate.

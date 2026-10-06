@@ -201,6 +201,14 @@ where it applies.
 Phase 5's backend candidates arrive with localization geometry rather than
 windows, and will test whether this generalizes. It does not, in these ways:
 
+> **Resolved in Phase 5, the other way.** A backend must report each window's
+> native times, and its localization estimates attach to that window
+> (`05_backend_localization_contract.md` D1, D14). The layer below is therefore
+> unchanged: a backend window is corresponded exactly as an imported one. Output
+> with no interval is not holdable; see
+> [`36_backend_attribution_intake.md`](36_backend_attribution_intake.md),
+> "What a backend can provide that VAWLUME cannot hold".
+
 - **It compares intervals and nothing else.** A backend producing a position
   estimate, a bearing, or a likelihood surface has no interval to compare, and
   this layer has no place to put one.

@@ -58,7 +58,7 @@ Concretely, the prototype can today:
   direct inputs and participating entities before any caller is scored; and
 - **append** several candidate callers per target with distinct score and
   probability semantics, plus separately readable temporal-alignment,
-  pose/localization, visual-identity, acoustic, source-localization,
+  pose-localization, visual-identity, acoustic, source-localization,
   correspondence, or imported composite evidence;
 - **import** a localization backend's export through a versioned
   `attribution_backend_mapping` profile: its own windows, caller scores,
@@ -125,14 +125,15 @@ this prototype estimates who called.
   but the result is uncalibrated response/QC evidence about the channels. It is
   not a gain correction, not a normalized call amplitude, not a preferred
   channel, and not a probability that any animal called.
-- **VAWLUME estimates no caller.** The only implemented attribution path is the
-  imported one: it stores what an external system claimed, relates those claims
-  to VAWLUME events, and applies a policy you supplied. The backend/localization
-  path and the VAWLUME-native estimator are later phases.
+- **VAWLUME estimates no caller.** Two attribution paths are implemented,
+  `imported` (a generic external attribution table) and `backend` (a
+  localization backend's export). Both store what an external system claimed,
+  relate those claims to VAWLUME events, and apply a policy you supplied. The
+  VAWLUME-native estimator is a later phase.
 - **A decision is not a combination of the evidence.** The shipped policy reads
   one candidate column and no evidence row, so nothing combines pose,
-  visual-identity, alignment, and acoustic evidence into a claim about who
-  vocalized. Those components remain separate precisely so a later declared
+  visual-identity, alignment, acoustic, and source-localization evidence into a
+  claim about who vocalized. Those components remain separate precisely so a later declared
   method can combine them deliberately. A decision is also not a probability,
   and no status means `validated`.
 - **Every attribution threshold that ships is illustrative.** The mapping
@@ -2443,8 +2444,8 @@ exported tables, figures, an example index and a provenance record.
 - Median is the only channel-response aggregation method, a response profile is
   scoped to one recording, and the caller supplies exact measurement identifiers
   because no discovery or selection helper exists.
-- **`imported` is the only attribution path.** The backend/localization path and
-  the VAWLUME-native estimator are later phases, so nothing in this prototype
+- **Both attribution paths, `imported` and `backend`, carry external claims.**
+  The VAWLUME-native estimator is a later phase, so nothing in this prototype
   estimates a caller — it imports, relates, and decides over what somebody else
   estimated.
 - The imported table must be long, one row per (window, claimed caller). A

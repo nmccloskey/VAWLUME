@@ -286,6 +286,7 @@ no home, or only a non-relational one.
 | Backend output | What happens | Why |
 |---|---|---|
 | A localization with **no reported interval** (an event reference only) | **Not holdable**: a window requires native times | Contract D14. An echoed id is not a key, so an interval is the only bridge to an event |
+| A **bearing only** (direction of arrival) or a **likelihood surface**, with no position | Not holdable as an estimate: `position_x` and `position_y` are NOT NULL. A profile may keep the values as window-owned native attributes | An estimate is a position in a declared frame. Deriving one from a bearing would be geometry VAWLUME does not compute (D11) |
 | A **time-resolved** localization track (a position per frame within a call) | Not stored; only window-level summaries | Dense data stays in the artifact, under the multimodal storage policy |
 | **Covariance / per-axis error / error ellipses** | Preserved as native attributes, term by term; no canonical column, and nothing derives a confidence | D15. Legible and queryable by name, but any consumer must know the producer's convention |
 | **Per-channel values** before promotion | Window-owned native attributes (`channel:` prefix); relational `recording_channel_id` only after explicit promotion to evidence | The schema cites a channel only at target grain (F5.3-1) |
