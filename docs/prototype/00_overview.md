@@ -194,7 +194,7 @@ The current prototype can represent or register:
 - imported attribution claims produced by an external system; and
 - a localization backend's export: its windows and caller scores, localization estimates in a declared 2D or 3D coordinate system, per-channel values, track references, producer-native fields, and its declaration of which upstream evidence it consumed.
 
-VAWLUME currently **does not estimate who called from those multimodal inputs**. The two implemented attribution paths, imported and backend, preserve an external system's claims, relate its time windows to VAWLUME events under an explicit clock/correspondence rule, and can apply a declared decision policy. That policy does not implicitly combine pose, identity, alignment, acoustic, source-localization, and correspondence evidence into one probability. VAWLUME computes no distance and transforms no coordinate frame.
+VAWLUME currently **does not estimate who called from those multimodal inputs**. The two implemented attribution paths, imported and backend, preserve an external system's claims, relate its time windows to VAWLUME events under an explicit clock/correspondence rule, and can apply a declared decision policy. That policy does not implicitly combine pose, identity, alignment, acoustic, source-localization, and correspondence evidence into one probability. VAWLUME transforms no coordinate frame, and computes distances only within one declared frame, in its geometry primitives.
 
 This keeps the architecture compatible with external localization/attribution systems while leaving room for a later VAWLUME-native estimator.
 

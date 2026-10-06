@@ -147,6 +147,14 @@ either require a metric system or introduce an explicit, provenance-bearing
 scale — and must not silently treat pixels as centimetres. This contract records
 the hazard rather than solving it.
 
+**Answered at Phase 6.** The native estimator is the first consumer of distance.
+It uses only a ratio of distances, which needs a uniform-scale frame rather than
+a metric one, and its versioned profile names the unit strings it accepts as
+uniform-scale. VAWLUME interprets no unit
+([`06_native_estimator_contract.md`](06_native_estimator_contract.md) D17). The
+distance primitive itself returns any frame's distance in that frame's unit,
+including `px` ([`../development/38_spatial_primitives.md`](../development/38_spatial_primitives.md)).
+
 ## Channel placement
 
 ### The microphone is the channel
@@ -540,6 +548,8 @@ These are deliberate stopping points, not oversights:
 
 1. **Pixel coordinate systems compute no real distance.** A later metric
    requirement or an explicit scale is needed, and must be explicit.
+   *(Phase 6: the native estimator declares accepted units in its profile;
+   contract 06 D17.)*
 2. **Placement has no intra-recording history.** A microphone moved mid-session is
    unrepresentable.
 3. **Only audio channels are placed.** Cameras and arena landmarks are not.

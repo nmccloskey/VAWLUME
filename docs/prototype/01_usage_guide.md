@@ -151,7 +151,8 @@ this prototype estimates who called.
 - **Coordinate compatibility is declaration and validation, not
   transformation.** VAWLUME confirms that two spatial facts cite the same
   declared frame, and refuses to relate them otherwise. It never transforms
-  between frames, and it computes no distances.
+  between frames. It computes distances only between positions in one declared
+  frame, only in `vawlume.geometry`, and reports them in that frame's unit.
 
 ### VAWLUME and external extractors
 
@@ -2424,8 +2425,10 @@ exported tables, figures, an example index and a provenance record.
 - Channel placement has no intra-recording history, so a microphone moved
   mid-session is unrepresentable, and only audio channels are placed — cameras
   and arena landmarks are not.
-- A pixel coordinate system supports no real-distance computation, and VAWLUME
-  computes no distances at all.
+- A pixel coordinate system supports no real-distance computation. VAWLUME's
+  distance primitive (`vawlume.geometry.distance`) reports a `px` frame's
+  distance in `px` and never treats it as physical; whether a consumer may use
+  one is that consumer's declared decision.
 - Identity association intervals for one track may overlap. `identityCandidates`
   still returns every overlapping claim and never chooses; `resolveIdentity`
   applies a stated precedence rule when a caller asks for one answer. That rule

@@ -114,6 +114,13 @@ on `external_streams` with `external_stream_sources`.
 | `readCoordinateSystems` | frames of one project |
 | `readChannelPlacements` | placements of one recording, with unit and dimensionality |
 | `assertCompatible` | require a set of frames to be one frame |
+| `distance`, `positionAtInstants`, `summarizeDistances` | pure spatial primitives, added in Phase 6. See [`38_spatial_primitives.md`](38_spatial_primitives.md) |
+
+**Updated at 6.3.** `+geometry/` is now also the only package permitted spatial
+arithmetic. `assertCompatible`'s identity comparison was extracted into one
+private function that the pure primitives share, with `assertCompatible`'s
+behaviour unchanged. The sentence below remains true of `assertCompatible`
+itself.
 
 Registration is idempotent: identical content reuses, different content raises
 `CoordinateSystemConflict` or `PlacementConflict` rather than rewriting. A stored

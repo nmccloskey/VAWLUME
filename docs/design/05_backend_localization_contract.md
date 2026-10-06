@@ -112,6 +112,15 @@ claim. It computes no distance, angle, bearing, nearest animal, or any other
 geometric derivation (D11). "Distance to microphone" is plan §4.5's reusable
 primitive and §11.3's *Phase 6 evidence*, and it belongs where its consumer is.
 
+**Corrected at 6.3.** The second sentence above described Phase 5 and stays true
+of the backend path: nothing computes a distance *from a backend's estimate*. It
+is no longer true of VAWLUME. Phase 6 added distance and position interpolation
+as pure primitives in `+geometry/`, the only package permitted spatial arithmetic,
+computing only within one declared frame and never transforming between frames
+([`06_native_estimator_contract.md`](06_native_estimator_contract.md) D3, D4;
+[`../development/38_spatial_primitives.md`](../development/38_spatial_primitives.md)).
+The original sentence is left visible, following the 4.12a precedent.
+
 ### A frame is part of the coordinate
 
 A pair of numbers without a declared coordinate system is not a weak coordinate.
@@ -533,6 +542,13 @@ The answer is plan §11.3: distance is **Phase 6 evidence**. Building a primitiv
 whose only consumer does not exist yet is how a representation ends up fitted to
 an estimator nobody has written. VAWLUME computes no distances today, and
 Phase 5 does not start.
+
+**Corrected at 6.3.** "VAWLUME computes no distances today" was true when written
+and is not now. Phase 6, the consumer this clause waited for, built the primitive
+in `+geometry/` under revised invariant 19: spatial arithmetic occurs only there,
+only between positions in one frame, and nothing is transformed between frames
+([`06_native_estimator_contract.md`](06_native_estimator_contract.md) D3). The
+decision itself, that Phase 5 should not build it, stands.
 
 What Phase 5 does with geometry is **validate frames**:
 

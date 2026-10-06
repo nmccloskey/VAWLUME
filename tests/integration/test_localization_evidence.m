@@ -304,51 +304,204 @@ clear cleanup
 end
 
 function testNoSourceComputesADistanceAngleOrTransform(testCase)
-% Tripwire 2, checked on ARITHMETIC rather than on function names: comments are
-% stripped, then every line in src/ that squares-and-roots, takes an angle, or
-% takes a vector norm is listed. Each permitted hit is named with its reason.
+% Tripwire 2, revised at 6.3 into a PACKAGE BOUNDARY. Checked on ARITHMETIC rather
+% than on function names: string literals and comments are stripped, then every
+% line in src/ that squares-and-roots, takes a norm, an angle or a trig function,
+% or interpolates is listed.
+%
+% Phase 6 lifts the prohibition on spatial arithmetic for one package only
+% (docs/design/06_native_estimator_contract.md D3). The invariant this test now
+% enforces, word for word, is revised invariant 19:
+%
+%   Spatial arithmetic (distance, norm, angle, and position interpolation)
+%   occurs only in src/+vawlume/+geometry/. A distance is computed only between
+%   positions whose frames pass the shared identity rule. No coordinate is
+%   transformed, rescaled or converted between frames anywhere in src/.
+%
+% +geometry/ is permitted as a PACKAGE: it owns frames and assertCompatible, so
+% the package that decides whether two frames may be related is the only one
+% that relates them. Every other hit stays a PER-LINE exemption with its reason,
+% so no non-spatial exemption can widen into a home for spatial arithmetic.
+%
+% What this cannot see: arithmetic written without any listed function, such as
+% a hand-written linear interpolation. The package boundary, code review and the
+% sweep's reading cover that; this test catches the named operations.
 root = repositoryRoot();
-files = dir(fullfile(root, "src", "**", "*.m"));
-pattern = "(sqrt\s*\(|hypot\s*\(|atan2d?\s*\(|\bnorm\s*\(|vecnorm\s*\(|pdist2?\s*\(|" + ...
-    "\bacosd?\s*\(|\basind?\s*\(|\batand?\s*\(|cross\s*\(|\bdot\s*\(|rotm|quat)";
-hits = strings(0, 1);
-for index = 1:numel(files)
-    path = fullfile(files(index).folder, files(index).name);
-    lines = splitlines(string(fileread(path)));
-    for lineNumber = 1:numel(lines)
-        code = regexprep(lines(lineNumber), "%.*$", "");
-        code = regexprep(code, """[^""]*""|'[^']*'", "");
-        if ~isempty(regexp(code, pattern, "once"))
-            relative = replace(extractAfter(string(path), strlength(string(root)) + 1), "\", "/");
-            % Keyed on file and code, not line number, so unrelated edits above a
-            % permitted hit do not churn this list.
-            hits(end+1, 1) = relative + " | " + strtrim(code); %#ok<AGROW>
-        end
-    end
+[permittedHome, other] = arithmeticHits(root);
+verifyNotEmpty(testCase, permittedHome, ...
+    "No spatial arithmetic was found even in +geometry/. Either the spatial " + ...
+    "primitives moved or the pattern stopped matching anything; a guard that " + ...
+    "finds nothing anywhere proves nothing.");
+verifyEqual(testCase, sort(other), sort(permittedArithmetic()), ...
+    "Spatial-looking arithmetic outside src/+vawlume/+geometry/ (revised " + ...
+    "invariant 19 permits it only there):" + newline + ...
+    strjoin(setdiff(other, permittedArithmetic()), newline) + newline + ...
+    "Listed exemptions no longer found:" + newline + ...
+    strjoin(setdiff(permittedArithmetic(), other), newline));
 end
-verifyEqual(testCase, sort(hits), sort(permittedArithmetic()), ...
-    "New spatial arithmetic in src/ (a distance, angle or transform?):" + ...
-    newline + strjoin(setdiff(hits, permittedArithmetic()), newline));
+
+function testTheArithmeticScannerSeesWhatItShould(testCase)
+% The scanner's own regressions, each a way the Phase 5 version was blind:
+%  * \b is NOT a word boundary in MATLAB regexp (it is \< and \>), so the
+%    Phase 5 pattern's \bnorm, \bdot, \bacos, \basin and \batan never matched;
+%  * comments were stripped before strings, so a % inside a string hid the code
+%    after it (F5.10-8);
+%  * the trig family and interpolation functions were absent (F5.10-8).
+pattern = arithmeticPattern();
+mustMatch = ["d = norm(v);", "a = acos(c);", "a = asind(c);", "a = atan(c);", ...
+    "y = cos(t);", "y = sind(t);", "y = tan(t);", "r = deg2rad(d);", ...
+    "p = interp1(t, x, q);", "d = dot(a, b);", "c = cross(a, b);", ...
+    "d = hypot(dx, dy);", "R = quat2rotm(q);"];
+for line = mustMatch
+    verifyNotEmpty(testCase, regexp(stripCode(line), pattern, "once"), ...
+        "The pattern missed: " + line);
+end
+mustNotMatch = ["n = normalize(x);", "z = zcrossings(x);", "x = dotted(1);", ...
+    "s = cosine_similarity;", "t = tangent;", "adequate = 1;", ...
+    "label = 'sqrt(x)';", "label = ""hypot(a,b)"";", "% d = norm(v);"];
+for line = mustNotMatch
+    verifyEmpty(testCase, regexp(stripCode(line), pattern, "once"), ...
+        "The pattern matched non-arithmetic: " + line);
+end
+% Strings stripped BEFORE comments: a % inside a string must not hide code.
+verifyNotEmpty(testCase, regexp(stripCode("s = ""50%""; d = norm(v);"), pattern, "once"));
+verifyNotEmpty(testCase, regexp(stripCode("s = '50%'; d = norm(v);"), pattern, "once"));
+% A transpose is not the start of a char array.
+verifyEqual(testCase, stripCode("y = x' * sqrt(z)'; % note"), "y = x' * sqrt(z)';");
+% Text after a continuation is a comment.
+verifyEqual(testCase, strtrim(stripCode("a = b + ... sqrt(c)")), "a = b +");
 end
 
 % ---------------------------------------------------------------- helpers ---
 
+function [permittedHome, other] = arithmeticHits(root)
+files = dir(fullfile(root, "src", "**", "*.m"));
+pattern = arithmeticPattern();
+home = "src/+vawlume/+geometry/";
+permittedHome = strings(0, 1);
+other = strings(0, 1);
+for index = 1:numel(files)
+    path = fullfile(files(index).folder, files(index).name);
+    relative = replace(extractAfter(string(path), strlength(string(root)) + 1), "\", "/");
+    lines = splitlines(string(fileread(path)));
+    inBlockComment = false;
+    for lineNumber = 1:numel(lines)
+        trimmed = strtrim(lines(lineNumber));
+        if trimmed == "%{"
+            inBlockComment = true;
+            continue
+        elseif trimmed == "%}"
+            inBlockComment = false;
+            continue
+        elseif inBlockComment
+            continue
+        end
+        code = strtrim(stripCode(lines(lineNumber)));
+        if ~isempty(regexp(code, pattern, "once"))
+            % Keyed on file and code, not line number, so unrelated edits above a
+            % permitted hit do not churn this list.
+            if startsWith(relative, home)
+                permittedHome(end+1, 1) = relative + " | " + code; %#ok<AGROW>
+            else
+                other(end+1, 1) = relative + " | " + code; %#ok<AGROW>
+            end
+        end
+    end
+end
+end
+
+function pattern = arithmeticPattern()
+% \< is MATLAB's start-of-word anchor. \b is not a word boundary in MATLAB regexp.
+pattern = "(\<sqrt\s*\(|\<hypot\s*\(|\<atan2d?\s*\(|\<norm\s*\(|\<vecnorm\s*\(|" + ...
+    "\<pdist2?\s*\(|\<acosd?\s*\(|\<asind?\s*\(|\<atand?\s*\(|\<cosd?\s*\(|" + ...
+    "\<sind?\s*\(|\<tand?\s*\(|\<secd?\s*\(|\<cscd?\s*\(|\<cotd?\s*\(|" + ...
+    "\<deg2rad\s*\(|\<rad2deg\s*\(|\<cross\s*\(|\<dot\s*\(|\<interp[123n]\s*\(|" + ...
+    "griddedInterpolant|scatteredInterpolant|\<rotm\w*\s*\(|\<quat\w*\s*\(|" + ...
+    "\w+2rotm\s*\(|\w+2quat\s*\()";
+end
+
+function code = stripCode(line)
+% Remove string literals, then everything from a comment or a continuation on.
+% A single quote starts a char array only where a transpose is impossible: at the
+% start of the line, or after an operator, comma, bracket opener or space that
+% does not follow a value. Strings are removed BEFORE the comment is found, so a
+% '%' inside a string never hides the code after it.
+chars = char(line);
+out = blanks(0);
+index = 1;
+count = numel(chars);
+while index <= count
+    c = chars(index);
+    if c == '"'
+        [index, ~] = skipQuoted(chars, index, '"');
+        continue
+    elseif c == '''' && ~isTranspose(out)
+        [index, ~] = skipQuoted(chars, index, '''');
+        continue
+    elseif c == '%'
+        break
+    elseif c == '.' && index + 2 <= count && all(chars(index:index+2) == '...')
+        break
+    end
+    out(end+1) = c; %#ok<AGROW>
+    index = index + 1;
+end
+code = strtrim(string(out));
+end
+
+function [index, closed] = skipQuoted(chars, index, quote)
+% Advance past a quoted literal; a doubled quote is an escaped quote.
+index = index + 1;
+closed = false;
+while index <= numel(chars)
+    if chars(index) == quote
+        if index < numel(chars) && chars(index + 1) == quote
+            index = index + 2;
+            continue
+        end
+        index = index + 1;
+        closed = true;
+        return
+    end
+    index = index + 1;
+end
+end
+
+function value = isTranspose(previous)
+% A quote is a transpose when it directly follows a value: an identifier
+% character, a closing bracket, a dot, or another transpose.
+value = false;
+if isempty(previous)
+    return
+end
+last = previous(end);
+value = isletter(last) || (last >= '0' && last <= '9') || ...
+    any(last == ['_', ')', ']', '}', '.', '''']);
+end
+
 function value = permittedArithmetic()
-% Every hit of the tripwire's arithmetic pattern that exists, and why it is not
-% spatial. Kept exhaustive: an unlisted hit, or a listed one that vanished,
-% fails the test and must be read.
+% Every hit OUTSIDE src/+vawlume/+geometry/, and why it is not spatial. Kept
+% exhaustive: an unlisted hit, or a listed one that vanished, fails the test and
+% must be read. Never widen an entry into a package: these are exemptions for
+% specific non-spatial lines, and +geometry/ is the only spatial home.
 value = [
     % RMS amplitude of an audio window: acoustic, not spatial.
     % (String literals are stripped before matching, so the unit label is absent.)
     "src/+vawlume/+acoustic/measureReferenceResponse.m | sqrt(mean(samples .^ 2)), }];"
     % Clock-fit residual RMSE, in seconds, inside +alignment/: temporal.
-    "src/+vawlume/+alignment/solveTransform.m | rmse_s=sqrt(mean(residual .^ 2)), ..."
+    "src/+vawlume/+alignment/solveTransform.m | rmse_s=sqrt(mean(residual .^ 2)),"
     "src/+vawlume/+alignment/private/alignmentFitBuildPlan.m | value.rmse_s(segment) = sqrt(mean(residual(rows) .^ 2));"
     % Precision-matrix normalization for a partial correlation: statistics.
     "src/+vawlume/+eda/private/edaPartialCorrelation.m | scaled = -P ./ sqrt(diagonal * diagonal');"
+    % Linear interpolation between order statistics for a sample quantile:
+    % statistics over a sorted value vector, not positions. Invisible to the
+    % Phase 5 pattern, which had no interpolation term (found at 6.3).
+    "src/+vawlume/+eda/sampleQuantile.m | interpolated = interp1(positions, ordered, requested, );"
+    % Periodic Hann window coefficients for a spectrogram: signal processing,
+    % not an angle. Invisible to the Phase 5 pattern, which had no cos term.
+    "src/+vawlume/+eda/spectrogramMatrix.m | value = 0.5 * (1 - cos(2 * pi * n / length));"
     ];
 end
-
 function row = localizationRow(estimateId, frameKey)
 row = struct(evidence_dimension="source_localization", ...
     evidence_kind="backend_source_location", ...
