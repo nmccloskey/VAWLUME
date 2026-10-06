@@ -320,4 +320,4 @@ called.
 - [`25_visual_identity_association.md`](25_visual_identity_association.md)
 - [`29_integrated_multimodal_demonstration.md`](29_integrated_multimodal_demonstration.md)
 - [`../design/04_caller_attribution_contract.md`](../design/04_caller_attribution_contract.md)
-- [`../usage/01_prototype_usage_guide.md`](../usage/01_prototype_usage_guide.md) §7.7
+- [`../prototype/01_usage_guide.md`](../prototype/01_usage_guide.md) §7.7

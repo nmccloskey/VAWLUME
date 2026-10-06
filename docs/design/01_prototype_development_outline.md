@@ -9,7 +9,7 @@
 > **This is a plan, not a description of what exists.** Sections below specify
 > intended work, including steps that are not implemented. For what the software
 > currently does, see the
-> [prototype usage guide](../usage/01_prototype_usage_guide.md) and the
+> [prototype usage guide](../prototype/01_usage_guide.md) and the
 > [README](../../README.md).
 
 ---

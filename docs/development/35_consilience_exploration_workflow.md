@@ -3,7 +3,7 @@
 > **Audience and status.** Implementation-facing documentation for the
 > poster-stage exploratory workflow in `src/+vawlume/+eda/`. For the user-facing
 > version, see §6.5 of the
-> [prototype usage guide](../usage/01_prototype_usage_guide.md). The methodology
+> [prototype usage guide](../prototype/01_usage_guide.md). The methodology
 > this implements is the project's conceptual specification; this document
 > describes what was built, how to read it, and — at least as prominently — what
 > it does not claim.

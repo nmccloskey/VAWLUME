@@ -3,7 +3,7 @@
 > **Audience and status.** This is an internal conventions document, published
 > so the repository's layout decisions are inspectable. It is not a guide to
 > *using* VAWLUME — for that, see the
-> [prototype usage guide](../usage/01_prototype_usage_guide.md). Section 9
+> [prototype usage guide](../prototype/01_usage_guide.md). Section 9
 > ("Migration from the current tree") is a historical record of moves that have
 > already been carried out; it is retained for provenance, not as work to do.
 
@@ -331,12 +331,16 @@ These documents explain the rationale behind tracked extractor mapping profiles 
 
 Repository conventions, development workflow, testing conventions, and future implementation notes that are meant to remain current.
 
-### `docs/usage/`
+### `docs/prototype/`
 
-User-facing guidance for someone operating VAWLUME rather than developing it.
+User-facing guidance for someone operating VAWLUME rather than developing it:
+`00_overview.md` (scope, design principles, implementation status, boundaries)
+and `01_usage_guide.md` (setup, configuration, workflows, outputs, testing).
+Detailed information belongs here; the repository `README.md` stays a slim
+entry point that links to it.
 
 This is distinct from `docs/development/`: the development documents state each
-stage's contract for an implementer, whereas `docs/usage/` explains how to
+stage's contract for an implementer, whereas `docs/prototype/` explains how to
 configure and run what is actually implemented. It documents the software that
 exists, not the software VAWLUME may eventually become.
 

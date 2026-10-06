@@ -3,7 +3,7 @@
 > **Audience and status.** This is an internal conventions document, published
 > so the project's development practices are inspectable. It is not a guide to
 > *using* VAWLUME — for that, see the
-> [prototype usage guide](../usage/01_prototype_usage_guide.md).
+> [prototype usage guide](../prototype/01_usage_guide.md).
 
 ## 1. The principle
 
@@ -101,17 +101,18 @@ as a relational-schema claim and checked; one that does not is left alone.
 
 ## 4. What the check verifies
 
-`check_repository_self_description` runs seven checks.
+`check_repository_self_description` runs eight checks.
 
 | # | Check | Authority |
 |---|---|---|
 | 1 | The schema version is internally coherent | `schema.sql` header, the `schema_info` seed, and `PRAGMA user_version` must agree |
 | 2 | Published relational-schema versions are current | §3; historical claims exempt per §2 |
-| 3 | The demonstrations named in the README and the usage guide are exactly those in `examples/` | Checked in both directions: an undocumented example and a documented non-example both fail |
-| 4 | Every demonstration is named by an integration test | Both documents claim this |
+| 3 | The usage guide names exactly the demonstrations in `examples/`, and the README names none that is absent | The usage guide is the detailed inventory and is checked in both directions. The README is a deliberately slim quick start that may name a subset, so only a stale name in it fails |
+| 4 | Every demonstration is named by an integration test | The usage guide claims this |
 | 5 | Every configuration directory holding an artifact is named in `config/README.md`, and every `config/` path the documentation names exists | |
 | 6 | Every relative Markdown link resolves | A dead link is a stale claim in the same sense a stale count is |
 | 7 | Neither the README nor the usage guide states a literal suite size | §2: this is a derived fact, not prose |
+| 8 | The consilience exploration guide's three output roots match `runExploration` and `materializeConfigurations` | `35_consilience_exploration_workflow.md` against the implementation |
 
 Check 7 is a guard rather than a verification. The hand-maintained test count was
 edited by hand in five consecutive itineraries and verified by nothing; check 7

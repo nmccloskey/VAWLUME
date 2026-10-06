@@ -7,7 +7,7 @@ exact supporting candidate edges. No existing table, trigger, view, or index
 changed.
 
 The version above is historical, naming when these tables arrived. The current
-schema version is stated in `docs/usage/01_prototype_usage_guide.md` and in the
+schema version is stated in `docs/prototype/01_usage_guide.md` and in the
 `schema.sql` header.
 
 This pass is schema and provenance only. Nothing populates these tables yet,

@@ -145,9 +145,13 @@ check = makeCheck("schema version claims current", isempty(failures), detail, fa
 end
 
 function check = checkExampleInventory(repoRoot, inventory)
-% The demonstrations named in the two current-state documents and the files in
-% examples/ must be the same set, in both directions.
-documents = ["README.md", "docs/usage/01_prototype_usage_guide.md"];
+% The usage guide is the detailed inventory: it must name exactly the files in
+% examples/, in both directions. The README is a deliberately slim quick start
+% that may name a subset, so it is checked in one direction only: every
+% demonstration it names must exist. A stale name is false in either document;
+% an omission is false only in the inventory.
+inventoryDocument = usageGuidePath();
+documents = ["README.md", inventoryDocument];
 actual = inventory.examples.names;
 failures = strings(0, 1);
 
@@ -155,10 +159,12 @@ for k = 1:numel(documents)
     text = string(fileread(fullfile(repoRoot, documents(k))));
     named = unique(allTokens(text, "(\w+_demo)(?!\w)"));
 
-    missingFromDoc = setdiff(actual, named);
-    for m = 1:numel(missingFromDoc)
-        failures(end+1, 1) = sprintf("%s never names examples/%s.m", ...
-            documents(k), missingFromDoc(m)); %#ok<AGROW>
+    if documents(k) == inventoryDocument
+        missingFromDoc = setdiff(actual, named);
+        for m = 1:numel(missingFromDoc)
+            failures(end+1, 1) = sprintf("%s never names examples/%s.m", ...
+                documents(k), missingFromDoc(m)); %#ok<AGROW>
+        end
     end
 
     absentFromRepo = setdiff(named, actual);
@@ -168,8 +174,8 @@ for k = 1:numel(documents)
     end
 end
 
-detail = sprintf("%d demonstrations in examples/, named in %d documents", ...
-    inventory.examples.count, numel(documents));
+detail = sprintf("%d demonstrations in examples/; %s names all of them, " + ...
+    "README.md names only real ones", inventory.examples.count, inventoryDocument);
 check = makeCheck("example inventory matches documentation", isempty(failures), detail, failures);
 end
 
@@ -199,7 +205,7 @@ function check = checkConfigInventory(repoRoot, inventory)
 % Every configuration directory that holds a tracked artifact must be named in
 % the configuration README, and every config/ path the documentation names must
 % exist.
-documents = ["config/README.md", "docs/usage/01_prototype_usage_guide.md", "README.md"];
+documents = ["config/README.md", usageGuidePath(), "README.md"];
 readmeText = string(fileread(fullfile(repoRoot, "config", "README.md")));
 corpus = "";
 for k = 1:numel(documents)
@@ -265,7 +271,7 @@ function check = checkNoUnverifiedSuiteCounts(repoRoot)
 % Guard against the failure this check was written to end: a hand-maintained
 % test count reappearing in a current-state document. The size of the suite is a
 % derived fact; report it with repository_inventory instead of publishing it.
-documents = ["README.md", "docs/usage/01_prototype_usage_guide.md"];
+documents = ["README.md", usageGuidePath()];
 failures = strings(0, 1);
 
 for k = 1:numel(documents)
@@ -328,6 +334,11 @@ end
 % ---------------------------------------------------------------------------
 % Claim semantics
 % ---------------------------------------------------------------------------
+
+function relPath = usageGuidePath()
+% The detailed current-state document. Named once so a move is a one-line change.
+relPath = "docs/prototype/01_usage_guide.md";
+end
 
 function documents = currentStateDocuments(allDocuments)
 % docs/design/ is the frozen design-record layer: contracts as written and
