@@ -1,0 +1,96 @@
+{
+  "profiles": [
+    {
+      "profile": {
+        "id": "vawlume.attribution.generic_array_backend.v0_1",
+        "name": "Generic microphone-array localization export (localization only)",
+        "kind": "attribution_backend_mapping",
+        "profile_schema_version": "0.3-draft",
+        "status": "built_in_template_draft",
+        "profile_version": "0.1.0"
+      },
+
+      "source": {
+        "table_role": "localization_backend_export",
+        "source_key_default": "source:array_export",
+        "shape": "long_by_measurement",
+        "shape_note": "One row per MEASUREMENT, not per caller: a row reports either one localized source (position, covariance, rank, source id) or one microphone channel's level for the window. Both kinds share the window columns. A localization-only backend names no caller, so this profile declares no caller column, no score and no label map.",
+        "tool_independence": "Roles, never vendor columns. This is the second of two shipped backend templates, written to differ structurally from the first: 3D rather than 2D, a frame named per row, no caller scores, several ranked sources per window, covariance rather than a scalar confidence, and per-channel levels in long rather than wide form."
+      },
+
+      "context": {
+        "window_timebase_key": "array_native",
+        "native_time_unit": "s",
+        "exporting_system": "Example Array Localizer",
+        "exporting_system_version": "unknown",
+        "timing_note": "Some array localizers re-use the event identifiers of the detector whose calls they localized. Such an identifier is stored verbatim as native_window_id and NEVER interpreted as a VAWLUME detection ID: the window's own times, related by correspondence, are what tie it to an event."
+      },
+
+      "columns": {
+        "native_window_id": { "source_field": "event_ref" },
+        "window_start": { "source_field": "t_on", "native_unit": "s" },
+        "window_end": { "source_field": "t_off", "native_unit": "s" }
+      },
+
+      "localization": {
+        "attachment": "window",
+        "position_x": { "source_field": "x_mm" },
+        "position_y": { "source_field": "y_mm" },
+        "position_z": { "source_field": "z_mm" },
+        "native_estimate_id": { "source_field": "source_id" },
+        "estimate_ordinal": { "source_field": "source_rank" },
+        "coordinate_system": { "source_field": "frame" },
+        "position_note": "The frame is named on every source row and resolved per row at intake; it must be a declared 3-dimensional frame when z is reported. Coordinates are stored in the frame's unit exactly as written."
+      },
+
+      "channel_evidence": {
+        "declared_channel_indices": [1, 2, 3, 4],
+        "entries": [
+          {
+            "channel_index_field": "mic",
+            "value_field": "level_db",
+            "evidence_kind": "array_channel_level",
+            "value_units": "dB",
+            "value_semantics": "Per-microphone level the array localizer reported for the window; producer={producer}; not normalized, calibrated or compared across channels by VAWLUME"
+          }
+        ]
+      },
+
+      "native_attributes": [
+        { "attribute_name": "position_variance_x", "source_field": "var_x", "owner": "estimate", "value_type": "real", "unit": "mm^2" },
+        { "attribute_name": "position_variance_y", "source_field": "var_y", "owner": "estimate", "value_type": "real", "unit": "mm^2" },
+        { "attribute_name": "position_variance_z", "source_field": "var_z", "owner": "estimate", "value_type": "real", "unit": "mm^2" },
+        { "attribute_name": "position_covariance_xy", "source_field": "cov_xy", "owner": "estimate", "value_type": "real", "unit": "mm^2",
+          "note": "A covariance is the positional uncertainty this backend reports. It has no canonical column (contract D15): it is preserved term by term on the estimate, in the producer's units, and nothing derives a scalar confidence from it." }
+      ],
+
+      "value_semantics": {
+        "position": "Estimated sound-source location; producer={producer}; ranked by the producer among several sources for the window; not a bodypart position",
+        "semantics_note": "No confidence semantics is declared because this backend reports no scalar confidence; its covariance is preserved as native attributes."
+      },
+
+      "declared_inputs": {
+        "declarations": {},
+        "note": "Declare per upstream uncertainty source what the backend used, when known. A template cannot know, so it declares nothing."
+      },
+
+      "correspondence": {
+        "eligibility_rule": "positive_overlap_and_min_temporal_iou_on_declared_basis",
+        "min_temporal_iou": 0.05,
+        "require_positive_overlap": true,
+        "preserve_ambiguity": true,
+        "calibration_status": "illustrative_prototype"
+      },
+
+      "mapping_policy": {
+        "preserve_source_values": true,
+        "unmappable_row_policy": "report",
+        "correspondence_policy": "none"
+      },
+
+      "validation": {
+        "require_window_bounds": true
+      }
+    }
+  ]
+}

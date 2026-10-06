@@ -198,7 +198,13 @@ The same directory holds the **localization-backend** template, profile kind
 optionally, its caller claims, its localization estimates (with the coordinate
 system they are in), per-channel evidence, video-track references,
 producer-native fields, and which upstream uncertainty sources the backend
-consumed. A declared position without a declared frame is refused. See
+consumed. A declared position without a declared frame is refused. Two
+structurally different templates ship: a 2D caller-scoring backend with one
+estimate per window, and a 3D localization-only microphone-array backend with
+several ranked sources per window, a frame named per row, covariance terms and
+long-form channel levels
+([`generic_array_backend_attribution_profile.json`](01_mapping_profiles/attribution/generic_array_backend_attribution_profile.json)).
+Neither is a real product's format. See
 [`generic_backend_attribution_profile.json`](01_mapping_profiles/attribution/generic_backend_attribution_profile.json)
 and [`../docs/development/36_backend_attribution_intake.md`](../docs/development/36_backend_attribution_intake.md).
 

@@ -227,9 +227,74 @@ estimate is not evidence until explicitly promoted, and a backend window is
 related to no VAWLUME event until correspondence relates it. The result's
 `not_written` field names all three.
 
-## A second backend shape, and what a backend can provide that VAWLUME cannot hold
+## A second backend shape
 
-Not yet written. Itinerary 5.8 owns these sections.
+Added at itinerary 5.8. One adapter cannot distinguish "general" from "fitted
+to the first backend it met"; two structurally different ones can. Two templates
+ship, and **neither is a real product's format**: both were written by this
+repository. That is the limit of what follows.
+
+### The two shapes
+
+| Axis | `generic_backend_attribution_profile.json` | `generic_array_backend_attribution_profile.json` |
+|---|---|---|
+| Row shape | long by caller: one row per (window, candidate caller) | long by **measurement**: a row is either one localized source or one channel level |
+| Callers | labels and scores, declared label map | **none**: localization only; no caller column, no score, no label map |
+| Estimates per window | one, repeated across the window's caller rows | **several**, with the producer's `source_id` and declared `source_rank` |
+| Dimensionality, unit | 2D, `cm` | **3D**, `mm`, with `z` reported |
+| Frame | one key in `context` | **named per row** (`localization.coordinate_system`) |
+| Positional uncertainty | one scalar confidence | **covariance terms**, with no scalar confidence |
+| Channel evidence | wide: one column per microphone, fixed indices | **long**: a `mic` column and a `level_db` column |
+| Window identity | the backend's own segment ids | **re-used VAWLUME event ids**, with the backend's own times |
+| Track references | yes | none |
+
+### Mapping audit
+
+Every element of the second shape is held by machinery that already existed.
+**No code, schema or profile-language change was needed.**
+
+| Second-shape element | Held by | Note |
+|---|---|---|
+| `event_ref` (an echoed event id) | `imported_attribution_windows.native_window_id`, verbatim | never a key: correspondence relates the window by its times (tested with an id that names a *different* event) |
+| `t_on`, `t_off` | native window times | |
+| `source_id`, `source_rank` | `native_estimate_id`, `estimate_ordinal` (`ordinal_source = declared`) | ranks are the producer's, and nothing prefers rank 1 |
+| `frame` per row | resolved per row to `coordinate_system_id` | a `z` under a 2D frame is refused before writing |
+| `x_mm`, `y_mm`, `z_mm` | `position_x/y/z`, exactly as written | |
+| `var_x`, `var_y`, `var_z`, `cov_xy` | estimate-owned native attributes, unit `mm^2` | contract D15: no canonical column, and no scalar derived from them |
+| `mic`, `level_db` | window-owned `channel:<mic>:array_channel_level` (+ `:semantics`) | `channel_index_field` grammar; the index is resolved against the recording |
+| (no callers) | no claims | a decision over such a run needs candidates someone else names; with no numbers, the shipped policy reports `excluded` |
+
+Both runs coexist in one database over one recording with separate profile
+versions, checksums and source files. `vawlume.attribution.report` returns the
+same fields and the same table columns for both, with no per-backend branch
+(`tests/integration/test_backend_second_shape.m`).
+
+### Deliberately not expressible: wide caller columns
+
+One row per window with a score column per candidate (`score_A`, `score_B`, …)
+is a different shape. As in the imported profile, the backend profile language
+has no grammar for it: a block attempting one is reported as an unknown key and
+never interpreted. Supporting it would mean a profile-declared reshape from
+column names to caller labels, which is the guesswork about which column means
+which animal that declared-only resolution exists to prevent. Reshape upstream.
+
+## What a backend can provide that VAWLUME cannot hold
+
+The section that ages best: things a localization backend may report that have
+no home, or only a non-relational one.
+
+| Backend output | What happens | Why |
+|---|---|---|
+| A localization with **no reported interval** (an event reference only) | **Not holdable**: a window requires native times | Contract D14. An echoed id is not a key, so an interval is the only bridge to an event |
+| A **time-resolved** localization track (a position per frame within a call) | Not stored; only window-level summaries | Dense data stays in the artifact, under the multimodal storage policy |
+| **Covariance / per-axis error / error ellipses** | Preserved as native attributes, term by term; no canonical column, and nothing derives a confidence | D15. Legible and queryable by name, but any consumer must know the producer's convention |
+| **Per-channel values** before promotion | Window-owned native attributes (`channel:` prefix); relational `recording_channel_id` only after explicit promotion to evidence | The schema cites a channel only at target grain (F5.3-1) |
+| **Video-track associations** before promotion | Claim-owned native attributes (`track_reference:` prefix); the association is checked to exist, never chosen by time | Choosing one would compare the backend's clock with the tracker's (F5.4-2) |
+| **Wide caller columns** | Not expressible | Above |
+| A **transform between frames** the backend applied, or wants applied | Not held, and never performed | VAWLUME has no frame transforms; produce data in one frame upstream |
+| A backend's **own decision** ("the caller is A") | Only as a claim with its number; never as a VAWLUME decision | A decision in VAWLUME is a declared policy over candidates |
+| A **combined** caller-and-location confidence | As a claim score with its semantics (an imported composite), never split into dimensions | Nothing decomposes somebody else's combination |
+| Whether the **estimate's ordinal was declared** | Lost at intake: `estimate_ordinal` is stored, `ordinal_source` is not | F5.4-4, minor |
 
 ## Related documents
 

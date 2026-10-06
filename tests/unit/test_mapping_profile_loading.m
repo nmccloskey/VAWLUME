@@ -93,6 +93,7 @@ end
 attributionProfiles = [
     "config/01_mapping_profiles/attribution/generic_imported_attribution_profile.json", "attribution_input_mapping"
     "config/01_mapping_profiles/attribution/generic_backend_attribution_profile.json", "attribution_backend_mapping"
+    "config/01_mapping_profiles/attribution/generic_array_backend_attribution_profile.json", "attribution_backend_mapping"
 ];
 for index = 1:height(attributionProfiles)
     [loaded, report] = vawlume.source_mapping.loadProfile( ...
