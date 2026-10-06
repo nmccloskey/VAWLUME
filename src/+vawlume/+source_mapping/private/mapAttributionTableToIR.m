@@ -14,7 +14,7 @@ function result = mapAttributionTableToIR(tbl, result, profileEntry, profileLoca
 
 context = profileEntry.context;
 columns = profileEntry.columns;
-resolution = callerLabelMap(profileEntry);
+resolution = attributionCallerLabelMap(profileEntry.caller_label_resolution);
 
 sourceKey = options.SourceKey;
 timebaseKey = string(context.window_timebase_key);
@@ -23,7 +23,7 @@ exportingSystem = string(context.exporting_system);
 exportingVersion = optionalContextText(context, "exporting_system_version");
 % Rendered, not copied: a stored semantics string names its producer. F4-1.
 semantics = valueSemantics(profileEntry, ...
-    producerLabel(exportingSystem, exportingVersion));
+    attributionProducerLabel(exportingSystem, exportingVersion));
 
 windows = result.attribution_windows;
 claims = result.attribution_claims;
@@ -31,15 +31,15 @@ seenWindows = strings(0, 1);
 
 for row = 1:height(tbl)
     locator = sourceKey + "#row=" + string(row);
-    [windowId, ok] = requiredCell(tbl, columns.native_window_id.source_field, row);
+    [windowId, ok] = attributionRequiredCell(tbl, columns.native_window_id.source_field, row);
     if ~ok
         result = addRowIssue(result, sourceKey, locator, ...
             "ATTRIBUTION_WINDOW_ID_MISSING", ...
             "Row " + row + " carries no native window identifier and cannot be mapped.");
         continue
     end
-    [startTime, okStart] = numericCell(tbl, columns.window_start.source_field, row);
-    [endTime, okEnd] = numericCell(tbl, columns.window_end.source_field, row);
+    [startTime, okStart] = attributionNumericCell(tbl, columns.window_start.source_field, row);
+    [endTime, okEnd] = attributionNumericCell(tbl, columns.window_end.source_field, row);
     if ~okStart || ~okEnd
         result = addRowIssue(result, sourceKey, locator, ...
             "ATTRIBUTION_WINDOW_BOUNDS_MISSING", ...
@@ -52,7 +52,7 @@ for row = 1:height(tbl)
             "Row " + row + " (window " + windowId + ") ends before it starts.");
         continue
     end
-    [label, okLabel] = requiredCell(tbl, columns.caller_label.source_field, row);
+    [label, okLabel] = attributionRequiredCell(tbl, columns.caller_label.source_field, row);
     if ~okLabel
         result = addRowIssue(result, sourceKey, locator, ...
             "ATTRIBUTION_CALLER_LABEL_MISSING", ...
@@ -172,24 +172,9 @@ end
 function semantics = valueSemantics(profileEntry, producer)
 %VALUESEMANTICS Render the declared semantics; do not merely copy them.
 %
-% A stored semantics string must NAME the system that produced the number. The
-% shipped profile used to say "producer declared in context.exporting_system",
-% which is a pointer into a file rather than a value: a reader holding only the
-% database got a sentence that referred to something they could not see. F4-1.
-%
-% Two mechanisms, because a profile VAWLUME did not ship cannot be relied on to
-% cooperate:
-%
-%   1. {producer} is substituted wherever the profile declares it, so an author
-%      controls where the name appears in their own sentence.
-%   2. If the rendered string still does not contain the exporting system's name,
-%      "; producer=<name>" is appended.
-%
-% The append looks like VAWLUME editing somebody's declaration and is not. This
-% string is PROSE VAWLUME COMPOSES from facts the profile declared -- the system
-% name is `context.exporting_system`, in the same file. Composing two
-% declarations is not inventing one. The rule that forbids recomputation governs
-% the NUMBER, and no number is touched here or anywhere in this function.
+% A stored semantics string must NAME the system that produced the number.
+% The rendering rule is shared with the backend mapper and lives in
+% attributionRenderSemantics, so both paths name their producer identically.
 semantics = struct(score="", probability="");
 if ~isfield(profileEntry, "value_semantics")
     return
@@ -197,53 +182,8 @@ end
 declared = profileEntry.value_semantics;
 for field = ["score", "probability"]
     if isfield(declared, field)
-        semantics.(field) = renderSemantics(string(declared.(field)), producer);
+        semantics.(field) = attributionRenderSemantics(string(declared.(field)), producer);
     end
-end
-end
-
-function value = renderSemantics(declared, producer)
-value = strtrim(declared);
-if strlength(value) == 0 || strlength(producer) == 0
-    return
-end
-value = replace(value, "{producer}", producer);
-if ~contains(value, producer)
-    value = value + "; producer=" + producer;
-end
-end
-
-function value = producerLabel(exportingSystem, exportingVersion)
-%PRODUCERLABEL How the exporting system is named inside a semantics string.
-%
-% The version joins the name only when one was actually declared. The shipped
-% template's default is the literal "unknown", and rendering "Example System
-% unknown" would put a disclaimer where a reader expects a version -- worse than
-% emitting nothing, because it reads like a version somebody chose.
-value = strtrim(string(exportingSystem));
-version = strtrim(string(exportingVersion));
-if strlength(value) == 0
-    value = "";
-    return
-end
-if strlength(version) > 0 && lower(version) ~= "unknown"
-    value = value + " " + version;
-end
-end
-
-function map = callerLabelMap(profileEntry)
-map = containers.Map("KeyType", "char", "ValueType", "char");
-declared = profileEntry.caller_label_resolution.map;
-if isstruct(declared)
-    entries = num2cell(declared(:));
-elseif iscell(declared)
-    entries = declared(:);
-else
-    entries = {};
-end
-for index = 1:numel(entries)
-    item = entries{index};
-    map(char(string(item.caller_label))) = char(string(item.entity_native_id));
 end
 end
 
@@ -254,39 +194,11 @@ if isfield(context, field)
 end
 end
 
-function [value, ok] = requiredCell(tbl, field, row)
-value = "";
-ok = false;
-name = string(field);
-if ~ismember(name, string(tbl.Properties.VariableNames))
-    return
-end
-raw = tbl.(name)(row);
-value = strtrim(string(raw));
-ok = strlength(value) > 0 && ~ismissing(value);
-end
-
-function [value, ok] = numericCell(tbl, field, row)
-value = NaN;
-ok = false;
-name = string(field);
-if ~ismember(name, string(tbl.Properties.VariableNames))
-    return
-end
-raw = tbl.(name)(row);
-if isnumeric(raw)
-    value = double(raw);
-else
-    value = str2double(string(raw));
-end
-ok = ~isnan(value) && isfinite(value);
-end
-
 function [value, ok] = optionalNumericCell(tbl, columns, name, row)
 value = NaN;
 ok = false;
 if ~isfield(columns, name)
     return
 end
-[value, ok] = numericCell(tbl, columns.(name).source_field, row);
+[value, ok] = attributionNumericCell(tbl, columns.(name).source_field, row);
 end

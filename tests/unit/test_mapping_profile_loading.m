@@ -90,6 +90,22 @@ for index = 1:numel(extractorProfiles)
     verifyGreaterThan(testCase, numel(loaded.field_mappings), 0);
 end
 
+attributionProfiles = [
+    "config/01_mapping_profiles/attribution/generic_imported_attribution_profile.json", "attribution_input_mapping"
+    "config/01_mapping_profiles/attribution/generic_backend_attribution_profile.json", "attribution_backend_mapping"
+];
+for index = 1:height(attributionProfiles)
+    [loaded, report] = vawlume.source_mapping.loadProfile( ...
+        fullfile(repoRoot, attributionProfiles(index, 1)), ...
+        ExpectedKind=attributionProfiles(index, 2), RepoRoot=repoRoot);
+    verifyTrue(testCase, report.is_valid);
+    verifyEqual(testCase, report.error_count, 0);
+    verifyEqual(testCase, report.warning_count, 0);
+    verifyEqual(testCase, loaded.profile_kinds, attributionProfiles(index, 2));
+    verifyEqual(testCase, loaded.profile_schema_versions, "0.3-draft");
+    verifyEqual(testCase, loaded.profile_version_labels, "0.1.0");
+end
+
 projectPath = fullfile(repoRoot, ...
     "config", "01_mapping_profiles", "project_inputs", ...
     "project_input_source_mapping_examples.json");

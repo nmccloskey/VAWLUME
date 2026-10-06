@@ -20,6 +20,11 @@ result.tracking_series = emptyTrackingSeriesTable();
 result.tracking_columns = emptyTrackingColumnsTable();
 result.attribution_windows = emptyAttributionWindowsTable();
 result.attribution_claims = emptyAttributionClaimsTable();
+result.attribution_localization_estimates = emptyLocalizationEstimatesTable();
+result.attribution_channel_evidence = emptyChannelEvidenceTable();
+result.attribution_track_references = emptyTrackReferencesTable();
+result.attribution_native_attributes = emptyNativeAttributesTable();
+result.attribution_declared_inputs = emptyDeclaredInputsTable();
 result.issues = emptyIssuesTable();
 result.summary = struct();
 result.valid_for_ingest = false;
@@ -166,6 +171,75 @@ names = ["claim_key", "window_key", "source_key", "source_row", ...
 types = repmat("string", 1, numel(names));
 types(ismember(names, ["source_row", "score", "probability"])) = "double";
 value = typedEmptyTable(names, types);
+end
+
+% Backend attribution adds window-grain material the imported path has no use
+% for. Every table here is keyed to a window or a claim in the two tables above,
+% never to a VAWLUME event: relating a backend window to an event is
+% correspondence, which happens after intake.
+%
+% NOTHING HERE IS RESOLVED AGAINST A DATABASE. coordinate_system_key,
+% channel_index, tracking_stream_key/native_track_id and the claim's
+% entity_native_id are declared keys; intake resolves each to an id or refuses.
+
+% One localization estimate. coordinate_system_key is required by the mapper
+% before a row is accepted: a coordinate without a frame is not a coordinate.
+% position_z and confidence are NaN when absent, never 0. ordinal_source says
+% whether estimate_ordinal came from the source ("declared") or from the order
+% the estimates first appeared in the file ("source_order").
+function value = emptyLocalizationEstimatesTable()
+names = ["estimate_key", "window_key", "claim_key", "source_key", "source_row", ...
+    "source_locator", "estimate_ordinal", "ordinal_source", "native_estimate_id", ...
+    "coordinate_system_key", "position_x", "position_y", "position_z", ...
+    "position_semantics", "confidence", "confidence_semantics", "mapping_rule", ...
+    "status"];
+types = repmat("string", 1, numel(names));
+types(ismember(names, ["source_row", "estimate_ordinal", "position_x", ...
+    "position_y", "position_z", "confidence"])) = "double";
+value = typedEmptyTable(names, types);
+end
+
+% Per-channel evidence a backend reported for a window. channel_index is the
+% backend's assertion and is resolved to a recording channel at intake.
+function value = emptyChannelEvidenceTable()
+names = ["channel_evidence_key", "window_key", "source_key", "source_row", ...
+    "source_locator", "channel_index", "evidence_kind", "native_field_name", ...
+    "value_real", "native_raw_token", "value_units", "value_semantics", ...
+    "mapping_rule", "status"];
+types = repmat("string", 1, numel(names));
+types(ismember(names, ["source_row", "channel_index", "value_real"])) = "double";
+value = typedEmptyTable(names, types);
+end
+
+% A backend's video-derived association for a claimed caller: a REFERENCE to an
+% identity association that must already exist, never a new one.
+function value = emptyTrackReferencesTable()
+names = ["track_reference_key", "claim_key", "source_key", "source_row", ...
+    "source_locator", "tracking_stream_key", "native_track_id", "mapping_rule", ...
+    "status"];
+types = repmat("string", 1, numel(names));
+types(ismember(names, "source_row")) = "double";
+value = typedEmptyTable(names, types);
+end
+
+% A producer-native field, owned by exactly one window, claim or estimate. No
+% json value type. value_boolean is 0/1, or NaN when another type holds the value.
+function value = emptyNativeAttributesTable()
+names = ["attribute_key", "owner_kind", "owner_key", "source_key", "source_row", ...
+    "source_locator", "attribute_name", "native_field_name", "value_type", ...
+    "value_text", "value_real", "value_integer", "value_boolean", ...
+    "native_raw_token", "unit", "mapping_rule_key", "status"];
+types = repmat("string", 1, numel(names));
+types(ismember(names, ["source_row", "value_real", "value_integer", ...
+    "value_boolean"])) = "double";
+value = typedEmptyTable(names, types);
+end
+
+% What the profile declared the producer consumed. Absence of a row means
+% undeclared, never not_used.
+function value = emptyDeclaredInputsTable()
+names = ["input_dimension", "declaration", "mapping_rule"];
+value = typedEmptyTable(names, repmat("string", 1, numel(names)));
 end
 function value = typedEmptyTable(names, types)
 value = table(Size=[0, numel(names)], VariableTypes=cellstr(types), ...

@@ -1,0 +1,138 @@
+{
+  "profiles": [
+    {
+      "profile": {
+        "id": "vawlume.attribution.generic_backend.v0_1",
+        "name": "Generic localization-backend attribution export",
+        "kind": "attribution_backend_mapping",
+        "profile_schema_version": "0.3-draft",
+        "status": "built_in_template_draft",
+        "profile_version": "0.1.0"
+      },
+
+      "source": {
+        "table_role": "localization_backend_export",
+        "source_key_default": "source:backend_export",
+        "shape": "long",
+        "shape_note": "One row per (backend window, candidate caller). Window, localization, channel and native-attribute columns may repeat across a window's rows; repeated values must agree, and a disagreement is refused rather than resolved by keeping the first. A backend emitting one row per window with several caller columns is a different shape and needs its own profile.",
+        "tool_independence": "This profile names roles, never vendor columns. Any localization backend reaches VAWLUME through the same declaration by pointing each role at whatever it happened to call it. Every element below is optional except the backend's own window, which every other element attaches to."
+      },
+
+      "context": {
+        "window_timebase_key": "backend_native",
+        "native_time_unit": "s",
+        "exporting_system": "Example Localization Backend",
+        "exporting_system_version": "unknown",
+        "coordinate_system_key": "arena_floor",
+        "tracking_stream_key": "overhead_pose",
+        "timing_note": "Window times are NATIVE to the backend's own clock and are stored unchanged. Relating a backend window to a VAWLUME event is correspondence work that happens after intake, with an explicit clock declaration.",
+        "coordinate_note": "coordinate_system_key is a KEY, resolved against the project's declared coordinate systems at intake. A frame with that key must already be declared; VAWLUME never creates one to fit the data, and never transforms coordinates between frames."
+      },
+
+      "columns": {
+        "native_window_id": {
+          "source_field": "segment_id",
+          "note": "The backend's own segment identifier, stored verbatim. Never interpreted as a VAWLUME detection ID, even when the backend echoes one."
+        },
+        "window_start": { "source_field": "start_s", "native_unit": "s" },
+        "window_end": { "source_field": "end_s", "native_unit": "s" },
+        "caller_label": {
+          "source_field": "candidate",
+          "note": "Optional. The backend's label for a candidate caller, resolved only through caller_label_resolution. A row with no label carries no claim; it may still carry a localization."
+        },
+        "score": {
+          "source_field": "assignment_score",
+          "note": "Optional. The backend's caller score, unconstrained and stored exactly as the file carries it."
+        },
+        "native_track_id": {
+          "source_field": "track",
+          "note": "Optional. The video track the backend associated with this candidate. It is a reference to an existing identity association on context.tracking_stream_key, resolved at intake; it never creates one."
+        }
+      },
+
+      "localization": {
+        "attachment": "window",
+        "attachment_note": "'window': an estimate describes the window, and identical estimates repeated across a window's caller rows are one estimate. 'claim': each row's estimate belongs to that row's claimed caller.",
+        "position_x": { "source_field": "source_x" },
+        "position_y": { "source_field": "source_y" },
+        "confidence": { "source_field": "localization_confidence" },
+        "position_note": "Coordinates are stored exactly as the backend reported them, in the declared frame's unit. A row with neither coordinate carries no estimate; a row with only one is refused."
+      },
+
+      "channel_evidence": {
+        "declared_channel_indices": [1, 2],
+        "entries": [
+          {
+            "channel_index": 1,
+            "value_field": "mic1_power",
+            "evidence_kind": "backend_channel_power",
+            "value_units": "dB",
+            "value_semantics": "Backend-reported per-channel signal power for the window; producer={producer}; not normalized or calibrated by VAWLUME"
+          },
+          {
+            "channel_index": 2,
+            "value_field": "mic2_power",
+            "evidence_kind": "backend_channel_power",
+            "value_units": "dB",
+            "value_semantics": "Backend-reported per-channel signal power for the window; producer={producer}; not normalized or calibrated by VAWLUME"
+          }
+        ],
+        "note": "A channel index is the backend's assertion about the acquisition. It must be declared here and is resolved against the recording's channels at intake; nothing inspects audio to confirm the backend's numbering."
+      },
+
+      "native_attributes": [
+        {
+          "attribute_name": "localization_error_major_axis",
+          "source_field": "err_major",
+          "owner": "estimate",
+          "value_type": "real",
+          "unit": "cm",
+          "note": "Positional uncertainty richer than one scalar is preserved as native attributes of the estimate, never as canonical columns."
+        }
+      ],
+
+      "value_semantics": {
+        "score": "Backend caller-assignment score; producer={producer}; range as the backend defines it; uncalibrated; not a probability",
+        "probability": "Backend caller probability; producer={producer}; range=[0,1]; calibration is the backend's claim and is not validated by VAWLUME",
+        "position": "Estimated sound-source location; producer={producer}; not a bodypart position",
+        "confidence": "Backend localization confidence; producer={producer}; how sure the backend was WHERE the sound came from; not a caller probability; uncalibrated",
+        "semantics_note": "These strings travel with every stored number and coordinate. {producer} is substituted from context.exporting_system and, when declared and not 'unknown', context.exporting_system_version."
+      },
+
+      "declared_inputs": {
+        "declarations": {},
+        "note": "Optional. Declare, per upstream uncertainty source (temporal_alignment, pose_localization, visual_identity, acoustic), whether the backend 'used' or did 'not_used' it. Leave a source out when you do not know: undeclared is recorded as unknown, never as not_used. This template declares nothing because a template cannot know."
+      },
+
+      "caller_label_resolution": {
+        "policy": "declared_only",
+        "map": [
+          { "caller_label": "A", "entity_native_id": "A" },
+          { "caller_label": "B", "entity_native_id": "B" }
+        ],
+        "unresolved_label_policy": "refuse"
+      },
+
+      "correspondence": {
+        "eligibility_rule": "positive_overlap_and_min_temporal_iou_on_declared_basis",
+        "min_temporal_iou": 0.05,
+        "require_positive_overlap": true,
+        "preserve_ambiguity": true,
+        "calibration_status": "illustrative_prototype",
+        "calibration_note": "A demonstration value, independent of the matching specification's floor. Not calibrated; no correspondence produced under it is validated."
+      },
+
+      "mapping_policy": {
+        "preserve_source_values": true,
+        "preserve_source_values_note": "No rescaling, renormalization, clamping, unit conversion or frame transformation, and no promotion of a score or a confidence to a probability.",
+        "unmappable_row_policy": "report",
+        "correspondence_policy": "none"
+      },
+
+      "validation": {
+        "require_window_bounds": true,
+        "require_one_of_score_or_probability": false
+      }
+    }
+  ]
+}

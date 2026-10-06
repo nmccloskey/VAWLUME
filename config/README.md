@@ -192,6 +192,16 @@ forever, because the original is gone.
 See
 [`generic_imported_attribution_profile.json`](01_mapping_profiles/attribution/generic_imported_attribution_profile.json)
 and [`../docs/development/32_imported_attribution_intake.md`](../docs/development/32_imported_attribution_intake.md).
+
+The same directory holds the **localization-backend** template, profile kind
+`attribution_backend_mapping`. It declares a backend's own windows and,
+optionally, its caller claims, its localization estimates (with the coordinate
+system they are in), per-channel evidence, video-track references,
+producer-native fields, and which upstream uncertainty sources the backend
+consumed. A declared position without a declared frame is refused. See
+[`generic_backend_attribution_profile.json`](01_mapping_profiles/attribution/generic_backend_attribution_profile.json)
+and [`../docs/development/36_backend_attribution_intake.md`](../docs/development/36_backend_attribution_intake.md).
+
 ### 7. Recording-device profile
 
 Describes acquisition hardware/context, for example:

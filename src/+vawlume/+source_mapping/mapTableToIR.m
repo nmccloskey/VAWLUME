@@ -50,6 +50,10 @@ switch string(profile.profile_kind)
         result = mapAttributionTableToIR( ...
             tbl, result, profileEntry, profileLocation, options);
         return
+    case "attribution_backend_mapping"
+        result = mapBackendAttributionTableToIR( ...
+            tbl, result, profileEntry, profileLocation, options);
+        return
     case "extractor_output"
         % Continue through the inherited generic extractor field mapper.
     otherwise

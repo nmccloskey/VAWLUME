@@ -62,7 +62,8 @@ report = finalizeReport(report);
         if hasKind
             if ~ismember(kind, ["project_input", "extractor_output", ...
                     "external_stream_mapping", "alignment_anchor_mapping", ...
-                    "tracking_input_mapping", "attribution_input_mapping"])
+                    "tracking_input_mapping", "attribution_input_mapping", ...
+                    "attribution_backend_mapping"])
                 addIssue("error", "PROFILE_UNSUPPORTED_KIND", location + ".profile.kind", ...
                     "Unsupported source_mapping profile kind: " + kind + ".");
             elseif strlength(options.ExpectedKind) > 0 && kind ~= options.ExpectedKind
@@ -77,7 +78,8 @@ report = finalizeReport(report);
                 "Unsupported mapping-profile schema version: " + schemaVersion + ".");
         elseif hasSchemaVersion && ismember(kind, ...
                 ["external_stream_mapping", "alignment_anchor_mapping", ...
-                "tracking_input_mapping", "attribution_input_mapping"]) && schemaVersion ~= "0.3-draft"
+                "tracking_input_mapping", "attribution_input_mapping", ...
+                "attribution_backend_mapping"]) && schemaVersion ~= "0.3-draft"
             addIssue("error", "PROFILE_UNSUPPORTED_SCHEMA_VERSION", ...
                 location + ".profile.profile_schema_version", ...
                 "External-stream, anchor, tracking, and attribution profiles require mapping-profile schema version 0.3-draft.");
@@ -105,6 +107,8 @@ report = finalizeReport(report);
                 validateTrackingInputProfile(entry, location);
             case "attribution_input_mapping"
                 validateAttributionInputProfile(entry, location);
+            case "attribution_backend_mapping"
+                validateAttributionBackendProfile(entry, location);
         end
     end
 
@@ -210,11 +214,17 @@ report = finalizeReport(report);
             end
         end
 
+        validateAttributionCorrespondence(entry, location);
+    end
+
+    function validateAttributionCorrespondence(entry, location)
         % Attribution's own eligibility rule, deliberately separate from the
         % matching specification's. Detector-to-detector matching asks whether
         % two detectors found the same call; this asks whether an attribution
         % claim refers to a call VAWLUME knows about. Sharing a threshold between
         % them would make one layer's calibration silently govern the other.
+        % Shared by both attribution kinds: correspondence reads the same rule
+        % whichever kind of external system produced the windows.
         if hasField(entry, "correspondence")
             correspondence = entry.correspondence;
             location2 = location + ".correspondence";
@@ -243,6 +253,320 @@ report = finalizeReport(report);
                     "cannot opt out: choosing a winner here would discard the " + ...
                     "evidence a reviewer needs to weigh it.");
             end
+        end
+    end
+
+    function validateAttributionBackendProfile(entry, location)
+        %VALIDATEATTRIBUTIONBACKENDPROFILE A tool-agnostic localization-backend export.
+        %
+        % Plan section 10 lists six things a backend may provide, and each is
+        % optional here except the backend's own window: every other element
+        % attaches to it, and a backend that reports no interval has nothing the
+        % canonical model can hold (backend/localization contract D14). Roles
+        % are named, never vendor columns.
+        %
+        % The strictness is where the canonical model needs it: a declared
+        % coordinate needs a declared frame, every declared number or position
+        % needs its semantics, caller labels resolve only by declaration, and a
+        % profile cannot opt out of preserving source values.
+        if requireMapping(entry, "source", location + ".source")
+            requiredText(entry.source, "table_role", location + ".source.table_role");
+        end
+
+        context = struct();
+        if requireMapping(entry, "context", location + ".context")
+            context = entry.context;
+            requiredText(context, "window_timebase_key", ...
+                location + ".context.window_timebase_key");
+            [unit, hasUnit] = requiredText(context, "native_time_unit", ...
+                location + ".context.native_time_unit");
+            if hasUnit
+                validateTimeUnit(unit, location + ".context.native_time_unit");
+            end
+            requiredText(context, "exporting_system", ...
+                location + ".context.exporting_system");
+        end
+
+        columns = struct();
+        if requireMapping(entry, "columns", location + ".columns")
+            columns = entry.columns;
+            for name = ["native_window_id", "window_start", "window_end"]
+                if ~hasField(columns, name)
+                    addIssue("error", "PROFILE_MISSING_FIELD", ...
+                        location + ".columns." + name, ...
+                        "A backend export must declare " + name + ": every other " + ...
+                        "element attaches to the backend's own window.");
+                else
+                    requiredText(columns.(name), "source_field", ...
+                        location + ".columns." + name + ".source_field");
+                end
+            end
+            for name = ["caller_label", "score", "probability", "native_track_id"]
+                if hasField(columns, name)
+                    requiredText(columns.(name), "source_field", ...
+                        location + ".columns." + name + ".source_field");
+                end
+            end
+        end
+        hasCaller = hasField(columns, "caller_label");
+        for name = ["score", "probability", "native_track_id"]
+            if hasField(columns, name) && ~hasCaller
+                addIssue("error", "PROFILE_INVALID_FIELD", location + ".columns." + name, ...
+                    "A declared " + name + " belongs to a claimed caller and requires " + ...
+                    "columns.caller_label.");
+            end
+        end
+        if hasField(columns, "native_track_id") && ...
+                strlength(optionalText(context, "tracking_stream_key")) == 0
+            addIssue("error", "PROFILE_MISSING_FIELD", ...
+                location + ".context.tracking_stream_key", ...
+                "A declared native_track_id requires context.tracking_stream_key: " + ...
+                "a track identifier means nothing without the stream it belongs to.");
+        end
+
+        hasLocalization = hasField(entry, "localization");
+        hasConfidence = false;
+        if hasLocalization
+            localization = entry.localization;
+            location2 = location + ".localization";
+            for name = ["position_x", "position_y"]
+                if ~hasField(localization, name)
+                    addIssue("error", "PROFILE_MISSING_FIELD", location2 + "." + name, ...
+                        "A localization block must declare " + name + ".");
+                else
+                    requiredText(localization.(name), "source_field", ...
+                        location2 + "." + name + ".source_field");
+                end
+            end
+            for name = ["position_z", "confidence", "native_estimate_id", ...
+                    "estimate_ordinal", "coordinate_system"]
+                if hasField(localization, name)
+                    requiredText(localization.(name), "source_field", ...
+                        location2 + "." + name + ".source_field");
+                end
+            end
+            hasConfidence = hasField(localization, "confidence");
+            % A coordinate without a frame is not a weak coordinate; it is not a
+            % coordinate. The frame is declared once in context, or per row.
+            if ~hasField(localization, "coordinate_system") && ...
+                    strlength(optionalText(context, "coordinate_system_key")) == 0
+                addIssue("error", "PROFILE_COORDINATE_SYSTEM_UNDECLARED", ...
+                    location2, ...
+                    "A localization block requires a declared coordinate system: " + ...
+                    "context.coordinate_system_key, or localization.coordinate_system " + ...
+                    "naming a per-row field. Coordinates without a frame are refused.");
+            end
+            attachment = optionalText(localization, "attachment");
+            if strlength(attachment) > 0 && ~ismember(attachment, ["window", "claim"])
+                addIssue("error", "PROFILE_INVALID_FIELD", location2 + ".attachment", ...
+                    "localization.attachment must be window or claim.");
+            elseif attachment == "claim" && ~hasCaller
+                addIssue("error", "PROFILE_INVALID_FIELD", location2 + ".attachment", ...
+                    "Estimates attached to claims require columns.caller_label.");
+            end
+            if hasField(localization, "confidence_range")
+                range = localization.confidence_range;
+                if ~hasConfidence || ~isnumeric(range) || numel(range) ~= 2 || ...
+                        any(~isfinite(range)) || range(1) > range(2)
+                    addIssue("error", "PROFILE_INVALID_FIELD", ...
+                        location2 + ".confidence_range", ...
+                        "confidence_range must be two finite numbers [low, high] with " + ...
+                        "low <= high, and requires a declared confidence.");
+                end
+            end
+        end
+
+        % Every declared number or position states its semantics, because
+        % VAWLUME cannot recover what a producer meant from the number alone.
+        if requireMapping(entry, "value_semantics", location + ".value_semantics")
+            needed = strings(0, 1);
+            for name = ["score", "probability"]
+                if hasField(columns, name)
+                    needed(end+1, 1) = name; %#ok<AGROW>
+                end
+            end
+            if hasLocalization
+                needed(end+1, 1) = "position";
+            end
+            if hasConfidence
+                needed(end+1, 1) = "confidence";
+            end
+            for name = transpose(needed)
+                if ~hasField(entry.value_semantics, name)
+                    addIssue("error", "PROFILE_MISSING_FIELD", ...
+                        location + ".value_semantics." + name, ...
+                        "A declared " + name + " requires " + name + " semantics " + ...
+                        "saying what it meant where it came from.");
+                end
+            end
+        end
+
+        if hasField(entry, "channel_evidence")
+            validateBackendChannelEvidence(entry.channel_evidence, ...
+                location + ".channel_evidence");
+        end
+        if hasField(entry, "native_attributes")
+            validateBackendNativeAttributes(entry.native_attributes, ...
+                location + ".native_attributes", hasCaller, hasLocalization);
+        end
+        if hasField(entry, "declared_inputs")
+            validateBackendDeclaredInputs(entry.declared_inputs, ...
+                location + ".declared_inputs");
+        end
+
+        if hasCaller
+            if requireMapping(entry, "caller_label_resolution", ...
+                    location + ".caller_label_resolution")
+                resolution = entry.caller_label_resolution;
+                [policy, hasPolicy] = requiredText(resolution, "policy", ...
+                    location + ".caller_label_resolution.policy");
+                if hasPolicy && policy ~= "declared_only"
+                    addIssue("error", "PROFILE_INVALID_FIELD", ...
+                        location + ".caller_label_resolution.policy", ...
+                        "Only declared_only caller-label resolution is supported.");
+                end
+                if ~isfield(resolution, "map")
+                    addIssue("error", "PROFILE_MISSING_FIELD", ...
+                        location + ".caller_label_resolution.map", ...
+                        "Declared caller-label resolution requires a map.");
+                else
+                    validateCallerLabelMap(resolution.map, ...
+                        location + ".caller_label_resolution.map");
+                end
+            end
+        end
+
+        if hasField(entry, "mapping_policy") && ...
+                isfield(entry.mapping_policy, "preserve_source_values") && ...
+                ~isequal(logical(entry.mapping_policy.preserve_source_values), true)
+            addIssue("error", "PROFILE_INVALID_FIELD", ...
+                location + ".mapping_policy.preserve_source_values", ...
+                "Backend values and coordinates are preserved exactly. A profile " + ...
+                "cannot opt out: a rescaled or re-projected number is unauditable.");
+        end
+
+        validateAttributionCorrespondence(entry, location);
+    end
+
+    function validateBackendChannelEvidence(block, location)
+        declared = [];
+        if ~hasField(block, "declared_channel_indices")
+            addIssue("error", "PROFILE_MISSING_FIELD", ...
+                location + ".declared_channel_indices", ...
+                "Channel evidence requires declared_channel_indices.");
+        else
+            declared = block.declared_channel_indices;
+            if ~isnumeric(declared) || isempty(declared) || ...
+                    any(declared(:) < 1 | declared(:) ~= round(declared(:))) || ...
+                    numel(unique(declared(:))) ~= numel(declared)
+                addIssue("error", "PROFILE_INVALID_FIELD", ...
+                    location + ".declared_channel_indices", ...
+                    "declared_channel_indices must be distinct integers >= 1.");
+                declared = [];
+            end
+        end
+        entries = normalizeSequence(optionalField(block, "entries"));
+        if isempty(entries)
+            addIssue("error", "PROFILE_MISSING_FIELD", location + ".entries", ...
+                "Channel evidence requires at least one entry.");
+        end
+        for index = 1:numel(entries)
+            item = entries{index};
+            itemLocation = location + ".entries[" + string(index) + "]";
+            requiredText(item, "value_field", itemLocation + ".value_field");
+            requiredText(item, "evidence_kind", itemLocation + ".evidence_kind");
+            requiredText(item, "value_semantics", itemLocation + ".value_semantics");
+            hasFixed = hasField(item, "channel_index");
+            hasPerRow = hasField(item, "channel_index_field");
+            if hasFixed == hasPerRow
+                addIssue("error", "PROFILE_INVALID_FIELD", itemLocation, ...
+                    "A channel-evidence entry names exactly one of channel_index " + ...
+                    "or channel_index_field.");
+            elseif hasFixed && ~isempty(declared) && ...
+                    ~ismember(item.channel_index, declared)
+                addIssue("error", "PROFILE_INVALID_FIELD", ...
+                    itemLocation + ".channel_index", ...
+                    "channel_index " + string(item.channel_index) + ...
+                    " is not in declared_channel_indices.");
+            end
+        end
+    end
+
+    function validateBackendNativeAttributes(raw, location, hasCaller, hasLocalization)
+        entries = normalizeSequence(raw);
+        seen = strings(0, 1);
+        for index = 1:numel(entries)
+            item = entries{index};
+            itemLocation = location + "[" + string(index) + "]";
+            [name, hasName] = requiredText(item, "attribute_name", ...
+                itemLocation + ".attribute_name");
+            requiredText(item, "source_field", itemLocation + ".source_field");
+            [owner, hasOwner] = requiredText(item, "owner", itemLocation + ".owner");
+            [valueType, hasType] = requiredText(item, "value_type", ...
+                itemLocation + ".value_type");
+            if hasName && ismember(name, seen)
+                addIssue("error", "PROFILE_INVALID_FIELD", itemLocation + ".attribute_name", ...
+                    "Native attribute " + name + " is declared more than once.");
+            end
+            if hasName
+                seen(end+1, 1) = name; %#ok<AGROW>
+            end
+            if hasOwner && ~ismember(owner, ["window", "claim", "estimate"])
+                addIssue("error", "PROFILE_INVALID_FIELD", itemLocation + ".owner", ...
+                    "A native attribute's owner is window, claim, or estimate.");
+            elseif hasOwner && owner == "claim" && ~hasCaller
+                addIssue("error", "PROFILE_INVALID_FIELD", itemLocation + ".owner", ...
+                    "A claim-owned native attribute requires columns.caller_label.");
+            elseif hasOwner && owner == "estimate" && ~hasLocalization
+                addIssue("error", "PROFILE_INVALID_FIELD", itemLocation + ".owner", ...
+                    "An estimate-owned native attribute requires a localization block.");
+            end
+            % No json type, by decision: P4-2 is the ledger item created by
+            % choosing JSON once.
+            if hasType && ~ismember(valueType, ["text", "real", "integer", "boolean"])
+                addIssue("error", "PROFILE_INVALID_FIELD", itemLocation + ".value_type", ...
+                    "A native attribute's value_type is text, real, integer, or " + ...
+                    "boolean. There is no json type.");
+            end
+        end
+    end
+
+    function validateBackendDeclaredInputs(block, location)
+        if ~hasField(block, "declarations")
+            addIssue("error", "PROFILE_MISSING_FIELD", location + ".declarations", ...
+                "declared_inputs requires a declarations mapping, which may be empty.");
+            return
+        end
+        declarations = block.declarations;
+        if ~isstruct(declarations)
+            addIssue("error", "PROFILE_INVALID_FIELD", location + ".declarations", ...
+                "declarations must be a mapping from uncertainty source to used or not_used.");
+            return
+        end
+        allowedSources = ["temporal_alignment", "pose_localization", ...
+            "visual_identity", "acoustic"];
+        names = string(fieldnames(declarations));
+        for index = 1:numel(names)
+            name = names(index);
+            if ~ismember(name, allowedSources)
+                addIssue("error", "PROFILE_INVALID_FIELD", location + ".declarations." + name, ...
+                    name + " is not an upstream uncertainty source. Declare one of " + ...
+                    strjoin(allowedSources, ", ") + ".");
+                continue
+            end
+            [value, ok] = scalarToken(declarations.(name));
+            if ~ok || ~ismember(value, ["used", "not_used"])
+                addIssue("error", "PROFILE_INVALID_FIELD", location + ".declarations." + name, ...
+                    "A declaration is used or not_used. Leave a source out when it is " + ...
+                    "not known; undeclared is never recorded as not_used.");
+            end
+        end
+    end
+
+    function value = optionalField(container, field)
+        value = [];
+        if hasField(container, field)
+            value = container.(field);
         end
     end
 
@@ -1264,6 +1588,12 @@ report = finalizeReport(report);
             case "attribution_input_mapping"
                 allowed = ["profile", "source", "context", "columns", ...
                     "value_semantics", "caller_label_resolution", "correspondence", ...
+                    "mapping_policy", "validation"];
+            case "attribution_backend_mapping"
+                allowed = ["profile", "source", "context", "columns", ...
+                    "localization", "channel_evidence", "native_attributes", ...
+                    "value_semantics", "declared_inputs", ...
+                    "caller_label_resolution", "correspondence", ...
                     "mapping_policy", "validation"];
             otherwise
                 allowed = "profile";
