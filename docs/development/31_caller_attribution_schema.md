@@ -16,6 +16,12 @@ the `source_localization` dimension, `recording_channel_id` and
 `attribution_backend_mapping`. See
 [The backend/localization slice](#the-backendlocalization-slice).
 
+Added at schema version `0.13-draft`, for the native estimator:
+`attribution_evidence.derived_measurement_id`, with
+`trg_attribution_evidence_measurement_scope` and its `_update` twin, and the
+`config_profiles.profile_kind` member `attribution_estimator_settings`. See
+[`attribution_evidence`](#attribution_evidence).
+
 The design reasoning lives in
 [`../design/04_caller_attribution_contract.md`](../design/04_caller_attribution_contract.md),
 extended for the backend path by
@@ -193,14 +199,32 @@ duplicates the evidence. This differs from candidate rows, whose target/entity
 key supports exact reuse.
 
 The schema has direct evidence FKs for an alignment run, source file, mapping
-profile, external event, tracking identity association, recording channel, and
-localization estimate. It has no evidence FK for a general analysis run,
-artifact, or external stream. Those sources use a stable `source_locator`
-today. This is **P4-3**, and it was **declined** for the `0.12-draft` bump
-(backend/localization contract D8). No backend evidence row needs it once
-estimates, channels and identity associations are citable, and its first real
-consumer is the native estimator of a later phase, which may need a different
-citation entirely.
+profile, external event, tracking identity association, recording channel,
+localization estimate, and, from `0.13-draft`, derived measurement. It has no
+evidence FK for a general analysis run, artifact, or external stream. Those
+sources use a stable `source_locator`.
+
+**P4-3 is closed at `0.13-draft`, in the form its first real consumer needed**
+(native estimator contract D13). It was declined for `0.12-draft` (backend/
+localization contract D8), which predicted that the native estimator might need
+a different citation from the analysis-run column first sketched. It did.
+`derived_measurement_id` cites the derived measurement an evidence row reports,
+such as a call's per-channel level. That is what lets a computed score be
+reconstructed from storage instead of re-found by a query whose population can
+change.
+
+It is `ON DELETE RESTRICT`, unlike every other evidence citation, because a
+native score is *computed* from the measurements its evidence cites: deleting
+one would leave a stored score that can no longer be reconstructed. Delete the
+attribution run first. `channel_response_estimate_sources` follows the same rule.
+`trg_attribution_evidence_measurement_scope` and its `_update` twin require the
+measurement's recording, resolved through its target as
+`trg_derived_measurement_channel_scope` resolves it, to be the run's recording.
+A measurement whose recording cannot be established is refused. Both triggers
+test scope only once the measurement and the target exist, so a dangling
+identifier still reaches the foreign-key error. Whether the measurement is about
+the *same event* and *same channel* as the row is a write-path rule, not a
+schema one.
 
 ### `attribution_decisions` and `attribution_decision_candidates`
 
@@ -558,6 +582,13 @@ Added at schema version `0.12-draft`, for the backend/localization slice:
   `not_used`, names the profile version that declared it, and appears at most
   once per run.
 
+Added at schema version `0.13-draft`, for the native estimator:
+
+- a cited derived measurement is about the run's recording, and a measurement
+  whose recording cannot be established is not citable (on insert and on update);
+- a cited derived measurement cannot be deleted while an evidence row cites it;
+- `attribution_estimator_settings` is a declared profile kind.
+
 ## What the schema does **not** enforce
 
 This is the half that stops a later reader assuming a guarantee that was never
@@ -580,6 +611,7 @@ there.
   `PRAGMA foreign_key_check` will not see it. The `0.12-draft` exceptions are
   estimate dimensionality and evidence channel and localization scope, which
   carry `_update` twins; an estimate's frame project and claim scope do not.
+  The `0.13-draft` measurement scope also carries one.
 - **`agreement_extent_method` is not checked against the view.** A target may name
   an extent method for a group whose members were since deleted.
 - **Nothing constrains `evidence_kind`, `method`, or any semantics string** to a
@@ -602,6 +634,14 @@ For the backend/localization slice (`0.12-draft`):
 - **Nothing checks that a native attribute means what its name suggests**, or
   that a declared input is true. Both are the producer's statements, recorded
   with their provenance.
+
+For the native-estimator change (`0.13-draft`):
+
+- **Nothing in the schema requires a cited measurement to be about the evidence
+  row's own event or channel.** Those are write-path refusals in `addEvidence`.
+- **Nothing checks that an `attribution_estimator_settings` profile states
+  anything.** The kind names a contract. Validating that a profile meets it is
+  the loader's job.
 
 ## Phase 3 debts closed here
 
@@ -653,6 +693,7 @@ dangerous half: the NULL trap raises, this one returns a wrong number.
 
 - [`../design/04_caller_attribution_contract.md`](../design/04_caller_attribution_contract.md) — the decisions and their reasons
 - [`../design/05_backend_localization_contract.md`](../design/05_backend_localization_contract.md) — the backend/localization decisions behind the `0.12-draft` slice
+- [`../design/06_native_estimator_contract.md`](../design/06_native_estimator_contract.md) — the native-estimator decisions behind the `0.13-draft` change
 - [`23_spatial_geometry_schema.md`](23_spatial_geometry_schema.md) — coordinate systems, and why compatibility is identity
 - [`22_phase1_correspondence_boundaries.md`](22_phase1_correspondence_boundaries.md) — the orientation document and the layer separation this slice inherits
 - [`25_visual_identity_association.md`](25_visual_identity_association.md) — identity evidence, A-1, and the open-vocabulary reasoning

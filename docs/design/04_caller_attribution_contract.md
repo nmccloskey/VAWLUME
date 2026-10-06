@@ -19,8 +19,11 @@ deleting a selection. Nothing caught the stale claim, because
 `check_repository_self_description` exempts `docs/design/` from its version
 check. Phase 5 extends this contract in
 [`05_backend_localization_contract.md`](05_backend_localization_contract.md), and
-its one bump, applied at 5.2, makes the live schema `0.12-draft`. The original sentence is left visible
-rather than rewritten away, following the 4.12a precedent below.
+its one bump, applied at 5.2, made the schema `0.12-draft`. The original sentence is left visible
+rather than rewritten away, following the 4.12a precedent below. Phase 6 extends
+both contracts in [`06_native_estimator_contract.md`](06_native_estimator_contract.md),
+and its one bump, applied at 6.2, makes the live schema `0.13-draft`
+(`PRAGMA user_version = 13`).
 
 The contract clauses below are frozen as written. This status block is not: it
 names the live schema, and 4.2 set the precedent of moving it when the version

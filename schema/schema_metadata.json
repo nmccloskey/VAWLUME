@@ -1,6 +1,6 @@
 {
-  "metadata_version": "0.10.0",
-  "schema_version": "0.12-draft",
+  "metadata_version": "0.11.0",
+  "schema_version": "0.13-draft",
   "coverage": {
     "complete_domains": [
       { "domain": "identity_config_provenance", "object_count": 10 },
@@ -75,7 +75,7 @@
           "description": "Human-readable name for the profile, used when reporting which configuration produced a result."
         },
         "profile_kind": {
-          "description": "Which interpretation contract this profile expresses, drawn from a declared vocabulary that separates source and project mapping, extractor output and settings, recording device, experimental setup, tracking, attribution input and attribution backend mapping, analysis settings, and policy. The kinds are deliberately distinct so that one profile cannot silently take on another's responsibility."
+          "description": "Which interpretation contract this profile expresses, drawn from a declared vocabulary that separates source and project mapping, extractor output and settings, recording device, experimental setup, tracking, attribution input and attribution backend mapping, attribution estimator settings, analysis settings, and policy. Attribution estimator settings are the versioned parameters of a native attribution method, including its statement of which evidence dimensions it combines, what its score means, how its inputs are scaled and for what scope they are comparable, how its inputs stay readable, and its calibration status. The kinds are deliberately distinct so that one profile cannot silently take on another's responsibility."
         },
         "is_builtin": {
           "description": "Whether VAWLUME shipped this profile (1) or a user authored it (0). Built-in profiles are seeded from the repository rather than registered from a user document."
@@ -2996,6 +2996,9 @@
         },
         "attribution_localization_estimate_id": {
           "description": "Localization estimate this evidence row cites. Required exactly when the evidence dimension is source localization and forbidden otherwise; the row copies no coordinate or confidence, because the estimate is their authority. The estimate must come from the same attribution run."
+        },
+        "derived_measurement_id": {
+          "description": "Derived measurement this evidence row reports, such as a call's per-channel level. Null means the row reports no stored measurement, not that a measurement is missing. A trigger requires the measurement's recording, resolved through its target, to be the recording of this evidence's attribution run; a measurement whose recording cannot be established is refused. The citation is what lets a computed candidate score be reconstructed from storage, which is why a cited measurement cannot be deleted while this row exists."
         }
       }
     },
@@ -5757,6 +5760,13 @@
       "target_table": "attribution_localization_estimates",
       "target_columns": ["attribution_localization_estimate_id"],
       "description": "Names the localization estimate a source-localization evidence row rests on. This citation is how an estimate reaches a target or candidate; nothing promotes one implicitly, and a trigger requires the estimate to come from the same attribution run."
+    },
+    {
+      "source_table": "attribution_evidence",
+      "source_columns": ["derived_measurement_id"],
+      "target_table": "derived_measurements",
+      "target_columns": ["derived_measurement_id"],
+      "description": "Names the derived measurement an evidence row reports. Deletion is restricted rather than cascaded: an attribution score computed from this measurement must remain reconstructible, so the attribution run is deleted before its cited measurements. A trigger requires the measurement to be about the run's recording, on insert and on update."
     },
     {
       "source_table": "attribution_localization_estimates",

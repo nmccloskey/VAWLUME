@@ -224,7 +224,7 @@
         {
           "name": "-",
           "type": "CHECK",
-          "def": "CHECK (profile_kind IN ( 'project_input', 'extractor_output', 'extractor_settings', 'recording_device', 'experimental_setup', 'external_stream_mapping', 'alignment_anchor_mapping', 'tracking_input_mapping', 'analysis_settings', 'consilience_policy', 'attribution_input_mapping', 'attribution_policy', 'attribution_backend_mapping', 'other' ))",
+          "def": "CHECK (profile_kind IN ( 'project_input', 'extractor_output', 'extractor_settings', 'recording_device', 'experimental_setup', 'external_stream_mapping', 'alignment_anchor_mapping', 'tracking_input_mapping', 'analysis_settings', 'consilience_policy', 'attribution_input_mapping', 'attribution_policy', 'attribution_backend_mapping', 'attribution_estimator_settings', 'other' ))",
           "table": "config_profiles",
           "columns": [
             "profile_kind"
@@ -240,7 +240,7 @@
           ]
         }
       ],
-      "def": "CREATE TABLE config_profiles (\n    profile_id          INTEGER PRIMARY KEY,\n    project_id          INTEGER REFERENCES projects(project_id) ON DELETE CASCADE,\n    profile_key         TEXT NOT NULL,\n    profile_name        TEXT NOT NULL,\n    profile_kind        TEXT NOT NULL CHECK (profile_kind IN (\n                            'project_input',\n                            'extractor_output',\n                            'extractor_settings',\n                            'recording_device',\n                            'experimental_setup',\n                            'external_stream_mapping',\n                            'alignment_anchor_mapping',\n                            'tracking_input_mapping',\n                            'analysis_settings',\n                            'consilience_policy',\n                            'attribution_input_mapping',\n                            'attribution_policy',\n                            'attribution_backend_mapping',\n                            'other'\n                        )),\n    is_builtin          INTEGER NOT NULL DEFAULT 0 CHECK (is_builtin IN (0,1)),\n    description         TEXT,\n    created_at_utc      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),\n    UNIQUE(project_id, profile_key)\n)"
+      "def": "CREATE TABLE config_profiles (\n    profile_id          INTEGER PRIMARY KEY,\n    project_id          INTEGER REFERENCES projects(project_id) ON DELETE CASCADE,\n    profile_key         TEXT NOT NULL,\n    profile_name        TEXT NOT NULL,\n    profile_kind        TEXT NOT NULL CHECK (profile_kind IN (\n                            'project_input',\n                            'extractor_output',\n                            'extractor_settings',\n                            'recording_device',\n                            'experimental_setup',\n                            'external_stream_mapping',\n                            'alignment_anchor_mapping',\n                            'tracking_input_mapping',\n                            'analysis_settings',\n                            'consilience_policy',\n                            'attribution_input_mapping',\n                            'attribution_policy',\n                            'attribution_backend_mapping',\n                            'attribution_estimator_settings',\n                            'other'\n                        )),\n    is_builtin          INTEGER NOT NULL DEFAULT 0 CHECK (is_builtin IN (0,1)),\n    description         TEXT,\n    created_at_utc      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),\n    UNIQUE(project_id, profile_key)\n)"
     },
     {
       "name": "config_profile_versions",
@@ -12505,6 +12505,11 @@
           "name": "attribution_localization_estimate_id",
           "type": "INTEGER",
           "nullable": true
+        },
+        {
+          "name": "derived_measurement_id",
+          "type": "INTEGER",
+          "nullable": true
         }
       ],
       "indexes": [
@@ -12546,6 +12551,19 @@
         {
           "name": "- (Foreign key ID: 0)",
           "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (derived_measurement_id) REFERENCES derived_measurements (derived_measurement_id) ON UPDATE NO ACTION ON DELETE RESTRICT MATCH NONE",
+          "table": "attribution_evidence",
+          "referenced_table": "derived_measurements",
+          "columns": [
+            "derived_measurement_id"
+          ],
+          "referenced_columns": [
+            "derived_measurement_id"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 1)",
+          "type": "FOREIGN KEY",
           "def": "FOREIGN KEY (attribution_localization_estimate_id) REFERENCES attribution_localization_estimates (attribution_localization_estimate_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
           "table": "attribution_evidence",
           "referenced_table": "attribution_localization_estimates",
@@ -12557,7 +12575,7 @@
           ]
         },
         {
-          "name": "- (Foreign key ID: 1)",
+          "name": "- (Foreign key ID: 2)",
           "type": "FOREIGN KEY",
           "def": "FOREIGN KEY (recording_channel_id) REFERENCES recording_channels (recording_channel_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
           "table": "attribution_evidence",
@@ -12570,7 +12588,7 @@
           ]
         },
         {
-          "name": "- (Foreign key ID: 2)",
+          "name": "- (Foreign key ID: 3)",
           "type": "FOREIGN KEY",
           "def": "FOREIGN KEY (mapping_profile_version_id) REFERENCES config_profile_versions (profile_version_id) ON UPDATE NO ACTION ON DELETE SET NULL MATCH NONE",
           "table": "attribution_evidence",
@@ -12583,7 +12601,7 @@
           ]
         },
         {
-          "name": "- (Foreign key ID: 3)",
+          "name": "- (Foreign key ID: 4)",
           "type": "FOREIGN KEY",
           "def": "FOREIGN KEY (source_file_id) REFERENCES source_files (source_file_id) ON UPDATE NO ACTION ON DELETE SET NULL MATCH NONE",
           "table": "attribution_evidence",
@@ -12596,7 +12614,7 @@
           ]
         },
         {
-          "name": "- (Foreign key ID: 4)",
+          "name": "- (Foreign key ID: 5)",
           "type": "FOREIGN KEY",
           "def": "FOREIGN KEY (alignment_run_id) REFERENCES time_alignment_runs (alignment_run_id) ON UPDATE NO ACTION ON DELETE SET NULL MATCH NONE",
           "table": "attribution_evidence",
@@ -12609,7 +12627,7 @@
           ]
         },
         {
-          "name": "- (Foreign key ID: 5)",
+          "name": "- (Foreign key ID: 6)",
           "type": "FOREIGN KEY",
           "def": "FOREIGN KEY (external_event_id) REFERENCES external_events (external_event_id) ON UPDATE NO ACTION ON DELETE SET NULL MATCH NONE",
           "table": "attribution_evidence",
@@ -12622,7 +12640,7 @@
           ]
         },
         {
-          "name": "- (Foreign key ID: 6)",
+          "name": "- (Foreign key ID: 7)",
           "type": "FOREIGN KEY",
           "def": "FOREIGN KEY (tracking_identity_association_id) REFERENCES tracking_identity_associations (tracking_identity_association_id) ON UPDATE NO ACTION ON DELETE SET NULL MATCH NONE",
           "table": "attribution_evidence",
@@ -12635,7 +12653,7 @@
           ]
         },
         {
-          "name": "- (Foreign key ID: 7)",
+          "name": "- (Foreign key ID: 8)",
           "type": "FOREIGN KEY",
           "def": "FOREIGN KEY (attribution_candidate_id) REFERENCES attribution_candidates (attribution_candidate_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
           "table": "attribution_evidence",
@@ -12648,7 +12666,7 @@
           ]
         },
         {
-          "name": "- (Foreign key ID: 8)",
+          "name": "- (Foreign key ID: 9)",
           "type": "FOREIGN KEY",
           "def": "FOREIGN KEY (attribution_target_id) REFERENCES attribution_targets (attribution_target_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
           "table": "attribution_evidence",
@@ -12730,9 +12748,17 @@
         {
           "name": "trg_attribution_evidence_localization_scope_update",
           "def": "CREATE TRIGGER trg_attribution_evidence_localization_scope_update\nBEFORE UPDATE ON attribution_evidence\nFOR EACH ROW\nWHEN NEW.attribution_localization_estimate_id IS NOT NULL AND (\n    SELECT iw.attribution_run_id\n    FROM attribution_localization_estimates le\n    JOIN imported_attribution_windows iw\n      ON iw.imported_attribution_window_id = le.imported_attribution_window_id\n    WHERE le.attribution_localization_estimate_id = NEW.attribution_localization_estimate_id\n) \u003c\u003e (\n    SELECT at.attribution_run_id\n    FROM attribution_targets at\n    WHERE at.attribution_target_id = NEW.attribution_target_id\n)\nBEGIN\n    SELECT RAISE(ABORT, 'Attribution evidence cites a localization estimate from a different attribution run');\nEND"
+        },
+        {
+          "name": "trg_attribution_evidence_measurement_scope",
+          "def": "CREATE TRIGGER trg_attribution_evidence_measurement_scope\nBEFORE INSERT ON attribution_evidence\nFOR EACH ROW\nWHEN NEW.derived_measurement_id IS NOT NULL\n AND EXISTS (SELECT 1 FROM derived_measurements dmx\n             WHERE dmx.derived_measurement_id = NEW.derived_measurement_id)\n AND EXISTS (SELECT 1 FROM attribution_targets atx\n             WHERE atx.attribution_target_id = NEW.attribution_target_id)\n AND (\n    SELECT COALESCE(\n        (SELECT ar.recording_id FROM acoustic_references ar\n         WHERE ar.acoustic_reference_id = dm.acoustic_reference_id),\n        dm.recording_id,\n        (SELECT d.recording_id FROM detections d WHERE d.detection_id = dm.detection_id),\n        (SELECT ce.recording_id FROM consensus_events ce\n         WHERE ce.consensus_event_id = dm.consensus_event_id),\n        (SELECT es.recording_id FROM external_events ee\n         JOIN external_streams es ON es.external_stream_id = ee.external_stream_id\n         WHERE ee.external_event_id = dm.external_event_id),\n        (SELECT re.recording_id FROM recording_epochs re WHERE re.epoch_id = dm.epoch_id),\n        (SELECT s.recording_id FROM sequences s WHERE s.sequence_id = dm.sequence_id),\n        (SELECT s.recording_id FROM bouts b JOIN sequences s ON s.sequence_id = b.sequence_id\n         WHERE b.bout_id = dm.bout_id))\n    FROM derived_measurements dm\n    WHERE dm.derived_measurement_id = NEW.derived_measurement_id\n) IS NOT (\n    SELECT ar.recording_id\n    FROM attribution_targets at\n    JOIN attribution_runs ar ON ar.attribution_run_id = at.attribution_run_id\n    WHERE at.attribution_target_id = NEW.attribution_target_id\n)\nBEGIN\n    SELECT RAISE(ABORT, 'Attribution evidence cites a derived measurement whose recording is not its run''s recording');\nEND"
+        },
+        {
+          "name": "trg_attribution_evidence_measurement_scope_update",
+          "def": "CREATE TRIGGER trg_attribution_evidence_measurement_scope_update\nBEFORE UPDATE ON attribution_evidence\nFOR EACH ROW\nWHEN NEW.derived_measurement_id IS NOT NULL\n AND EXISTS (SELECT 1 FROM derived_measurements dmx\n             WHERE dmx.derived_measurement_id = NEW.derived_measurement_id)\n AND EXISTS (SELECT 1 FROM attribution_targets atx\n             WHERE atx.attribution_target_id = NEW.attribution_target_id)\n AND (\n    SELECT COALESCE(\n        (SELECT ar.recording_id FROM acoustic_references ar\n         WHERE ar.acoustic_reference_id = dm.acoustic_reference_id),\n        dm.recording_id,\n        (SELECT d.recording_id FROM detections d WHERE d.detection_id = dm.detection_id),\n        (SELECT ce.recording_id FROM consensus_events ce\n         WHERE ce.consensus_event_id = dm.consensus_event_id),\n        (SELECT es.recording_id FROM external_events ee\n         JOIN external_streams es ON es.external_stream_id = ee.external_stream_id\n         WHERE ee.external_event_id = dm.external_event_id),\n        (SELECT re.recording_id FROM recording_epochs re WHERE re.epoch_id = dm.epoch_id),\n        (SELECT s.recording_id FROM sequences s WHERE s.sequence_id = dm.sequence_id),\n        (SELECT s.recording_id FROM bouts b JOIN sequences s ON s.sequence_id = b.sequence_id\n         WHERE b.bout_id = dm.bout_id))\n    FROM derived_measurements dm\n    WHERE dm.derived_measurement_id = NEW.derived_measurement_id\n) IS NOT (\n    SELECT ar.recording_id\n    FROM attribution_targets at\n    JOIN attribution_runs ar ON ar.attribution_run_id = at.attribution_run_id\n    WHERE at.attribution_target_id = NEW.attribution_target_id\n)\nBEGIN\n    SELECT RAISE(ABORT, 'Attribution evidence cites a derived measurement whose recording is not its run''s recording');\nEND"
         }
       ],
-      "def": "CREATE TABLE attribution_evidence (\n    attribution_evidence_id INTEGER PRIMARY KEY,\n    attribution_target_id INTEGER NOT NULL REFERENCES attribution_targets(attribution_target_id) ON DELETE CASCADE,\n    attribution_candidate_id INTEGER REFERENCES attribution_candidates(attribution_candidate_id) ON DELETE CASCADE,\n    evidence_dimension  TEXT NOT NULL CHECK (evidence_dimension IN (\n                            'temporal_alignment',\n                            'pose_localization',\n                            'visual_identity',\n                            'acoustic',\n                            'correspondence',\n                            'imported_composite',\n                            'source_localization'\n                        )),\n    evidence_kind       TEXT NOT NULL,\n    value_real          REAL,\n    value_text          TEXT,\n    value_units         TEXT,\n    value_semantics     TEXT,\n    identity_statement_kind TEXT CHECK (identity_statement_kind IS NULL OR identity_statement_kind IN (\n                            'declared_entity_link',\n                            'identity_association'\n                        )),\n    tracking_identity_association_id INTEGER REFERENCES tracking_identity_associations(tracking_identity_association_id) ON DELETE SET NULL,\n    external_event_id   INTEGER REFERENCES external_events(external_event_id) ON DELETE SET NULL,\n    alignment_run_id    INTEGER REFERENCES time_alignment_runs(alignment_run_id) ON DELETE SET NULL,\n    source_file_id      INTEGER REFERENCES source_files(source_file_id) ON DELETE SET NULL,\n    mapping_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,\n    source_locator      TEXT,\n    notes               TEXT,\n    recording_channel_id INTEGER REFERENCES recording_channels(recording_channel_id) ON DELETE CASCADE,\n    attribution_localization_estimate_id INTEGER REFERENCES attribution_localization_estimates(attribution_localization_estimate_id) ON DELETE CASCADE,\n    CHECK (value_real IS NULL OR value_semantics IS NOT NULL),\n    -- A source localization cites the estimate it rests on, and only a source\n    -- localization may. CASCADE rather than SET NULL above, because this CHECK\n    -- makes an orphaned source_localization row illegal: evidence about an\n    -- estimate that no longer exists says nothing.\n    CHECK ((evidence_dimension = 'source_localization')\n         = (attribution_localization_estimate_id IS NOT NULL)),\n    -- An identity-derived row names which kind of statement it rests on, and\n    -- points at the row it read. A-1.\n    CHECK (identity_statement_kind IS NULL\n       OR (identity_statement_kind = 'identity_association'\n            AND tracking_identity_association_id IS NOT NULL)\n       OR (identity_statement_kind = 'declared_entity_link'\n            AND external_event_id IS NOT NULL))\n)"
+      "def": "CREATE TABLE attribution_evidence (\n    attribution_evidence_id INTEGER PRIMARY KEY,\n    attribution_target_id INTEGER NOT NULL REFERENCES attribution_targets(attribution_target_id) ON DELETE CASCADE,\n    attribution_candidate_id INTEGER REFERENCES attribution_candidates(attribution_candidate_id) ON DELETE CASCADE,\n    evidence_dimension  TEXT NOT NULL CHECK (evidence_dimension IN (\n                            'temporal_alignment',\n                            'pose_localization',\n                            'visual_identity',\n                            'acoustic',\n                            'correspondence',\n                            'imported_composite',\n                            'source_localization'\n                        )),\n    evidence_kind       TEXT NOT NULL,\n    value_real          REAL,\n    value_text          TEXT,\n    value_units         TEXT,\n    value_semantics     TEXT,\n    identity_statement_kind TEXT CHECK (identity_statement_kind IS NULL OR identity_statement_kind IN (\n                            'declared_entity_link',\n                            'identity_association'\n                        )),\n    tracking_identity_association_id INTEGER REFERENCES tracking_identity_associations(tracking_identity_association_id) ON DELETE SET NULL,\n    external_event_id   INTEGER REFERENCES external_events(external_event_id) ON DELETE SET NULL,\n    alignment_run_id    INTEGER REFERENCES time_alignment_runs(alignment_run_id) ON DELETE SET NULL,\n    source_file_id      INTEGER REFERENCES source_files(source_file_id) ON DELETE SET NULL,\n    mapping_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,\n    source_locator      TEXT,\n    notes               TEXT,\n    recording_channel_id INTEGER REFERENCES recording_channels(recording_channel_id) ON DELETE CASCADE,\n    attribution_localization_estimate_id INTEGER REFERENCES attribution_localization_estimates(attribution_localization_estimate_id) ON DELETE CASCADE,\n    derived_measurement_id INTEGER REFERENCES derived_measurements(derived_measurement_id) ON DELETE RESTRICT,\n    CHECK (value_real IS NULL OR value_semantics IS NOT NULL),\n    -- A source localization cites the estimate it rests on, and only a source\n    -- localization may. CASCADE rather than SET NULL above, because this CHECK\n    -- makes an orphaned source_localization row illegal: evidence about an\n    -- estimate that no longer exists says nothing.\n    CHECK ((evidence_dimension = 'source_localization')\n         = (attribution_localization_estimate_id IS NOT NULL)),\n    -- An identity-derived row names which kind of statement it rests on, and\n    -- points at the row it read. A-1.\n    CHECK (identity_statement_kind IS NULL\n       OR (identity_statement_kind = 'identity_association'\n            AND tracking_identity_association_id IS NOT NULL)\n       OR (identity_statement_kind = 'declared_entity_link'\n            AND external_event_id IS NOT NULL))\n)"
     },
     {
       "name": "attribution_decisions",
@@ -18868,6 +18894,19 @@
       ],
       "parent_cardinality": "exactly_one",
       "def": "FOREIGN KEY (attribution_target_id) REFERENCES attribution_targets (attribution_target_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
+    },
+    {
+      "table": "attribution_evidence",
+      "columns": [
+        "derived_measurement_id"
+      ],
+      "cardinality": "zero_or_more",
+      "parent_table": "derived_measurements",
+      "parent_columns": [
+        "derived_measurement_id"
+      ],
+      "parent_cardinality": "zero_or_one",
+      "def": "FOREIGN KEY (derived_measurement_id) REFERENCES derived_measurements (derived_measurement_id) ON UPDATE NO ACTION ON DELETE RESTRICT MATCH NONE"
     },
     {
       "table": "attribution_evidence",

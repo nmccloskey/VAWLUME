@@ -8,7 +8,9 @@ below are made once rather than negotiated by each later itinerary.
 
 Written against schema `0.12-draft` (`PRAGMA user_version = 12`). Phase 6 plans
 exactly one version bump, to `0.13-draft` (`PRAGMA user_version = 13`), owned by
-itinerary 6.2 (D14).
+itinerary 6.2 (D14). **Itinerary 6.2 applied it; the live schema is
+`0.13-draft`.** The DDL realizing D2 and D13 is documented in
+[`../development/31_caller_attribution_schema.md`](../development/31_caller_attribution_schema.md).
 
 The contract clauses below are frozen as written. This status block is not. It
 names the live schema and moves when the version moves, following the

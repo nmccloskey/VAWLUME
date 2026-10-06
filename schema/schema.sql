@@ -1,6 +1,6 @@
 -- VAWLUME prototype relational schema
--- Version: 0.12-draft
--- Date: 2026-10-05
+-- Version: 0.13-draft
+-- Date: 2026-10-06
 -- Target: SQLite (MATLAB-centered workflow)
 --
 -- Design priorities:
@@ -47,9 +47,9 @@ CREATE TABLE schema_info (
 );
 
 INSERT OR IGNORE INTO schema_info(schema_version, description)
-VALUES ('0.12-draft', 'Backend/localization attribution: a localization estimate stored once, in a declared coordinate system, keyed to the external window it was computed over; source_localization as a separate evidence dimension whose rows cite their estimate; channel-cited evidence; long-form typed native attributes with no JSON value type; per-run declarations of which uncertainty sources a producer consumed; and an attribution_backend_mapping profile kind');
+VALUES ('0.13-draft', 'Native estimator attribution: attribution evidence may cite the derived measurement it reports, scope-guarded to its run''s recording and RESTRICT so that a computed score cannot outlive an input it was computed from; and an attribution_estimator_settings profile kind for the versioned settings that state a native method''s five combination conditions');
 
-PRAGMA user_version = 12;
+PRAGMA user_version = 13;
 
 -- ============================================================================
 -- 1. Project and configuration-profile infrastructure
@@ -84,6 +84,7 @@ CREATE TABLE config_profiles (
                             'attribution_input_mapping',
                             'attribution_policy',
                             'attribution_backend_mapping',
+                            'attribution_estimator_settings',
                             'other'
                         )),
     is_builtin          INTEGER NOT NULL DEFAULT 0 CHECK (is_builtin IN (0,1)),
@@ -1940,6 +1941,18 @@ CREATE TABLE attribution_candidates (
 -- from, as derived_measurements.recording_channel_id does. The channel is part
 -- of what such a row IS, not merely where it was read from, so the row does not
 -- outlive it. Scope is guarded by trigger in both directions.
+--
+-- derived_measurement_id (0.13-draft) cites the derived measurement an evidence
+-- row reports - for the native estimator, a call's per-channel level. NULL means
+-- the row reports no stored measurement, not that one is missing. The citation is
+-- what lets a computed candidate score be reconstructed from storage: without it
+-- the measurement could only be found again by a query whose population can
+-- change. ON DELETE RESTRICT, unlike the estimate and channel citations above, and
+-- deliberately: a native score is COMPUTED from these inputs, so deleting a cited
+-- measurement would leave a score that can no longer be reconstructed. Delete the
+-- attribution run first. channel_response_estimate_sources follows the same rule
+-- for the same reason. Scope is guarded by trigger in both directions; whether the
+-- measurement is about the same event and channel as the row is a write-path rule.
 CREATE TABLE attribution_evidence (
     attribution_evidence_id INTEGER PRIMARY KEY,
     attribution_target_id INTEGER NOT NULL REFERENCES attribution_targets(attribution_target_id) ON DELETE CASCADE,
@@ -1971,6 +1984,7 @@ CREATE TABLE attribution_evidence (
     notes               TEXT,
     recording_channel_id INTEGER REFERENCES recording_channels(recording_channel_id) ON DELETE CASCADE,
     attribution_localization_estimate_id INTEGER REFERENCES attribution_localization_estimates(attribution_localization_estimate_id) ON DELETE CASCADE,
+    derived_measurement_id INTEGER REFERENCES derived_measurements(derived_measurement_id) ON DELETE RESTRICT,
     CHECK (value_real IS NULL OR value_semantics IS NOT NULL),
     -- A source localization cites the estimate it rests on, and only a source
     -- localization may. CASCADE rather than SET NULL above, because this CHECK
@@ -3523,6 +3537,88 @@ WHEN NEW.attribution_localization_estimate_id IS NOT NULL AND (
 )
 BEGIN
     SELECT RAISE(ABORT, 'Attribution evidence cites a localization estimate from a different attribution run');
+END;
+
+-- A cited derived measurement is about the recording the evidence row's run is
+-- about. The measurement's recording is resolved through its single target,
+-- exactly as trg_derived_measurement_channel_scope resolves it. The comparison is
+-- IS NOT rather than <>, so a measurement whose recording cannot be established
+-- at all (an entity-targeted measurement, say) is refused rather than slipping
+-- through on a NULL: a citation whose scope cannot be checked is not in scope.
+-- Both rows must exist first, so a dangling identifier reaches the foreign-key
+-- error that describes it rather than this trigger's scope message: a BEFORE
+-- trigger fires ahead of the constraint that names the real problem.
+-- Guarded on update for the reason the channel guard is: repointing the citation
+-- changes what the row claims it reports. Same event and same channel are
+-- workflow rules the write path refuses.
+CREATE TRIGGER trg_attribution_evidence_measurement_scope
+BEFORE INSERT ON attribution_evidence
+FOR EACH ROW
+WHEN NEW.derived_measurement_id IS NOT NULL
+ AND EXISTS (SELECT 1 FROM derived_measurements dmx
+             WHERE dmx.derived_measurement_id = NEW.derived_measurement_id)
+ AND EXISTS (SELECT 1 FROM attribution_targets atx
+             WHERE atx.attribution_target_id = NEW.attribution_target_id)
+ AND (
+    SELECT COALESCE(
+        (SELECT ar.recording_id FROM acoustic_references ar
+         WHERE ar.acoustic_reference_id = dm.acoustic_reference_id),
+        dm.recording_id,
+        (SELECT d.recording_id FROM detections d WHERE d.detection_id = dm.detection_id),
+        (SELECT ce.recording_id FROM consensus_events ce
+         WHERE ce.consensus_event_id = dm.consensus_event_id),
+        (SELECT es.recording_id FROM external_events ee
+         JOIN external_streams es ON es.external_stream_id = ee.external_stream_id
+         WHERE ee.external_event_id = dm.external_event_id),
+        (SELECT re.recording_id FROM recording_epochs re WHERE re.epoch_id = dm.epoch_id),
+        (SELECT s.recording_id FROM sequences s WHERE s.sequence_id = dm.sequence_id),
+        (SELECT s.recording_id FROM bouts b JOIN sequences s ON s.sequence_id = b.sequence_id
+         WHERE b.bout_id = dm.bout_id))
+    FROM derived_measurements dm
+    WHERE dm.derived_measurement_id = NEW.derived_measurement_id
+) IS NOT (
+    SELECT ar.recording_id
+    FROM attribution_targets at
+    JOIN attribution_runs ar ON ar.attribution_run_id = at.attribution_run_id
+    WHERE at.attribution_target_id = NEW.attribution_target_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Attribution evidence cites a derived measurement whose recording is not its run''s recording');
+END;
+
+CREATE TRIGGER trg_attribution_evidence_measurement_scope_update
+BEFORE UPDATE ON attribution_evidence
+FOR EACH ROW
+WHEN NEW.derived_measurement_id IS NOT NULL
+ AND EXISTS (SELECT 1 FROM derived_measurements dmx
+             WHERE dmx.derived_measurement_id = NEW.derived_measurement_id)
+ AND EXISTS (SELECT 1 FROM attribution_targets atx
+             WHERE atx.attribution_target_id = NEW.attribution_target_id)
+ AND (
+    SELECT COALESCE(
+        (SELECT ar.recording_id FROM acoustic_references ar
+         WHERE ar.acoustic_reference_id = dm.acoustic_reference_id),
+        dm.recording_id,
+        (SELECT d.recording_id FROM detections d WHERE d.detection_id = dm.detection_id),
+        (SELECT ce.recording_id FROM consensus_events ce
+         WHERE ce.consensus_event_id = dm.consensus_event_id),
+        (SELECT es.recording_id FROM external_events ee
+         JOIN external_streams es ON es.external_stream_id = ee.external_stream_id
+         WHERE ee.external_event_id = dm.external_event_id),
+        (SELECT re.recording_id FROM recording_epochs re WHERE re.epoch_id = dm.epoch_id),
+        (SELECT s.recording_id FROM sequences s WHERE s.sequence_id = dm.sequence_id),
+        (SELECT s.recording_id FROM bouts b JOIN sequences s ON s.sequence_id = b.sequence_id
+         WHERE b.bout_id = dm.bout_id))
+    FROM derived_measurements dm
+    WHERE dm.derived_measurement_id = NEW.derived_measurement_id
+) IS NOT (
+    SELECT ar.recording_id
+    FROM attribution_targets at
+    JOIN attribution_runs ar ON ar.attribution_run_id = at.attribution_run_id
+    WHERE at.attribution_target_id = NEW.attribution_target_id
+)
+BEGIN
+    SELECT RAISE(ABORT, 'Attribution evidence cites a derived measurement whose recording is not its run''s recording');
 END;
 -- ============================================================================
 -- 15. Analysis-ready views

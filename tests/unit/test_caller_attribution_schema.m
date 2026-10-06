@@ -35,9 +35,9 @@ end
 function testSchemaVersionIsCurrent(testCase)
 conn = testCase.TestData.conn;
 version = fetch(conn, "SELECT schema_version FROM schema_info");
-verifyEqual(testCase, string(version{1,1}), "0.12-draft");
+verifyEqual(testCase, string(version{1,1}), "0.13-draft");
 userVersion = fetch(conn, "PRAGMA user_version");
-verifyEqual(testCase, double(userVersion{1,1}), 12);
+verifyEqual(testCase, double(userVersion{1,1}), 13);
 end
 
 % --- targets name exactly one event set ----------------------------------
