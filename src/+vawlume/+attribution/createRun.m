@@ -12,7 +12,7 @@ function result = createRun(conn, recordingRef, runSpec, options)
 % RUNSPEC requires:
 %
 %   run_key                     project-scoped immutable identity
-%   attribution_path            currently "imported"
+%   attribution_path            "imported" or "backend"
 %   method                      free-text source system or method
 %   settings_profile_version_id checksum-bearing registered profile version
 %   target_set                  one explicit event-set specification

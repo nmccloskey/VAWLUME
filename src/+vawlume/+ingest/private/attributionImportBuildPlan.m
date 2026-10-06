@@ -3,14 +3,14 @@ function plan = attributionImportBuildPlan(conn, runRef, sourcePath, options)
 %
 % Reads the database and the source file; writes neither.
 
-repoRoot = resolveRepoRoot(options.RepoRoot);
+repoRoot = attributionIntakeRepoRoot(options.RepoRoot);
 profilePath = options.ProfilePath;
 if strlength(profilePath) == 0
     profilePath = fullfile(repoRoot, "config", "01_mapping_profiles", ...
         "attribution", "generic_imported_attribution_profile.json");
 end
 
-resolvedSource = resolveSourcePath(sourcePath, repoRoot);
+resolvedSource = attributionIntakeSourcePath(sourcePath, repoRoot);
 loaded = vawlume.source_mapping.loadProfile(profilePath, RepoRoot=repoRoot);
 assertProfileUsable(loaded, profilePath);
 
@@ -43,7 +43,7 @@ plan.run = run;
 plan.repo_root = repoRoot;
 plan.source = struct( ...
     runtime_path=resolvedSource, ...
-    relative_path=portableUri(resolvedSource, repoRoot), ...
+    relative_path=attributionIntakePortableUri(resolvedSource, repoRoot), ...
     filename=filenameOf(resolvedSource), ...
     checksum_sha256=attributionImportSha256(resolvedSource), ...
     source_row_count=height(tbl));
@@ -55,7 +55,7 @@ plan.profile = struct( ...
     profile_schema_version=string(loaded.profile.profile_schema_version), ...
     version_label=string(loaded.profile.profile_version), ...
     checksum_sha256=string(loaded.checksum_sha256), ...
-    content_uri=portableUri(string(loaded.source_path), repoRoot));
+    content_uri=attributionIntakePortableUri(string(loaded.source_path), repoRoot));
 plan.exporting_system = exportingSystemOf(claims, loaded);
 plan.windows = windows;
 plan.claims = claims;
@@ -112,27 +112,8 @@ if height(claims) == 0
     claims.entity_id = zeros(0, 1);
     return
 end
-entityIds = NaN(height(claims), 1);
-for index = 1:height(claims)
-    nativeId = string(claims.entity_native_id(index));
-    rows = fetch(conn, "SELECT entity_id FROM experimental_entities " + ...
-        "WHERE project_id=" + string(run.project_id) + " AND native_id=" + ...
-        sqlText(nativeId));
-    if isempty(rows) || height(rows) == 0
-        unresolved(end+1, 1) = string(claims.caller_label(index)) + ...
-            " (declared as entity " + nativeId + ", which does not exist)"; %#ok<AGROW>
-        continue
-    end
-    candidateId = double(rows.entity_id(1));
-    if ~ismember(candidateId, run.participating_entity_ids)
-        unresolved(end+1, 1) = string(claims.caller_label(index)) + ...
-            " (entity " + nativeId + " is not a participant of this run)"; %#ok<AGROW>
-        continue
-    end
-    entityIds(index) = candidateId;
-end
-unresolved = unique(unresolved, "stable");
-claims.entity_id = entityIds;
+[claims.entity_id, unresolved] = attributionIntakeResolveEntities(conn, ...
+    run.project_id, run.participating_entity_ids, claims);
 end
 
 function value = exportingSystemOf(claims, loaded)
@@ -162,38 +143,7 @@ catch exception
 end
 end
 
-function value = resolveSourcePath(sourcePath, repoRoot)
-if ~java.io.File(char(sourcePath)).isAbsolute()
-    sourcePath = fullfile(repoRoot, sourcePath);
-end
-value = string(java.io.File(char(sourcePath)).getCanonicalPath());
-end
-
-function root = resolveRepoRoot(root)
-root = string(root);
-if strlength(root) == 0
-    root = fileparts(fileparts(fileparts(fileparts(fileparts( ...
-        mfilename("fullpath"))))));
-end
-root = string(java.io.File(char(root)).getCanonicalPath());
-end
-
-function value = portableUri(path, repoRoot)
-path = replace(string(path), "\", "/");
-root = strip(replace(string(repoRoot), "\", "/"), "right", "/");
-prefix = root + "/";
-if startsWith(lower(path), lower(prefix))
-    value = extractAfter(path, strlength(prefix));
-else
-    value = path;
-end
-end
-
 function value = filenameOf(path)
 [~, name, ext] = fileparts(string(path));
 value = name + ext;
-end
-
-function value = sqlText(text)
-value = "'" + replace(string(text), "'", "''") + "'";
 end

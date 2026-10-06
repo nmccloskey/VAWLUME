@@ -39,9 +39,12 @@ for name = required
     end
 end
 path = scalarText(runSpec.attribution_path, "runSpec.attribution_path");
-if path ~= "imported"
+% 'imported' (Phase 4) and 'backend' (Phase 5) have intake paths. The schema
+% also admits 'native_estimate', but nothing produces one yet, so a run of that
+% path would be a container with no writer.
+if ~ismember(path, ["imported", "backend"])
     error("vawlume:attribution:RunSpecInvalid", ...
-        "Phase 4 creates imported attribution runs only; '%s' belongs to a later path.", path);
+        "attribution_path '%s' has no intake path yet; create an imported or a backend run.", path);
 end
 if ~isstruct(runSpec.target_set) || ~isscalar(runSpec.target_set)
     error("vawlume:attribution:RunSpecInvalid", ...

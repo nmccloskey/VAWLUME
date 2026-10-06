@@ -1449,6 +1449,61 @@ for what that means in practice.
 An import applies once per run. Evidence is append-only, so a second apply would
 duplicate rather than reconcile.
 
+#### Importing a localization backend's export
+
+A localization backend reports its own call windows and, optionally, where each
+sound came from, which animal it attributes the sound to, per-microphone values
+and video-track associations. Create the run with `attribution_path="backend"`,
+then import through the shipped `attribution_backend_mapping` template
+(`config/01_mapping_profiles/attribution/generic_backend_attribution_profile.json`)
+or your own copy of it:
+
+```matlab
+plan = vawlume.ingest.backendAttribution(conn, ...
+    struct(project_key="my-project", run_key="backend-run-1"), ...
+    "data/backend_export.csv");
+disp(plan.estimates)
+disp(plan.issues)
+result = vawlume.ingest.backendAttribution(conn, runRef, ...
+    "data/backend_export.csv", Apply=true);
+```
+
+Before a backend import can apply, what it refers to must already exist:
+
+- **the coordinate system** its positions are in, declared for this project with
+  `vawlume.geometry.registerCoordinateSystem`. An unknown frame key
+  (`vawlume:attribution:LocalizationFrameUnknown`) and a frame belonging to
+  another project (`vawlume:attribution:LocalizationFrameScopeMismatch`) are
+  different refusals, because they have different fixes. A height under a
+  two-dimensional frame is refused too (`LocalizationDimensionMismatch`).
+- **the recording channels** any per-channel value names, registered with
+  `vawlume.geometry.registerRecordingChannel`
+  (`vawlume:attribution:ChannelIndexUndeclared`). The backend's channel numbering
+  is its own assertion; nothing inspects the audio to confirm it.
+- **the tracking stream and an identity association** for any video track the
+  backend names (`TrackingStreamUnknown`, `IdentityAssociationNotFound`). An
+  importer records a reference to an association somebody made; it never creates
+  one.
+- **the callers** the backend names, resolved by the profile's declared map
+  against the run's participant snapshot (`CallerLabelUnresolved`).
+
+**Coordinates, confidences and scores are stored exactly as the file wrote
+them.** Every column is read as text and parsed once, so the stored double is the
+one the source text denotes. Nothing is rescaled, converted between units or
+frames, or turned into a probability. A two-dimensional estimate stores no
+height, and a confidence the backend did not give is NULL, never 0.
+
+**A localization estimate is not yet attribution evidence, and a backend's caller
+score is not yet a candidate.** Intake stores them against the backend's windows
+and writes no candidate, evidence or correspondence. Per-channel values and track
+references are kept as the backend's native fields on their window or claim,
+named `channel:<index>:<kind>` and `track_reference:<stream>`, because the schema
+cites a channel or an identity association only on evidence about a VAWLUME
+event. See
+[`../development/36_backend_attribution_intake.md`](../development/36_backend_attribution_intake.md).
+
+A backend import also applies once per run (`ImportAlreadyApplied`).
+
 Imported windows arrive related to nothing. Relating them to the events VAWLUME
 knows about is an explicit, separate step:
 
@@ -1716,7 +1771,7 @@ to MATLAB.
 | Arbitrary-N agreement | `analysis_runs` (a `multi_extractor_agreement` run with many-parent lineage), `agreement_groups`, `agreement_group_members`, `agreement_supporting_edges` |
 | Alignment | `timebases`, `external_streams`, `external_stream_sources`, `external_stream_coverage`, `external_events`, `external_event_attributes`, `alignment_sets`, `alignment_anchors`, `alignment_anchor_observations`, `time_alignment_runs`, `alignment_segments`, `alignment_anchor_residuals` |
 | Multimodal intake and response | `coordinate_systems`, `channel_placements`, `tracking_streams`, `tracking_series`, `tracking_identity_associations`, `acoustic_references`; response applies add `analysis_runs`, `analysis_run_sources`, `derived_measurements`, `channel_response_estimates`, and `channel_response_estimate_sources` |
-| Attribution run and evidence | setup writes `analysis_runs`, `analysis_run_profiles`, `analysis_run_extraction_inputs` or `analysis_run_sources`, `attribution_runs`, and `attribution_targets`; candidate/evidence batches add `attribution_candidates` and `attribution_evidence`; `vawlume.ingest.attribution` adds `imported_attribution_windows` and `imported_attribution_claims`; `vawlume.attribution.correspondWindows` adds `attribution_window_correspondences`; `vawlume.attribution.decide` adds `attribution_decisions` and `attribution_decision_candidates` |
+| Attribution run and evidence | setup writes `analysis_runs`, `analysis_run_profiles`, `analysis_run_extraction_inputs` or `analysis_run_sources`, `attribution_runs`, and `attribution_targets`; candidate/evidence batches add `attribution_candidates` and `attribution_evidence`; `vawlume.ingest.attribution` adds `imported_attribution_windows` and `imported_attribution_claims`; `vawlume.ingest.backendAttribution` adds those plus `attribution_localization_estimates`, `attribution_native_attributes` and `attribution_run_declared_inputs`; `vawlume.attribution.correspondWindows` adds `attribution_window_correspondences`; `vawlume.attribution.decide` adds `attribution_decisions` and `attribution_decision_candidates` |
 
 Note that `agreement_statistics` belongs to *pairwise* consilience despite its
 name; the arbitrary-N layer stores no summary at all. Its counts, fractions,

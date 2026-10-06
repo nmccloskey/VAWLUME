@@ -12,4 +12,9 @@ end
 raw = tbl.(name)(row);
 value = strtrim(string(raw));
 ok = strlength(value) > 0 && ~ismissing(value);
+if ~ok
+    % A cell that is not present reads as the empty string, never as <missing>:
+    % a missing string escaping into a stored token would be a value nobody wrote.
+    value = "";
+end
 end

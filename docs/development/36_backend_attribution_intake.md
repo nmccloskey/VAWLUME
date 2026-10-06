@@ -16,9 +16,9 @@ The adapter has two halves, split at the persistence line:
 | Half | What it does | Status |
 |---|---|---|
 | **Mapping** | backend export + profile → a database-free IR, with a dry-run preview | Implemented (this document, below) |
-| **Intake** | IR → database: resolves keys, writes rows in one transaction | **Not yet implemented** (itinerary 5.4) |
+| **Intake** | IR → database: resolves keys, writes rows in one transaction | Implemented (itinerary 5.4) |
 
-Until intake exists, a backend export can be mapped and previewed but not stored.
+A backend export can be mapped and previewed without a database, then imported.
 
 ## The mapping profile
 
@@ -148,9 +148,72 @@ repeats disagree, keeping either would silently discard what the other said.
 
 ## Intake
 
-Not yet implemented. Itinerary 5.4 owns `vawlume.ingest.backendAttribution`:
-resolving the declared keys against the database, refusing each that does not
-resolve, and writing the IR in one transaction. This section will describe it.
+Added at itinerary 5.4.
+
+```matlab
+plan   = vawlume.ingest.backendAttribution(conn, runRef, "data/backend_export.csv");
+result = vawlume.ingest.backendAttribution(conn, runRef, sourcePath, Apply=true);
+```
+
+Planning is the default and writes nothing. `Apply=true` commits a
+conflict-free plan in **one transaction**: the source file, the mapping-profile
+version, the windows, the claims, the estimates, the native fields and the
+declared inputs. A failure anywhere rolls all of it back. The run must be
+`planned`, with `attribution_path = 'backend'`; `createRun` admits it since 5.4.
+
+**Every column is read as text.** The mapper performs the only text-to-double
+parse, so a stored coordinate, confidence or score is the exact double its source
+text denotes, tested as a bit pattern.
+
+### What intake resolves, and refuses by name
+
+| IR key | Resolved to | Refusal |
+|---|---|---|
+| `coordinate_system_key` | `coordinate_system_id` in the run's project | `vawlume:attribution:LocalizationFrameUnknown` when no frame has the key; `LocalizationFrameScopeMismatch` when only another project's frame does |
+| a `z` with its frame | the frame's dimensionality | `LocalizationDimensionMismatch`, before any write rather than as a trigger error |
+| claim `entity_native_id` | `entity_id`, against the run's **participant snapshot** in its provenance | `CallerLabelUnresolved`, listing every offender |
+| channel `channel_index` | a `recording_channels` row of the run's recording | `ChannelIndexUndeclared` |
+| `tracking_stream_key` | a tracking stream of the run's recording or project | `TrackingStreamUnknown` |
+| (stream, `native_track_id`) | at least one existing `tracking_identity_associations` row | `IdentityAssociationNotFound`; an importer never creates one |
+
+Also refused: a run whose path is not `backend` (`RunPathMismatch`), a profile of
+another kind (`ProfileKindInvalid`), a run with no v1 provenance snapshot
+(`RunProvenanceInvalid`), a declared native attribute using a reserved name
+prefix (`NativeAttributeNameReserved`), an export with no mappable window
+(`ImportEmpty`), and a second apply (`ImportAlreadyApplied`).
+
+**Which identity association applies at a window's time is not decided.** The
+window is on the backend's clock and the association on the tracking stream's.
+Relating them is correspondence and alignment work, and intake performs no
+clock arithmetic.
+
+### What is written, and where
+
+| IR table | Stored as |
+|---|---|
+| `attribution_windows` | `imported_attribution_windows` (source file, profile version, locator) |
+| `attribution_claims` | `imported_attribution_claims`, with the resolved `entity_id`; an unscored claim stores NULL |
+| `attribution_localization_estimates` | `attribution_localization_estimates`, with the resolved frame, the claim when claim-attached, NULL `position_z` / `confidence` when absent, and source file and profile version |
+| `attribution_native_attributes` | `attribution_native_attributes`, owned by the window, claim or estimate |
+| `attribution_channel_evidence` | **window-owned native attributes**: `channel:<index>:<kind>` (real value, unit, raw token) and `channel:<index>:<kind>:semantics` (the rendered semantics) |
+| `attribution_track_references` | a **claim-owned native attribute** `track_reference:<stream key>` holding the native track id |
+| `attribution_declared_inputs` | `attribution_run_declared_inputs`, citing the mapping-profile version |
+
+**Per-channel evidence and track references have no window-grain relational
+home** (finding F5.3-1). The schema cites a recording channel or an identity
+association only on `attribution_evidence`, which is about a VAWLUME target, and
+intake has no target. They are therefore preserved as native fields under the
+reserved prefixes above, **after** intake has verified that the channel and the
+association exist. They become relational citations when explicit promotion
+writes target-grain evidence (itinerary 5.5).
+
+### What intake does not write
+
+No `attribution_candidates`, no `attribution_evidence`, and no
+`attribution_window_correspondences` row. A claim is not a candidate and an
+estimate is not evidence until explicitly promoted, and a backend window is
+related to no VAWLUME event until correspondence relates it. The result's
+`not_written` field names all three.
 
 ## A second backend shape, and what a backend can provide that VAWLUME cannot hold
 
