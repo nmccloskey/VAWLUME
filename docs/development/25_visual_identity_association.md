@@ -94,6 +94,13 @@ one existed at all.
 
 A resolution is **not** identity evidence. It is a record of which stored claim a
 stated rule selected, and it creates no row in this table.
+
+**Added at 6.5: time validity.** `vawlume.tracking.identityOverWindow` composes
+`resolveIdentity` without adding a precedence rule. It reports whether the chosen
+claim holds for the **whole** window (`whole_window`), whether identity changes
+inside it (`changes_within_window`), or whether it covers only part of the window
+(`partial`). This closes I-4. See
+[`40_identity_over_window_and_candidate_geometry.md`](40_identity_over_window_and_candidate_geometry.md).
 ### Unresolved is a statement; no evidence is not
 
 `entity_id IS NULL` with `assignment_state = 'unresolved'` records that **nothing
