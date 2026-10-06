@@ -1711,6 +1711,9 @@ value = vawlume.attribution.report(conn, ...
 
 disp(value.candidates)            % every candidate, with its semantics
 disp(value.evidence)              % one row per dimension, units intact
+disp(value.localization_estimates)% backend coordinates, each in its frame
+disp(value.native_attributes)     % producer fields, grouped by owner/namespace
+disp(value.declared_inputs)       % declared used/not-used upstream inputs
 disp(value.claim_correspondences) % the imported claim beside the event it reached
 disp(value.decisions)             % each decision with the policy that bound it
 disp(value.qc)                    % facts about the run
@@ -1724,6 +1727,9 @@ disp(value.qc)                    % facts about the run
 | `candidates` | (target, candidate entity) |
 | `evidence` | stored evidence record |
 | `imported_claims` | (imported window, claimed caller) |
+| `localization_estimates` | backend localization estimate |
+| `native_attributes` | (owner, native attribute name) |
+| `declared_inputs` | (run, declared upstream input dimension) |
 | `correspondences` | stored correspondence |
 | `claim_correspondences` | (claim, correspondence) — the joined story |
 | `decisions` | (target, policy version) |
@@ -1756,6 +1762,19 @@ acoustic row rather than a zero-valued one, because a zero would claim a
 measurement was made. `NaN` in `imported_claims.score` means the exporting system
 supplied no number for that caller.
 
+The same rule applies to spatial output. A 2D estimate has `position_z=NaN`,
+not zero, and a backend that supplied no localization confidence yields
+`confidence=NaN`. `evidence.recording_channel_id` and
+`evidence.attribution_localization_estimate_id` expose channel and localization
+citations directly; a source-localization evidence row does not copy the
+coordinate it cites.
+
+`native_attributes.owner_kind` identifies a window-, claim-, or estimate-owned
+row. `attribute_namespace` identifies the reserved `channel:` and
+`track_reference:` families separately from ordinary producer-native fields.
+The `declared_inputs` table preserves three states: `used`, `not_used`, and no
+row (undeclared/unknown).
+
 ### What QC tells you, and what it does not
 
 `value.qc` is counts, memberships and observed ranges:
@@ -1765,6 +1784,14 @@ supplied no number for that caller.
 - `targets_with_empty_extent` — agreement groups whose declared extent is empty,
   so nothing *could* correspond to them;
 - `evidence_by_dimension` — how much of each kind of evidence this run carries;
+- `localization_by_coordinate_system` — estimate and target counts, missing
+  confidence counts, and observed x/y/z ranges **within each coordinate system**;
+- `targets_with_localization_estimate`, `channel_cited_evidence_count`, and
+  `source_localization_evidence_count` — target/evidence facts at their named grains;
+- `native_attributes_by_owner` and `native_attribute_name_counts` — which
+  backend-native fields appear and how often;
+- `declared_input_counts` — the producer's explicit `used`/`not_used`
+  declarations (absence remains undeclared);
 - `claims_without_score` — imported claims the source supplied no number for;
 - `windows_without_correspondence` and `windows_with_multiple_correspondences`;
 - `correspondence_by_basis` — count, window count, and observed IoU min, median
@@ -1781,6 +1808,16 @@ system's numbers are calibrated, whether a window that corresponded to nothing
 refers to a real call VAWLUME missed, or which extent basis is right for your
 question. Counts of missing evidence describe this run's **inputs**, not its
 quality.
+
+For a backend run, QC also cannot tell you whether the backend's localization is
+accurate, whether its confidence is calibrated, or whether a source it localized
+was an animal at all. The returned `attribution_path` says `backend`; the notes
+and table names do not require the reader to reinterpret an imported-only story.
+
+**Localization ranges are summarized per coordinate system and never pooled.**
+An x extent in arena centimetres and one in camera pixels are not comparable
+measurements. Each QC row therefore carries the frame key, dimensionality and
+unit beside its observed ranges.
 
 **Correspondence scores are summarized within a basis pair and never pooled.** An
 IoU on aligned intervals is not the IoU of the native ones under a piecewise
@@ -2421,7 +2458,7 @@ extractor-native classes; publication artefacts.
 - [`../design/01_prototype_development_outline.md`](../design/01_prototype_development_outline.md) — prototype development plan and completion criteria
 - [`../design/02_temporal_alignment_contract.md`](../design/02_temporal_alignment_contract.md) — alignment design contract, exit criteria, known limitations
 - [`../design/03_multimodal_input_contract.md`](../design/03_multimodal_input_contract.md) — multimodal input design contract. Spatial geometry, tracking input/identity, and acoustic response/QC estimation are implemented without caller attribution.
-- [`../design/04_caller_attribution_contract.md`](../design/04_caller_attribution_contract.md) — caller-attribution design contract: what a candidate, a decision, and an imported claim each mean, and why a detection is not an attribution claim. The whole imported path is implemented — run, target, candidate, evidence, import, correspondence, decision, and read-back; the backend and native-estimator paths are not.
+- [`../design/04_caller_attribution_contract.md`](../design/04_caller_attribution_contract.md) — caller-attribution design contract: what a candidate, a decision, and an imported claim each mean, and why a detection is not an attribution claim. Imported and backend results use the same run, target, candidate, evidence, correspondence, decision, and read-back surfaces; the native-estimator path is not yet implemented.
 
 ### Contracts per stage
 
