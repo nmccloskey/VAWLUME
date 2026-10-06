@@ -12,6 +12,16 @@ and final one to close P4-5, so the live schema is now `0.10-draft`
 (`PRAGMA user_version = 10`). D1 was revised at 4.2 on user direction; the revision
 is marked where it appears.
 
+**Corrected at 5.1.** The sentence above stopped being true when the CSV-export
+workstream bumped the schema to `0.11-draft` (`PRAGMA user_version = 11`) for
+schema hygiene. That bump included the third decision-cardinality guard, on
+deleting a selection. Nothing caught the stale claim, because
+`check_repository_self_description` exempts `docs/design/` from its version
+check. The live schema is `0.11-draft`. Phase 5 extends this contract in
+[`05_backend_localization_contract.md`](05_backend_localization_contract.md) and
+plans one further bump, to `0.12-draft`. The original sentence is left visible
+rather than rewritten away, following the 4.12a precedent below.
+
 The contract clauses below are frozen as written. This status block is not: it
 names the live schema, and 4.2 set the precedent of moving it when the version
 moves rather than leaving a stale claim in the sentence that advertises currency.
