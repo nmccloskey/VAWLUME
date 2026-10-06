@@ -218,6 +218,16 @@ is absence of evidence that a comparison is legal, not compatibility.
 - Wide-form exports, multi-file streams, and dropout-segment inference from
   sample spacing — the last would be a guess about upstream tool behaviour.
 
+**Updated at 6.4.** The second item is still true of registration and of
+`readWindow`: neither modifies a tracking value. Phase 6 added **read-time
+position interpolation** between two observed samples, bounded by a declared
+maximum gap, never extrapolated, and always labelled with its basis. It lives in
+`vawlume.geometry.positionAtInstants` (the only package permitted spatial
+arithmetic) and is composed by `vawlume.tracking.positionsAtInstants`.
+Interpolated positions are returned, never written. See
+[`38_spatial_primitives.md`](38_spatial_primitives.md) and
+[`39_event_window_tracking_retrieval.md`](39_event_window_tracking_retrieval.md).
+
 ## A recurring trap
 
 The Database Toolbox can return an empty TEXT column as `<missing>` **even when
