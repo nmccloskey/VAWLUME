@@ -54,12 +54,34 @@ run = struct( ...
 % The participant set is the run's own snapshot, not the recording's current
 % links: a candidate universe that moved when links changed would make an old
 % import unreadable.
-participants = fetch(conn, "SELECT entity_id FROM recording_entity_links " + ...
-    "WHERE recording_id=" + string(run.recording_id) + " ORDER BY entity_id");
-run.participating_entity_ids = double(participants.entity_id)';
 snapshot = fetch(conn, "SELECT IFNULL(notes,'') AS notes FROM attribution_runs " + ...
     "WHERE attribution_run_id=" + string(run.attribution_run_id));
 run.notes = string(snapshot.notes(1));
+% The run's provenance snapshot is the participant set when it has one, as
+% addCandidates already uses (F5.4-3). Until 5.6 this read the recording's
+% CURRENT links, so linking an animal after the run was created let an import
+% resolve a label to it. A run written without the v1 envelope -- possible only
+% by direct SQL -- falls back to the links, which is the old behaviour.
+run.participating_entity_ids = snapshotParticipants(run.notes);
+if isempty(run.participating_entity_ids)
+    participants = fetch(conn, "SELECT entity_id FROM recording_entity_links " + ...
+        "WHERE recording_id=" + string(run.recording_id) + " ORDER BY entity_id");
+    run.participating_entity_ids = double(participants.entity_id)';
+end
+end
+
+function ids = snapshotParticipants(notes)
+ids = [];
+try
+    provenance = jsondecode(char(notes));
+catch
+    return
+end
+if isstruct(provenance) && isfield(provenance, "schema") && ...
+        string(provenance.schema) == "vawlume.attribution.run_provenance.v1" && ...
+        isfield(provenance, "participating_entity_ids")
+    ids = double(provenance.participating_entity_ids(:))';
+end
 end
 
 function value = sqlText(text)

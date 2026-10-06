@@ -18,6 +18,19 @@ function result = createRun(conn, recordingRef, runSpec, options)
 %   target_set                  one explicit event-set specification
 %   sources                     direct input source identifiers
 %
+% attribution_path names what KIND of system produced the run's claims:
+%
+%   "imported"  a generic external attribution table, read by
+%               vawlume.ingest.attribution
+%   "backend"   a localization backend's export -- its own windows, and
+%               optionally caller scores, localization estimates, per-channel
+%               values and track references -- read by
+%               vawlume.ingest.backendAttribution
+%
+% Both land in the same windows, claims, candidates, evidence and decisions.
+% The schema also admits "native_estimate", which nothing produces yet, so
+% createRun refuses it rather than create a run with no writer.
+%
 % A target_set contains exactly one of detection_ids, consensus_event_ids, or
 % agreement_group_ids. Agreement groups additionally require
 % agreement_extent_method. All selected events must belong to one source event

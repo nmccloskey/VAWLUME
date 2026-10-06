@@ -12,6 +12,10 @@ function result = correspondWindows(conn, runRef, options)
 % the two systems were segmenting different things. The eligibility rule is
 % declared in the attribution mapping profile the import registered.
 %
+% Imported windows are any windows produced outside VAWLUME: a generic
+% exporter's or a localization backend's. A backend window is corresponded
+% exactly as an imported one is, under the rule its own mapping profile declared.
+%
 % CLOCKS. An imported window carries the exporting system's own native times;
 % intake resolves them against no timebase. So the caller must say, explicitly,
 % how the two clocks relate:
