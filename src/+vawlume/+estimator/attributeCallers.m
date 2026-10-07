@@ -59,13 +59,11 @@ function result = attributeCallers(conn, recordingRef, runSpec, options)
 % PLANNING IS THE DEFAULT AND WRITES NOTHING. The plan holds every row that
 % would be written.
 %
-% APPLY. The canonical writers each commit their own transaction, so a run
-% cannot be written in ONE transaction through them (recorded as a finding in
-% docs/development/44_native_estimation_run.md). To keep a failure from leaving
-% a partial run, Apply first REHEARSES the identical sequence of public calls on
-% a disposable copy of the database file, and writes to the real database only
-% if every call succeeded there. A failure in the rehearsal raises
-% vawlume:estimator:RehearsalFailed and the real database is untouched.
+% APPLY WRITES THE RUN IN ONE TRANSACTION. Apply requires AutoCommit on, opens
+% one transaction, and calls createRun, addCandidates and addEvidence with
+% Transaction="caller", so each joins it and none commits. Success commits once.
+% Any error rolls the whole run back and is rethrown unchanged: no row of a
+% failed run survives, and its run key stays unused.
 %
 % REFUSED BY NAME, BEFORE ANY WRITE:
 %   a run key that already names a run   vawlume:estimator:RunAlreadyApplied
@@ -111,7 +109,7 @@ for index = 1:height(targets)
 end
 plans = vertcat(plans{:});
 
-result = struct(status="planned", committed=false, rehearsal="not_run", ...
+result = struct(status="planned", committed=false, ...
     run_key=spec.run_key, recording_id=recordingId, ...
     settings=struct(profile_version_id=spec.settings_profile_version_id, ...
         profile_key=settings.profile_key, version=settings.version_label, ...
@@ -123,9 +121,7 @@ if ~options.Apply
     return
 end
 
-rehearse(conn, recordingRef, runPlan.create_spec, plans);
-result.rehearsal = "passed";
-[plans, runId] = writeRun(conn, recordingRef, runPlan.create_spec, plans);
+[plans, runId] = writeAtomically(conn, recordingRef, runPlan.create_spec, plans);
 result.targets = plans;
 result.attribution_run_id = runId;
 result.status = "applied";
@@ -579,9 +575,35 @@ end
 
 % ----------------------------------------------------------------- write ---
 
+function [plans, runId] = writeAtomically(conn, recordingRef, createSpec, plans)
+% ONE transaction, owned here. Each canonical writer joins it
+% (Transaction="caller") and neither commits nor rolls back; this function does
+% both, so no row of a failed run survives.
+previous = string(conn.AutoCommit);
+if previous ~= "on"
+    error("vawlume:estimator:TransactionState", ...
+        "Apply requires a connection with AutoCommit enabled; it opens and owns " + ...
+        "the run's one transaction.");
+end
+conn.AutoCommit = "off";
+try
+    [plans, runId] = writeRun(conn, recordingRef, createSpec, plans);
+    commit(conn);
+catch failure
+    try
+        rollback(conn);
+    catch
+    end
+    conn.AutoCommit = previous;
+    rethrow(failure);
+end
+conn.AutoCommit = previous;
+end
+
 function [plans, runId] = writeRun(conn, recordingRef, createSpec, plans)
 % The whole write, through the canonical public API only.
-created = vawlume.attribution.createRun(conn, recordingRef, createSpec, Apply=true);
+created = vawlume.attribution.createRun(conn, recordingRef, createSpec, ...
+    Apply=true, Transaction="caller");
 if created.status ~= "created"
     error("vawlume:estimator:RunAlreadyApplied", ...
         "createRun reported '%s' for run key '%s'.", created.status, createSpec.run_key);
@@ -593,12 +615,13 @@ for k = 1:numel(plans)
     targetId = targets.attribution_target_id(targets.(column) == plans(k).event_id);
     plans(k).attribution_target_id = targetId;
     candidates = vawlume.attribution.addCandidates(conn, ...
-        struct(attribution_target_id=targetId), plans(k).candidates, Apply=true);
+        struct(attribution_target_id=targetId), plans(k).candidates, ...
+        Apply=true, Transaction="caller");
     ids = candidates.candidates(:, ["entity_id", "attribution_candidate_id"]);
     plans(k).candidate_ids = ids;
     if height(plans(k).target_evidence) > 0
         vawlume.attribution.addEvidence(conn, struct(attribution_target_id=targetId), ...
-            plans(k).target_evidence, Apply=true);
+            plans(k).target_evidence, Apply=true, Transaction="caller");
     end
     for e = 1:numel(plans(k).candidate_evidence)
         block = plans(k).candidate_evidence(e);
@@ -607,45 +630,8 @@ for k = 1:numel(plans)
         end
         candidateId = ids.attribution_candidate_id(ids.entity_id == block.entity_id);
         vawlume.attribution.addEvidence(conn, ...
-            struct(attribution_candidate_id=candidateId), block.rows, Apply=true);
+            struct(attribution_candidate_id=candidateId), block.rows, ...
+            Apply=true, Transaction="caller");
     end
-end
-end
-
-function rehearse(conn, recordingRef, createSpec, plans)
-% The canonical writers commit one call at a time. Replaying the identical calls
-% on a disposable copy first means any refusal they would raise is raised before
-% the real database is touched.
-source = string(conn.Database);
-if strlength(source) == 0 || ~isfile(source)
-    error("vawlume:estimator:RehearsalUnavailable", ...
-        "Apply needs a file-backed database to rehearse on; '%s' is not one.", source);
-end
-copyPath = string(tempname) + ".sqlite";
-copyfile(source, copyPath);
-rehearsal = sqlite(char(copyPath), "connect");
-cleaner = onCleanup(@() closeAndDelete(rehearsal, copyPath));
-foreignKeys = fetch(conn, "PRAGMA foreign_keys");
-if double(foreignKeys{1, 1}) == 1
-    execute(rehearsal, "PRAGMA foreign_keys = ON");
-end
-try
-    writeRun(rehearsal, recordingRef, createSpec, plans);
-catch failure
-    cause = MException("vawlume:estimator:RehearsalFailed", ...
-        "The run failed in rehearsal and nothing was written to the database: %s", ...
-        failure.message);
-    cause = addCause(cause, failure);
-    throw(cause);
-end
-clear cleaner
-end
-
-function closeAndDelete(connection, path)
-if isopen(connection)
-    close(connection);
-end
-if isfile(path)
-    delete(path);
 end
 end

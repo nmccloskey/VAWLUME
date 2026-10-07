@@ -70,6 +70,11 @@ function result = addEvidence(conn, ref, evidence, options)
 % Evidence rows have no schema identity key. Each successful Apply deliberately
 % appends new observations; callers should not repeat an apply accidentally.
 %
+% Transaction="own" (default) commits here. Transaction="caller" joins the
+% caller's open transaction (AutoCommit off, set by the caller) and leaves
+% commit and rollback to it; with AutoCommit on it is refused
+% (vawlume:attribution:TransactionState). See VAWLUME.ATTRIBUTION.CREATERUN.
+%
 % See also VAWLUME.ATTRIBUTION.ADDCANDIDATES
 
 arguments
@@ -77,12 +82,14 @@ arguments
     ref (1,1) struct
     evidence
     options.Apply (1,1) logical = false
+    options.Transaction (1,1) string {mustBeMember(options.Transaction, ...
+        ["own", "caller"])} = "own"
 end
 
 plan = attributionBuildEvidencePlan(conn, ref, evidence);
 result = evidenceResult(plan);
 if options.Apply
-    [plan, inserted] = attributionApplyEvidencePlan(conn, plan);
+    [plan, inserted] = attributionApplyEvidencePlan(conn, plan, options.Transaction);
     result = evidenceResult(plan);
     result.status = "created";
     result.committed = true;

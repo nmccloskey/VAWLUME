@@ -76,6 +76,16 @@ function result = createRun(conn, recordingRef, runSpec, options)
 % entity linked to the recording), parent_attribution_run_id, run_label,
 % vawlume_version, source_commit, and notes.
 %
+% TRANSACTION. By default (Transaction="own") Apply=true writes in its own
+% transaction and commits before returning; the connection must have AutoCommit
+% on. Transaction="caller" lets a caller write several things as ONE unit: the
+% caller sets AutoCommit off first, createRun joins that open transaction, and it
+% neither commits nor rolls back -- on an error it rethrows and the caller rolls
+% back. "caller" with AutoCommit on is refused
+% (vawlume:attribution:TransactionState), because there would be no transaction
+% to join. addCandidates and addEvidence take the same option; the native
+% estimator uses it to write a whole run atomically.
+%
 % createRun creates no candidate, score, evidence, probability, or decision.
 % The run remains status "planned" and its analysis parent remains "started"
 % for the candidate and decision layers to complete.
@@ -87,11 +97,13 @@ arguments
     recordingRef (1,1) struct
     runSpec (1,1) struct
     options.Apply (1,1) logical = false
+    options.Transaction (1,1) string {mustBeMember(options.Transaction, ...
+        ["own", "caller"])} = "own"
 end
 
 plan = attributionBuildPlan(conn, recordingRef, runSpec);
 if options.Apply && ~plan.has_conflicts
-    [plan, counts] = attributionApplyPlan(conn, plan);
+    [plan, counts] = attributionApplyPlan(conn, plan, options.Transaction);
     result = attributionPlanResult(plan);
     result.committed = true;
     result.applied_counts = counts;

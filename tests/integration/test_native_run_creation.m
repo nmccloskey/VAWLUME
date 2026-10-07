@@ -114,6 +114,65 @@ verifyEqual(testCase, createRun(t, importedSpec("imported"), true).status, "crea
 verifyEqual(testCase, countOf(t.conn, "attribution_run_declared_inputs"), 0);
 end
 
+% ------------------------------------------- Transaction="caller" (6.9a) ---
+
+function testEachWriterJoinsTheCallersTransaction(testCase)
+% The three canonical writers, in "caller" mode: refused under autocommit
+% (nothing to join), rolled back with the caller, and kept when the caller
+% commits. Each writer commits nothing itself.
+t = testCase.TestData;
+conn = t.conn;
+spec = importedSpec("imported");
+
+verifyError(testCase, @() vawlume.attribution.createRun(conn, struct(recording_id=1), ...
+    spec, Apply=true, Transaction="caller"), "vawlume:attribution:TransactionState");
+verifyError(testCase, @() vawlume.attribution.createRun(conn, struct(recording_id=1), ...
+    spec, Apply=true, Transaction="mine"), "MATLAB:validators:mustBeMember");
+
+% Rolled back with the caller: run, candidates and evidence all vanish.
+conn.AutoCommit = "off";
+created = vawlume.attribution.createRun(conn, struct(recording_id=1), spec, ...
+    Apply=true, Transaction="caller");
+target = struct(attribution_target_id=created.targets.attribution_target_id(1));
+vawlume.attribution.addCandidates(conn, target, table([1; 2], ...
+    VariableNames="entity_id"), Apply=true, Transaction="caller");
+vawlume.attribution.addEvidence(conn, target, plainEvidence(), Apply=true, ...
+    Transaction="caller");
+verifyEqual(testCase, countOf(conn, "attribution_runs"), 1, ...
+    "Visible inside the caller's transaction.");
+verifyEqual(testCase, countOf(conn, "attribution_candidates"), 2);
+verifyEqual(testCase, countOf(conn, "attribution_evidence"), 1);
+rollback(conn);
+conn.AutoCommit = "on";
+verifyEqual(testCase, [countOf(conn, "attribution_runs"), ...
+    countOf(conn, "attribution_candidates"), countOf(conn, "attribution_evidence")], ...
+    [0 0 0], "Nothing was committed by any writer.");
+
+% Kept when the caller commits.
+conn.AutoCommit = "off";
+created = vawlume.attribution.createRun(conn, struct(recording_id=1), spec, ...
+    Apply=true, Transaction="caller");
+target = struct(attribution_target_id=created.targets.attribution_target_id(1));
+vawlume.attribution.addCandidates(conn, target, table([1; 2], ...
+    VariableNames="entity_id"), Apply=true, Transaction="caller");
+vawlume.attribution.addEvidence(conn, target, plainEvidence(), Apply=true, ...
+    Transaction="caller");
+commit(conn);
+conn.AutoCommit = "on";
+verifyEqual(testCase, [countOf(conn, "attribution_runs"), ...
+    countOf(conn, "attribution_candidates"), countOf(conn, "attribution_evidence")], ...
+    [1 2 1]);
+
+% With AutoCommit on, the other two writers refuse "caller" as well.
+verifyError(testCase, @() vawlume.attribution.addCandidates(conn, target, ...
+    table(1, VariableNames="entity_id"), Apply=true, Transaction="caller"), ...
+    "vawlume:attribution:TransactionState");
+verifyError(testCase, @() vawlume.attribution.addEvidence(conn, target, ...
+    plainEvidence(), Apply=true, Transaction="caller"), ...
+    "vawlume:attribution:TransactionState");
+verifyEqual(testCase, countOf(conn, "attribution_evidence"), 1);
+end
+
 % ---------------------------------------------- addEvidence: the citation ---
 
 function testAnEvidenceRowCitesTheMeasurementItReports(testCase)
@@ -188,6 +247,11 @@ end
 function ref = nativeTarget(t)
 created = createRun(t, nativeSpec(t), true);
 ref = struct(attribution_target_id=created.targets.attribution_target_id(1));
+end
+
+function row = plainEvidence()
+row = struct(evidence_dimension="acoustic", evidence_kind="level", value_real=0.5, ...
+    value_units="dB", value_semantics="synthetic; producer=test", source_locator="row 1");
 end
 
 function row = acousticRow(measurementId, channelId)

@@ -43,7 +43,7 @@ verifyEqual(testCase, numel(plan.targets), 3);
 applied = vawlume.estimator.attributeCallers(f.conn, struct(recording_id=1), ...
     runSpec(f, "native-plan-apply"), Apply=true, RepoRoot=f.repo_root);
 verifyEqual(testCase, applied.status, "applied");
-verifyEqual(testCase, applied.rehearsal, "passed");
+verifyEqual(testCase, string(f.conn.AutoCommit), "on", "AutoCommit is restored.");
 after = counts(f.conn);
 delta = after - before;
 p = plan.planned_counts;
@@ -79,6 +79,39 @@ stored = fetch(f.conn, "SELECT ac.entity_id, ac.score, ac.score_semantics, " + .
 verifyEqual(testCase, double(stored.score), c.score(argsort(c.entity_id)));
 verifyTrue(testCase, all(double(stored.probability) == -99), "No probability is ever stored.");
 verifyTrue(testCase, all(contains(string(stored.score_semantics), "not a probability")));
+end
+
+function testAFailureLateInTheRunLeavesNoRowOfIt(testCase)
+% Itinerary 6.9a: a native run is ONE transaction. The failure is injected
+% AFTER createRun and addCandidates have written, by a trigger that aborts the
+% insert of a pose-confidence evidence row (written last, per candidate). If
+% any write had committed on its own, the run, its targets or candidates would
+% survive here.
+f = testCase.TestData.fixture;
+tables = ["analysis_runs", "attribution_runs", "attribution_targets", ...
+    "attribution_candidates", "attribution_evidence", ...
+    "attribution_run_declared_inputs", "analysis_run_sources", ...
+    "analysis_run_profiles"];
+before = tableCounts(f.conn, tables);
+execute(f.conn, "CREATE TRIGGER zz_abort_pose_confidence BEFORE INSERT ON " + ...
+    "attribution_evidence WHEN NEW.evidence_kind='bodypoint_pose_confidence' " + ...
+    "BEGIN SELECT RAISE(ABORT, 'injected failure for 6.9a'); END");
+dropTrigger = onCleanup(@() execute(f.conn, "DROP TRIGGER IF EXISTS zz_abort_pose_confidence"));
+failed = false;
+try
+    apply(f, "native-atomic");
+catch failure
+    failed = true;
+    verifySubstring(testCase, failure.message, "injected failure for 6.9a", ...
+        "The original error is rethrown unchanged.");
+end
+verifyTrue(testCase, failed, "The injected failure must surface.");
+verifyEqual(testCase, tableCounts(f.conn, tables), before, ...
+    "No row of the failed run survives in any table it writes.");
+verifyEqual(testCase, string(f.conn.AutoCommit), "on", "AutoCommit is restored.");
+clear dropTrigger
+% The failed apply left nothing behind, so the same key is still unused.
+verifyEqual(testCase, apply(f, "native-atomic").status, "applied");
 end
 
 % ===================================================== reconstruction ===
@@ -302,6 +335,14 @@ names = ["attribution_runs", "attribution_targets", "attribution_candidates", ..
 value = zeros(1, numel(names));
 for k = 1:numel(names)
     rows = fetch(conn, "SELECT COUNT(*) AS n FROM " + names(k));
+    value(k) = double(rows.n(1));
+end
+end
+
+function value = tableCounts(conn, tables)
+value = zeros(1, numel(tables));
+for k = 1:numel(tables)
+    rows = fetch(conn, "SELECT COUNT(*) AS n FROM " + tables(k));
     value(k) = double(rows.n(1));
 end
 end

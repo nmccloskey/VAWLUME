@@ -96,31 +96,37 @@ Every stored score must be recomputed exactly (to 1e-12), and every unscored
 candidate's stored reason must be returned again. Injection check: when the run
 was changed to skip the primary-basis distance rows, this test failed.
 
-## Apply, and why it rehearses
+## Apply writes one transaction
 
-**Finding.** The canonical writers each commit their own transaction:
-`createRun`, `addCandidates` and `addEvidence` all require AutoCommit on and
-commit before returning. So a native run cannot be written in **one** transaction
-through the public API. Backend intake has one transaction only because it
-writes privately, which the native path must not.
-
-**What `Apply` does instead:**
+`Apply` writes the whole run, meaning the run, its declared inputs, targets,
+candidates and every evidence row, in **one database transaction**:
 
 1. Plan everything: every read, every method call, every row. `createRun` runs
-   in plan mode as validation.
-2. Replay the identical sequence of public calls on a **disposable copy** of the
-   database file (the *rehearsal*), with the same foreign-key setting.
-3. Only if every call succeeded there, perform the same calls on the real
-   database.
+   in plan mode as validation, and planning writes nothing.
+2. Require AutoCommit on, then set it off: `attributeCallers` owns the
+   transaction.
+3. Call `createRun`, `addCandidates` and `addEvidence` with
+   `Transaction="caller"`. Each joins the open transaction, and none commits or
+   rolls back.
+4. Commit once. On any error, roll the whole run back and rethrow the original
+   error unchanged. AutoCommit is restored either way.
 
-A rehearsal failure raises `vawlume:estimator:RehearsalFailed` with the cause
-attached, and the real database is untouched. An in-memory database cannot be
-rehearsed and is refused (`RehearsalUnavailable`).
+No row of a failed run survives, and its run key stays unused.
+`test_native_estimation_run/testAFailureLateInTheRunLeavesNoRowOfIt` proves it:
+a trigger aborts a pose-confidence evidence insert, which happens after the run
+and its candidates were written, and every table the run writes is unchanged
+afterwards. With the writers in their default mode and no outer transaction,
+the same test fails, because the run, its targets, candidates, early evidence and
+declared inputs survive.
 
-**What remains.** A failure *between* the real calls that the rehearsal did not
-meet (a full disk, a concurrent writer) could still leave a partial run. The
-proper fix is in `+attribution/`: a way for the three writers to join one
-caller-owned transaction. It is proposed in the 6.9 handoff, not made here.
+`Transaction="caller"` is a public option of the three writers (itinerary
+6.9a). It is refused under AutoCommit on (`vawlume:attribution:TransactionState`),
+because there would be no transaction to join. Their default, `"own"`, is
+unchanged for every other caller.
+
+*History:* 6.9 could not share a transaction across the writers, and instead
+rehearsed every apply on a disposable copy of the database file. 6.9a replaced
+that mitigation with the transaction itself.
 
 ## Refusals, all before any write
 

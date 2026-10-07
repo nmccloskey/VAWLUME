@@ -22,6 +22,11 @@ function result = addCandidates(conn, targetRef, candidates, options)
 % Existing identical target/entity rows are reused. Different content for the
 % same pair is a conflict and is never rewritten.
 %
+% Transaction="own" (default) commits here. Transaction="caller" joins the
+% caller's open transaction (AutoCommit off, set by the caller) and leaves
+% commit and rollback to it; with AutoCommit on it is refused
+% (vawlume:attribution:TransactionState). See VAWLUME.ATTRIBUTION.CREATERUN.
+%
 % See also VAWLUME.ATTRIBUTION.ADDEVIDENCE,
 % VAWLUME.ATTRIBUTION.CREATERUN
 
@@ -30,12 +35,14 @@ arguments
     targetRef (1,1) struct
     candidates
     options.Apply (1,1) logical = false
+    options.Transaction (1,1) string {mustBeMember(options.Transaction, ...
+        ["own", "caller"])} = "own"
 end
 
 plan = attributionBuildCandidatePlan(conn, targetRef, candidates);
 result = candidateResult(plan);
 if options.Apply && ~plan.has_conflicts
-    [plan, inserted] = attributionApplyCandidatePlan(conn, plan);
+    [plan, inserted] = attributionApplyCandidatePlan(conn, plan, options.Transaction);
     result = candidateResult(plan);
     result.committed = true;
     result.applied_count = inserted;
