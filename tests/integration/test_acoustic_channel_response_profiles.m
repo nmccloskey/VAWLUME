@@ -5,7 +5,28 @@ tests = functiontests({ ...
     @testMissingRequiredReferenceFamilyIsExplicit, ...
     @testWarningSourcesAreExcludedOrRetainedByPolicy, ...
     @testUnpairedChannelReferencesAreNotComparable, ...
-    @testSchemaProtectsSupportingEvidenceAndScope});
+    @testSchemaProtectsSupportingEvidenceAndScope, ...
+    @testUnlabelledChannelsAggregateLikeLabelledOnes});
+end
+
+function testUnlabelledChannelsAggregateLikeLabelledOnes(testCase)
+% Regression, found at 6.9. A channel with no channel_label came back from
+% the query as <missing>, which unique() treats as distinct from itself, so each
+% unlabelled channel split into one "ok" estimate per reference measurement --
+% and a normalization then refused the duplicates as ambiguous. Unlabelled
+% channels must aggregate exactly as labelled ones do.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+labelled = vawlume.acoustic.estimateChannelResponse(fixture.conn, ...
+    fixture.recording_ref, [1; 2; 3; 4], RequiredReferenceTypes="tone");
+execute(fixture.conn, "UPDATE recording_channels SET channel_label=NULL");
+unlabelled = vawlume.acoustic.estimateChannelResponse(fixture.conn, ...
+    fixture.recording_ref, [1; 2; 3; 4], RequiredReferenceTypes="tone");
+verifyEqual(testCase, height(unlabelled.estimates), 2, "One estimate per channel.");
+verifyEqual(testCase, unlabelled.estimates.channel_index, [1; 2]);
+verifyEqual(testCase, unlabelled.estimates.n_references, [2; 2]);
+verifyEqual(testCase, unlabelled.estimates.value_real, labelled.estimates.value_real);
+verifyEqual(testCase, unlabelled.estimates.channel_label, ["", ""]');
+clear cleanup
 end
 
 function testConsistentTwoChannelProfilePersistsAndReadsExactLineage(testCase)

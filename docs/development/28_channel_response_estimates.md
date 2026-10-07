@@ -42,6 +42,10 @@ stored = vawlume.acoustic.estimateChannelResponse(conn, recordingRef, ids, ...
     Apply=true, RunKey="session01-response-profile");
 ```
 
+Channels need no label. *(Corrected at 6.9: an unlabelled channel had been split
+into one estimate per reference measurement, because an empty label was read as
+a missing value; it now aggregates exactly as a labelled channel does.)*
+
 The initial aggregation method is deliberately one method: median, version
 `1.0.0`. Rows remain separate by recording channel, metric definition,
 `reference_type`, and exact optional frequency band. Each row also records the

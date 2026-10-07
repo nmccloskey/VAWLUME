@@ -174,6 +174,10 @@ textNames = ["metric_key", "canonical_unit", "unit", ...
     "reference_type", "source_run_key", "source_run_type", "source_run_status"];
 for name = textNames
     rows.(name) = string(rows.(name));
+    % An empty text value (IFNULL(...,'')) arrives as <missing>, and unique()
+    % treats every <missing> as distinct: an unlabelled channel then split into
+    % one estimate per reference measurement (found at 6.9). Empty is "".
+    rows.(name)(ismissing(rows.(name))) = "";
 end
 if any(rows.recording_id ~= recordingId)
     error("vawlume:acoustic:ResponseMeasurementScopeMismatch", ...

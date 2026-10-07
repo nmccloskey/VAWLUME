@@ -132,7 +132,12 @@ this prototype estimates who called.
   `imported` (a generic external attribution table) and `backend` (a
   localization backend's export). Both store what an external system claimed,
   relate those claims to VAWLUME events, and apply a policy you supplied. The
-  VAWLUME-native estimator is a later phase.
+  VAWLUME-native estimator is a later phase. *(Updated in 6.9: the native path
+  now exists. `vawlume.estimator.attributeCallers` writes native candidate
+  scores. Each score is an uncalibrated dB consistency score, not a probability,
+  and comparable only within one recording; see
+  [`../development/44_native_estimation_run.md`](../development/44_native_estimation_run.md).
+  No native decision policy ships until 6.10.)*
 - **A decision is not a combination of the evidence.** The shipped policy reads
   one candidate column and no evidence row, so nothing combines pose,
   visual-identity, alignment, acoustic, and source-localization evidence into a
