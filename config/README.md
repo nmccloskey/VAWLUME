@@ -382,7 +382,32 @@ A policy is an input, never a constant. Applying a different one to the same
 candidates produces a different decision and changes no candidate row, which is
 what makes comparing policies over one body of evidence possible.
 
-### 14. Cross-profile examples
+### 14. Call-level normalization policies
+
+Location:
+
+```text
+config/09_acoustic_normalization_policies/
+```
+
+A normalization policy governs how a call-window measurement is divided by its
+own channel's response estimate: which call metric is divided by which response
+metric, of which reference family, over the identical band; what each response
+`qc_status` does (use, use with a flag, or exclude the channel); and what the
+quotient means. It is profile kind `analysis_settings`, registered and
+checksummed in `config_profile_versions` when a normalization is applied, and
+linked to the run under assignment role `call_level_normalization_policy`.
+
+The shipped
+[`band_matched_noise_reference_v1.json`](09_acoustic_normalization_policies/band_matched_noise_reference_v1.json)
+declares `calibration_status.state = "uncalibrated"` and a `what_this_is_not`
+list, and the loader refuses a policy that claims calibration or leaves any of
+the five response statuses undeclared. Its result is relative to each channel's
+own reference response within one recording: not an absolute level, not a
+hardware calibration, and not comparable across recordings. See
+[`../docs/development/42_call_level_normalization.md`](../docs/development/42_call_level_normalization.md).
+
+### 15. Cross-profile examples
 
 Examples that demonstrate how multiple profile kinds are associated can live in:
 

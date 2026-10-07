@@ -81,9 +81,9 @@ verifyEqual(testCase, countsAfterFirst.canonical_features, 21);
 verifyEqual(testCase, countsAfterFirst.extractor_features, 33);
 verifyEqual(testCase, countsAfterFirst.feature_mappings, 33);
 verifyEqual(testCase, countsAfterFirst.feature_relationships, 17);
-% Three acoustic_* reference metrics, plus the three call_* call-window metrics
-% added in 6.6 (contract 06 D6).
-verifyEqual(testCase, countsAfterFirst.metric_definitions, 6);
+% Three acoustic_* reference metrics, the three call_* call-window metrics added
+% in 6.6, and call_band_power_normalized added in 6.7 (contract 06 D6).
+verifyEqual(testCase, countsAfterFirst.metric_definitions, 7);
 
 verifyProfileChecksums(testCase, conn, repoRoot);
 verifyExtractorIdentities(testCase, conn);

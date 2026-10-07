@@ -1,0 +1,112 @@
+{
+  "profile": {
+    "id": "vawlume.acoustic.normalization.band_matched_noise_reference",
+    "name": "Band-matched noise-reference call-level normalization",
+    "kind": "analysis_settings",
+    "profile_schema_version": "0.1-draft",
+    "profile_version": "1.0.0",
+    "description": "Versioned, checksum-bearing policy governing how a call-window measurement is divided by its own channel's response estimate. Registered as a config_profiles row of kind analysis_settings and linked to each normalization run with assignment role call_level_normalization_policy."
+  },
+
+  "method": {
+    "key": "vawlume.acoustic.call_level_normalization",
+    "version": "1.0.0"
+  },
+
+  "operation": {
+    "formula": "normalized = measured / response",
+    "measured_meaning": "value_real of one call-window derived measurement: one event, one channel, one metric",
+    "response_meaning": "value_real of the one channel-response estimate matched to that measurement by the rules below; under aggregation method median 1.0.0 it is the median of the matched reference measurements",
+    "unit_consequence": "Both operands carry the same canonical unit, so the quotient is dimensionless. It is stored under the unit ratio_to_channel_response: how many times the channel's own reference response the call reached on that channel, in that band. It is not full-scale, not dB, and not an absolute level.",
+    "nonpositive_response": "A response value that is zero, negative or absent cannot divide. The channel gets no normalized value, with reason response_value_not_positive; it is never left un-normalized while labelled normalized."
+  },
+
+  "pairs": [
+    {
+      "call_metric": "call_band_power",
+      "response_metric": "acoustic_band_power",
+      "normalized_metric": "call_band_power_normalized",
+      "reference_type": "noise",
+      "band_match": "identical",
+      "band_match_meaning": "The call row's declared band and the estimate's frequency_min_hz and frequency_max_hz must be equal as numbers. A neighbouring or containing band is a mismatch."
+    }
+  ],
+
+  "matching_rules": {
+    "same_recording": "The response-estimate run must belong to the call-measurement run's recording. Another recording's estimate is refused for the whole run (vawlume:acoustic:NormalizationRecordingMismatch).",
+    "same_channel": "A measurement is divided only by an estimate for its own recording channel.",
+    "families_never_averaged": "One reference_type per pair. Estimates of other families are never averaged with it and never substituted for it.",
+    "unpaired_metrics": "A call metric that no pair names is not normalized. call_rms_amplitude and call_peak_abs_amplitude have no pair in this version.",
+    "mismatch_reasons": {
+      "no_response_estimate": "the response run has no estimate at all for the channel",
+      "response_metric_mismatch": "the channel has estimates, but none for the pair's response_metric",
+      "response_family_mismatch": "the channel has estimates for the response_metric, but none of the pair's reference_type",
+      "response_band_mismatch": "the channel has estimates for the response_metric and reference_type, but none with the identical band"
+    }
+  },
+
+  "response_qc_status_handling": {
+    "ok": {
+      "action": "use",
+      "reason": "The estimate met every declared aggregation check."
+    },
+    "divergent": {
+      "action": "use_with_flag",
+      "flag": "response_divergent",
+      "reason": "A median exists and is still the declared response, but its references disagreed beyond the aggregation threshold. The flag travels with the normalized row so a consumer can refuse it; nothing here hides the disagreement."
+    },
+    "source_qc_warning": {
+      "action": "use_with_flag",
+      "flag": "response_source_qc_warning",
+      "reason": "The estimate deliberately retained reference measurements from runs that warned. That choice was made and recorded when the estimate was built; this policy carries the flag rather than silently reversing it."
+    },
+    "insufficient_evidence": {
+      "action": "exclude_channel",
+      "reason_code": "response_insufficient_evidence",
+      "reason": "Too few references, a missing family, or every source excluded. A divisor that the aggregation itself called insufficient is not a divisor."
+    },
+    "not_comparable": {
+      "action": "exclude_channel",
+      "reason_code": "response_not_comparable",
+      "reason": "The channels were measured against different references or by different methods, so dividing by them would make the channels less comparable, not more."
+    },
+    "actions_meaning": {
+      "use": "divide, no flag added",
+      "use_with_flag": "divide, and add the named flag to the normalized row",
+      "exclude_channel": "no normalized value for this channel, with the named reason; the other channels are unaffected",
+      "refuse_run": "not used by this version for any status"
+    }
+  },
+
+  "source_measurement_handling": {
+    "clipped_samples": "propagate: the flag is copied to the normalized row. A clipped level is a lower bound, so its normalized value is one too. This policy does not refuse it; the level difference does, under its own declared parameter.",
+    "incomplete_audio_coverage": "propagate: the flag is copied to the normalized row. The value was measured over the covered part only.",
+    "failed_measurement": "A channel whose measurement failed has no source row. It gets no normalized value, with reason source_measurement_absent."
+  },
+
+  "extractor_reported_power": {
+    "state": "not_used",
+    "reason": "Contract 06 D6: extractor power fields are not interchangeable across extractors and are not used in v1. They are never read here, never substituted for a measured level, and never overwritten."
+  },
+
+  "calibration_status": {
+    "state": "uncalibrated",
+    "meaning": "The response estimates are medians of synthetic or user-supplied reference intervals measured in audioread full-scale units. No hardware calibration, microphone sensitivity, or acoustic pressure reference stands behind them. Dividing by them removes the channel's own relative response to the declared reference; it does not convert anything to a physical level.",
+    "evidence_basis": "synthetic two-channel recordings with deliberately unequal channel gains only",
+    "calibration_requires": "a reference source of known acoustic level at a known position, measured on each microphone, which no Phase 6 fixture provides"
+  },
+
+  "comparability": {
+    "scope": "within_recording",
+    "meaning": "A normalized value is relative to the reference response of the same channel in the same recording. Two channels of one recording become comparable to the extent their responses to the declared reference family reflect their responses to calls in the same band. Values from different recordings are not comparable."
+  },
+
+  "what_this_is_not": [
+    "not an absolute level, sound pressure, or dB SPL",
+    "not a hardware or microphone calibration",
+    "not comparable across recordings, sessions, devices or arenas",
+    "not a probability, and not caller evidence on its own",
+    "not a comparison between channels; that is the level difference, computed separately and never stored as a measurement",
+    "not a repair of clipping, partial coverage or a failed measurement; those flags travel with the value"
+  ]
+}

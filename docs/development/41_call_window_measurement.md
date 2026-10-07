@@ -20,7 +20,8 @@ stored = vawlume.acoustic.measureCallWindow(conn, struct(detection_id=12), ...
 
 It **normalizes nothing and compares no channels**. A normalized level, a level
 difference and anything built on them belong to later operations (contract D6,
-"Normalization" and "The level difference").
+"Normalization" and "The level difference"). Since 6.7, those operations are
+[`42_call_level_normalization.md`](42_call_level_normalization.md).
 
 ## One core, two methods
 

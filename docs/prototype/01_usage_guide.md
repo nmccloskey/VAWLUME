@@ -124,7 +124,10 @@ this prototype estimates who called.
   bounded audio windows and measures declared references on explicit channels,
   but the result is uncalibrated response/QC evidence about the channels. It is
   not a gain correction, not a normalized call amplitude, not a preferred
-  channel, and not a probability that any animal called.
+  channel, and not a probability that any animal called. *(Updated in 6.7:
+  one versioned policy, `vawlume.acoustic.normalizeCallLevels`, now divides a
+  call's band power by its own channel's estimate. The quotient is a relative,
+  uncalibrated level within one recording, not an absolute one.)*
 - **VAWLUME estimates no caller.** Two attribution paths are implemented,
   `imported` (a generic external attribution table) and `backend` (a
   localization backend's export). Both store what an external system claimed,
@@ -1266,7 +1269,10 @@ family with no evidence produces an explicit QC row rather than disappearing,
 and the caller supplies exact measurement identifiers so the population of a
 profile is visible in the call. The result is uncalibrated response/QC evidence
 about the channels: not a gain correction, not a normalized call value, not a
-preferred channel, and not a caller probability.
+preferred channel, and not a caller probability. *(Updated in 6.7: a call's band
+power can now be divided by its channel's estimate under a versioned,
+uncalibrated policy; see
+[`../development/42_call_level_normalization.md`](../development/42_call_level_normalization.md).)*
 
 [`../../examples/multimodal_integration_demo.m`](../../examples/multimodal_integration_demo.m)
 runs sections 7.5 and 7.6 together on a synthetic session.

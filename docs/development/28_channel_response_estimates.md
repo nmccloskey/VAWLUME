@@ -10,6 +10,18 @@ authored versioned configuration.
 This layer does not normalize calls, choose a channel, calculate caller scores,
 or claim an empirically calibrated hardware response.
 
+> **Updated in 6.7 (contract 06 D6).** Estimates are no longer *only* QC
+> evidence. One versioned policy now uses an estimate as a divisor:
+> `vawlume.acoustic.normalizeCallLevels` divides a call's `call_band_power` on a
+> channel by that channel's own `acoustic_band_power` estimate of the declared
+> reference family and the identical band, in the same recording. This layer
+> still does none of that itself, and `estimateChannelResponse` is unchanged.
+> The estimates remain **uncalibrated**: they are medians of reference intervals
+> in audioread full-scale units, with no known acoustic level behind them, so
+> dividing by them makes a channel relative to its own reference response. It
+> does not produce an absolute or cross-recording level. See
+> [`42_call_level_normalization.md`](42_call_level_normalization.md).
+
 ## Aggregation boundary
 
 `vawlume.acoustic.estimateChannelResponse` accepts an explicit vector of
