@@ -242,9 +242,213 @@ verifyEqual(testCase, height(value.targets), 3);
 verifyEqual(testCase, height(value.candidates), 6);
 verifyEqual(testCase, height(value.declared_inputs), 4);
 verifyEqual(testCase, height(value.evidence), applied.planned_counts.attribution_evidence);
-verifyFalse(testCase, ismember("derived_measurement_id", ...
-    string(value.evidence.Properties.VariableNames)), ...
-    "If this fails, report learned the P4-3 column: update the 6.10 notes.");
+% Since 6.10 report shows the P4-3 citation (contract D15).
+cited = value.evidence(value.evidence.evidence_kind == "call_band_power_normalized", :);
+verifyNotEmpty(testCase, cited);
+verifyTrue(testCase, all(~isnan(cited.derived_measurement_id)));
+end
+
+% ============================================ 6.10: decisions and read-back ===
+
+function testTheNativePolicyReachesEveryStatusAndNeverSimultaneous(testCase)
+% Status reachability on the native fixture, under the shipped native policy:
+%   detection 1   A fits (about 0 dB), B is 11 dB off        -> assigned (A)
+%   detection 7   both on the bisector, both fit equally     -> ambiguous
+%   detection 10  8 dB toward b; neither fits within 3 dB    -> unassigned
+%   detection 3   tracking has no sample; nothing scored     -> excluded
+%   detection 5   identity swaps mid-call; nothing scored    -> excluded
+f = testCase.TestData.fixture;
+applied = vawlume.estimator.attributeCallers(f.conn, struct(recording_id=1), ...
+    runSpec(f, "native-decide", [1 3 5 7 10]), Apply=true, RepoRoot=f.repo_root);
+symmetric = applied.targets([applied.targets.event_id] == 7).method.candidates;
+verifyEqual(testCase, symmetric.status, ["scored"; "scored"]);
+verifyEqual(testCase, symmetric.score(1), symmetric.score(2), ...
+    "The geometry gives both candidates the same prediction.", AbsTol=1e-3);
+
+decided = vawlume.attribution.decide(f.conn, ...
+    struct(attribution_run_id=applied.attribution_run_id), nativePolicyPath(f), ...
+    RepoRoot=f.repo_root, Apply=true);
+verifyEqual(testCase, decided.policy.rule_key, "threshold_with_separation");
+verifyTrue(testCase, isnan(decided.policy.co_occurrence_threshold), ...
+    "A threshold this rule never reads is reported as absent.");
+status = @(detection) statusOf(f, applied, decided, detection);
+verifyEqual(testCase, status(1), "assigned");
+verifyEqual(testCase, status(7), "ambiguous");
+verifyEqual(testCase, status(10), "unassigned");
+verifyEqual(testCase, status(3), "excluded");
+verifyEqual(testCase, status(5), "excluded");
+verifyFalse(testCase, any(decided.decisions.decision_status == "simultaneous"));
+
+% The assigned target selected A, and only A.
+targetOne = applied.targets([applied.targets.event_id] == 1).attribution_target_id;
+selected = decided.selections(decided.selections.attribution_target_id == targetOne, :);
+ids = applied.targets([applied.targets.event_id] == 1).candidate_ids;
+verifyEqual(testCase, selected.attribution_candidate_id, ...
+    ids.attribution_candidate_id(ids.entity_id == f.A));
+% The ambiguous target is bound by the separation margin, not a hidden bar.
+ambiguous = decided.decisions(decided.decisions.decision_status == "ambiguous", :);
+verifyEqual(testCase, ambiguous.applied_threshold, 3);
+verifySubstring(testCase, ambiguous.applied_threshold_semantics, "separation_margin");
+excluded = decided.decisions(decided.decisions.decision_status == "excluded", :);
+verifyTrue(testCase, all(excluded.exclusion_reason == ...
+    "no candidate of this target carried a native score"));
+
+% Every stored decision names the policy that produced it.
+stored = vawlume.attribution.report(f.conn, ...
+    struct(attribution_run_id=applied.attribution_run_id)).decisions;
+verifyEqual(testCase, height(stored), 5);
+verifyTrue(testCase, all(stored.policy_profile_key == ...
+    "vawlume.attribution.decision.native_level_difference"));
+verifyTrue(testCase, all(stored.policy_version_label == "1.0.0"));
+end
+
+function testASecondPolicyVersionAddsDecisionsAndChangesNoCandidate(testCase)
+% What Phase 7 will use to compare policies over one body of evidence.
+f = testCase.TestData.fixture;
+applied = vawlume.estimator.attributeCallers(f.conn, struct(recording_id=1), ...
+    runSpec(f, "native-redecide", [1 7]), Apply=true, RepoRoot=f.repo_root);
+runRef = struct(attribution_run_id=applied.attribution_run_id);
+first = vawlume.attribution.decide(f.conn, runRef, nativePolicyPath(f), ...
+    RepoRoot=f.repo_root, Apply=true);
+before = vawlume.attribution.report(f.conn, runRef).candidates;
+
+wider = jsondecode(fileread(nativePolicyPath(f)));
+wider.profile.profile_version = "1.0.1-test";
+wider.thresholds.separation_margin = 15;
+widerPath = fullfile(f.workspace, "wider_native_policy.json");
+fid = fopen(widerPath, "w");
+fwrite(fid, jsonencode(wider, PrettyPrint=true));
+fclose(fid);
+second = vawlume.attribution.decide(f.conn, runRef, string(widerPath), ...
+    RepoRoot=f.repo_root, Apply=true);
+
+after = vawlume.attribution.report(f.conn, runRef);
+verifyEqual(testCase, after.candidates, before, "No candidate is rewritten.");
+verifyEqual(testCase, height(after.decisions), 4, "Two decisions per target, one per version.");
+verifyEqual(testCase, first.decisions.decision_status, ["assigned"; "ambiguous"]);
+verifyEqual(testCase, second.decisions.decision_status, ["ambiguous"; "ambiguous"], ...
+    "Under a 15 dB margin the 11 dB separation of detection 1 no longer separates.");
+again = vawlume.attribution.decide(f.conn, runRef, nativePolicyPath(f), ...
+    RepoRoot=f.repo_root, Apply=true);
+verifyEqual(testCase, again.status, "conflict", ...
+    "The same policy version is never applied twice to one target.");
+verifyEqual(testCase, height(vawlume.attribution.report(f.conn, runRef).decisions), 4);
+end
+
+function testAPolicyThatCouldMisleadIsRefused(testCase)
+f = testCase.TestData.fixture;
+applied = vawlume.estimator.attributeCallers(f.conn, struct(recording_id=1), ...
+    runSpec(f, "native-refused-policy", 1), Apply=true, RepoRoot=f.repo_root);
+runRef = struct(attribution_run_id=applied.attribution_run_id);
+shipped = jsondecode(fileread(nativePolicyPath(f)));
+
+hidden = shipped;
+hidden.thresholds.co_occurrence_threshold = 1e6;
+verifyError(testCase, @() vawlume.attribution.decide(f.conn, runRef, ...
+    writePolicy(f, hidden, "hidden.json"), RepoRoot=f.repo_root), ...
+    "vawlume:attribution:PolicyInvalid");
+unknown = shipped;
+unknown.decision_rule.key = "highest_score_wins";
+verifyError(testCase, @() vawlume.attribution.decide(f.conn, runRef, ...
+    writePolicy(f, unknown, "unknown.json"), RepoRoot=f.repo_root), ...
+    "vawlume:attribution:PolicyRuleUnknown");
+text = string(shipped.what_this_policy_is_not);
+verifyTrue(testCase, any(contains(text, "simultaneous calling")));
+verifyTrue(testCase, any(contains(text, "equal scores mean the geometry cannot separate")));
+verifyEqual(testCase, string(shipped.calibration_status.state), "illustrative_prototype");
+end
+
+function testAllThreePathsReadBackThroughOneFieldSet(testCase)
+% Contract 06 D12, invariant 16 extended: imported, backend and native runs read
+% back through one field set, and the only path branch is caveat prose.
+f = testCase.TestData.fixture;
+native = vawlume.estimator.attributeCallers(f.conn, struct(recording_id=1), ...
+    runSpec(f, "native-three-paths", [1 3]), Apply=true, RepoRoot=f.repo_root);
+reports = struct();
+reports.native = vawlume.attribution.report(f.conn, ...
+    struct(attribution_run_id=native.attribution_run_id));
+for path = ["imported", "backend"]
+    created = vawlume.attribution.createRun(f.conn, struct(recording_id=1), struct( ...
+        run_key=path + "-three-paths", attribution_path=path, method="External " + path, ...
+        settings_profile_version_id=f.(path + "_profile"), ...
+        target_set=struct(detection_ids=[1 3]), participating_entity_ids=[f.A f.B], ...
+        sources=struct(source_file_ids=1)), Apply=true);
+    reports.(path) = vawlume.attribution.report(f.conn, ...
+        struct(attribution_run_id=created.run.attribution_run_id));
+end
+names = @(s) sort(string(fieldnames(s)))';
+columns = @(t) sort(string(t.Properties.VariableNames));
+for path = ["imported", "backend"]
+    r = reports.(path);
+    verifyEqual(testCase, names(r), names(reports.native), path + " top-level fields");
+    verifyEqual(testCase, names(r.qc), names(reports.native.qc), path + " QC fields");
+    for table_ = ["targets", "candidates", "evidence", "declared_inputs", "decisions"]
+        verifyEqual(testCase, columns(r.(table_)), columns(reports.native.(table_)), ...
+            path + " " + table_ + " columns");
+    end
+end
+note = reports.native.qc_note;
+verifySubstring(testCase, note, "not a probability");
+verifySubstring(testCase, note, "within this recording only");
+verifySubstring(testCase, note, "uncalibrated");
+verifySubstring(testCase, note, "judges nothing");
+verifyFalse(testCase, contains(reports.imported.qc_note, "native"));
+verifyFalse(testCase, contains(reports.backend.qc_note, "native"));
+% F5.10-11: pose and source localization are named as two different things.
+verifySubstring(testCase, reports.native.dimension_separation_note, ...
+    "pose-localization (where a tracked bodypoint was)");
+verifyFalse(testCase, contains(reports.native.dimension_separation_note, "pose/localization"));
+
+% Declared inputs: four declarations for a native run, none for an imported
+% one -- where "no row" is how an undeclared (unknown) dimension reads.
+verifyEqual(testCase, sort(reports.native.declared_inputs.input_dimension)', ...
+    ["acoustic" "pose_localization" "temporal_alignment" "visual_identity"]);
+verifyTrue(testCase, all(ismember(reports.native.declared_inputs.declaration, ...
+    ["used", "not_used"])));
+verifyEqual(testCase, height(reports.imported.declared_inputs), 0);
+end
+
+function testNativeQcReportsFactsAndNoVerdict(testCase)
+f = testCase.TestData.fixture;
+applied = vawlume.estimator.attributeCallers(f.conn, struct(recording_id=1), ...
+    runSpec(f, "native-qc"), Apply=true, RepoRoot=f.repo_root);
+value = vawlume.attribution.report(f.conn, ...
+    struct(attribution_run_id=applied.attribution_run_id));
+qc = value.qc;
+
+% Unscored candidates, by the reason each states.
+byReason = qc.unscored_candidates_by_reason;
+verifyEqual(testCase, byReason.count(byReason.reason == "identity_changes_within_window"), 2);
+verifyEqual(testCase, byReason.count(byReason.reason == "track_covered_empty"), 2);
+verifyEqual(testCase, sum(byReason.count), 4);
+% Targets with candidates but no scored one: detections 3 and 5.
+expected = [applied.targets([applied.targets.event_id] == 3).attribution_target_id; ...
+    applied.targets([applied.targets.event_id] == 5).attribution_target_id];
+verifyEqual(testCase, sort(qc.targets_without_scored_candidate.attribution_target_id), ...
+    sort(expected));
+% Per-dimension counts, each separately.
+dims = qc.evidence_by_dimension;
+verifyEqual(testCase, sort(dims.evidence_dimension)', ["acoustic" "pose_localization" ...
+    "temporal_alignment" "visual_identity"]);
+% Scope and calibration, read from the run's own checksummed profile.
+statements = qc.settings_profile_statements;
+verifyEqual(testCase, statements.read_status, "read");
+verifyEqual(testCase, statements.calibration_status, "uncalibrated");
+verifyEqual(testCase, statements.comparability_scope, "within_recording");
+verifyEqual(testCase, statements.profile_key, "vawlume.estimator.native_level_difference");
+% Every row 6.9 wrote is visible, with its citation, units and semantics.
+verifyEqual(testCase, height(value.evidence), applied.planned_counts.attribution_evidence);
+verifyTrue(testCase, all(strlength(value.evidence.value_units) > 0));
+verifyTrue(testCase, all(contains(value.evidence.value_semantics, "producer=")));
+verifyTrue(testCase, all(startsWith(value.candidates.notes(isnan(value.candidates.score)), ...
+    "no_score_reason=")));
+% No verdict: no QC field reads as one.
+forbidden = ["quality", "grade", "acceptab", "pass", "fail", "verdict", "reliab", ...
+    "valid", "overall", "combined"];
+observed = lower(string(fieldnames(qc)));
+for term = forbidden
+    verifyFalse(testCase, any(contains(observed, term)), term);
+end
 end
 
 % ============================================================ refusals ===
@@ -319,14 +523,17 @@ result = vawlume.estimator.attributeCallers(f.conn, struct(recording_id=1), ...
     runSpec(f, runKey), Apply=true, RepoRoot=f.repo_root);
 end
 
-function spec = runSpec(f, runKey)
+function spec = runSpec(f, runKey, detections)
+if nargin < 3
+    detections = [1 3 5];
+end
+runs = f.normalization_runs(ismember(f.normalization_runs.detection_id, detections), :);
 spec = struct(run_key=runKey, settings_profile_version_id=f.settings_version, ...
-    target_set=struct(detection_ids=[1 3 5]), participating_entity_ids=[f.A f.B], ...
+    target_set=struct(detection_ids=detections), participating_entity_ids=[f.A f.B], ...
     clock=audioClock(f), ...
     tracking=struct(stream=streamRef(), alignment_run_id=f.video_run, ...
         source_root=f.workspace), ...
-    normalization_runs=table([1; 3; 5], f.normalization_runs(:), ...
-        VariableNames=["detection_id", "analysis_run_id"]));
+    normalization_runs=runs);
 end
 
 function value = counts(conn)
@@ -337,6 +544,23 @@ for k = 1:numel(names)
     rows = fetch(conn, "SELECT COUNT(*) AS n FROM " + names(k));
     value(k) = double(rows.n(1));
 end
+end
+
+function path = nativePolicyPath(f)
+path = string(fullfile(f.repo_root, "config", "08_attribution_policies", ...
+    "native_level_difference_decision_policy.json"));
+end
+
+function path = writePolicy(f, document, name)
+path = string(fullfile(f.workspace, name));
+fid = fopen(path, "w");
+fwrite(fid, jsonencode(document, PrettyPrint=true));
+fclose(fid);
+end
+
+function value = statusOf(f, applied, decided, detection) %#ok<INUSL>
+targetId = applied.targets([applied.targets.event_id] == detection).attribution_target_id;
+value = decided.decisions.decision_status(decided.decisions.attribution_target_id == targetId);
 end
 
 function value = tableCounts(conn, tables)
@@ -478,12 +702,19 @@ value = struct(project_key="synthetic_alignment_session", stream_name="arena_tra
 end
 
 function [x, y] = truePosition(track, videoTime)
-if track == "track0"
-    x = 10 + 0.01 * videoTime;
-    y = 20 + 0 * videoTime;
-else
-    x = 50 + 0 * videoTime;
-    y = 20 + 0.005 * videoTime;
+% track1 and track2 both run along x = 50, the perpendicular bisector of the
+% microphones at (0,0) and (100,0): each is equidistant from both, so each
+% predicts a 0 dB level difference.
+switch track
+    case "track0"
+        x = 10 + 0.01 * videoTime;
+        y = 20 + 0 * videoTime;
+    case "track1"
+        x = 50 + 0 * videoTime;
+        y = 20 + 0.005 * videoTime;
+    otherwise
+        x = 50 + 0 * videoTime;
+        y = 60 + 0.005 * videoTime;
 end
 end
 
@@ -549,7 +780,8 @@ execute(conn, "INSERT INTO extraction_run_inputs(extraction_run_id, recording_id
 % another recording.
 execute(conn, "INSERT INTO detections(detection_id, extraction_run_id, recording_id, " + ...
     "start_time_s, end_time_s) VALUES (1,1,1,300.0,300.1),(3,1,1,600.0,600.1)," + ...
-    "(5,1,1,1100.0,1100.2),(8,2,1,300.0,300.1),(9,1,2,300.0,300.1)");
+    "(5,1,1,1100.0,1100.2),(8,2,1,300.0,300.1),(9,1,2,300.0,300.1)," + ...
+    "(7,1,1,700.0,700.1),(10,1,1,301.2,301.3)");
 
 execute(conn, "INSERT INTO entity_types(project_id, native_name) VALUES (1, 'subject')");
 execute(conn, "INSERT INTO experimental_entities(entity_id, project_id, entity_type_id, " + ...
@@ -568,7 +800,8 @@ for channel = 1:2
         position_x=fixture.mics(channel, 1), position_y=fixture.mics(channel, 2)));
 end
 
-regions = [videoAround(fixture, 300.5, 1.5); videoAround(fixture, 1100.1, 1)];
+regions = [videoAround(fixture, 300.5, 1.5); videoAround(fixture, 700.05, 1); ...
+    videoAround(fixture, 1100.1, 1)];
 writeTrackingCsv(fullfile(workspace, "arena_tracking.csv"), regions);
 profilePath = fullfile(workspace, "tracking_profile.json");
 writelines(string(fileread(fullfile(repoRoot, "config", "01_mapping_profiles", ...
@@ -594,6 +827,18 @@ fixture.settings_version = vawlume.db.registerProfileVersion(conn, struct(projec
     profile_kind=settings.profile_kind, ...
     profile_schema_version=settings.profile_schema_version), ...
     RepoRoot=repoRoot).profile_version_id;
+% Settings profiles for an imported and a backend run on the same recording,
+% so all three paths can be read back side by side (6.10). Rows only: their
+% files are not needed to create a run.
+execute(conn, "INSERT INTO config_profiles(profile_id,project_id,profile_key,profile_name," + ...
+    "profile_kind) VALUES (801,1,'imported-map','Imported mapping','attribution_input_mapping')," + ...
+    "(802,1,'backend-map','Backend mapping','attribution_backend_mapping')");
+execute(conn, "INSERT INTO config_profile_versions(profile_version_id,profile_id,version_label," + ...
+    "content_format,content_uri,checksum_sha256,is_snapshot) VALUES " + ...
+    "(801,801,'1','json','imported.json','" + string(repmat('a', 1, 64)) + "',1)," + ...
+    "(802,802,'1','json','backend.json','" + string(repmat('b', 1, 64)) + "',1)");
+fixture.imported_profile = 801;
+fixture.backend_profile = 802;
 fixture.wrong_kind_profile = vawlume.db.registerProfileVersion(conn, struct(project_id=1), ...
     struct(profile_key="noise-policy", profile_name="Normalization policy", ...
     version_label="1.0.0", content_path=fullfile(repoRoot, "config", ...
@@ -637,6 +882,12 @@ for channel = 1:2
     source = place(source, channel, g * (10 / distanceA(channel)) * tone, [300.0 300.1], rate);
     source = place(source, channel, g * 0.2 * tone, [600.0 600.1], rate);
     source = place(source, channel, g * 0.3 * tone, [1100.0 1100.2], rate);
+    % 6.10: detection 7, equal source level at both microphones (0 dB after
+    % normalization, which both bisector candidates predict); detection 10,
+    % 8 dB louder at microphone b, which neither candidate predicts.
+    source = place(source, channel, g * 0.2 * tone, [700.0 700.1], rate);
+    towardB = [10^(-8 / 20), 1];
+    source = place(source, channel, g * 0.3 * towardB(channel) * tone, [301.2 301.3], rate);
 end
 audiowrite(char(path), source, rate, BitsPerSample=24);
 end
@@ -667,9 +918,9 @@ end
 response = vawlume.acoustic.estimateChannelResponse(conn, struct(recording_id=1), ids, ...
     RequiredReferenceTypes="noise", MinReferences=2, Apply=true, ...
     RunKey="response").analysis_run_id;
-runs = zeros(1, 3);
-detections = [1 3 5];
-for k = 1:3
+detections = [1 3 5 7 10];
+runs = zeros(1, numel(detections));
+for k = 1:numel(detections)
     call = vawlume.acoustic.measureCallWindow(conn, struct(detection_id=detections(k)), ...
         [1 2], BandHz=[200 300], SourceRoot=workspace, Apply=true, ...
         RunKey="call-d" + detections(k));
@@ -678,6 +929,7 @@ for k = 1:3
         RepoRoot=fixture.repo_root, Apply=true, RunKey="norm-d" + detections(k));
     runs(k) = normalized.analysis_run_id;
 end
+runs = table(detections(:), runs(:), VariableNames=["detection_id", "analysis_run_id"]);
 end
 
 function runId = foreignNormalization(conn)
@@ -710,6 +962,10 @@ claim("track0", fixture.A, 1099, 1100.15);
 claim("track0", fixture.B, 1100.15, 1101.2);
 claim("track1", fixture.B, 1099, 1100.15);
 claim("track1", fixture.A, 1100.15, 1101.2);
+% Around 700 s (6.10): both participants on the bisector, the geometry that
+% cannot separate them.
+claim("track1", fixture.A, 698, 702);
+claim("track2", fixture.B, 698, 702);
 end
 
 function value = videoTimeOf(fixture, audioTime)
@@ -727,7 +983,7 @@ lines = "time_s,subject,bodypart,x,y,likelihood";
 for r = 1:height(regions)
     times = (ceil(regions(r, 1) * 30):floor(regions(r, 2) * 30))' / 30;
     for t = times'
-        for track = ["track0", "track1"]
+        for track = ["track0", "track1", "track2"]
             [x, y] = truePosition(track, t);
             for part = ["snout", "tail_base"]
                 lines(end + 1, 1) = compose("%.9f", t) + "," + track + "," + part + ...

@@ -32,6 +32,20 @@ function result = decide(conn, runRef, policyRef, options)
 %
 % No status means validated. No threshold that ships is calibrated.
 %
+% RULES. The policy's decision_rule.key selects the rule, and an unknown key is
+% refused (vawlume:attribution:PolicyRuleUnknown):
+%
+%   threshold_with_separation_and_co_occurrence
+%       the rule above; the shipped imported/backend policy uses it
+%   threshold_with_separation
+%       identical through the separation step, with no co-occurrence step:
+%       several contenders are always "ambiguous", bound by separation_margin,
+%       and it can never produce "simultaneous". For the native consistency score
+%       (contract 06 D11) two strong contenders mean the geometry cannot
+%       separate the candidates, and a level difference over one window cannot
+%       show two simultaneous sources. A policy using it that declares
+%       co_occurrence_threshold is refused; the summary reports it as NaN.
+%
 % Name-value arguments:
 %   Apply       persist the batch (default false)
 %   Targets     decide only these attribution_target_ids (default: all)

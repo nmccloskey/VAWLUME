@@ -58,6 +58,23 @@ if policy.calibration_state == "calibrated"
 end
 
 policy.rule_key = requiredText(rule, "key");
+% The rule key is DISPATCHED, never decorative (contract 06 D11). Before 6.10 any
+% key string ran the shipped rule, so a policy naming a rule VAWLUME does not
+% implement was silently decided by a different one.
+%
+%   threshold_with_separation_and_co_occurrence  the shipped rule; several
+%       independently strong contenders are "simultaneous"
+%   threshold_with_separation                    identical through the
+%       separation step; several contenders are always "ambiguous". For a
+%       consistency score two strong contenders mean the geometry cannot
+%       separate the animals, which is a claim about the evidence
+implementedRules = ["threshold_with_separation_and_co_occurrence", ...
+    "threshold_with_separation"];
+if ~ismember(policy.rule_key, implementedRules)
+    error("vawlume:attribution:PolicyRuleUnknown", ...
+        "decision_rule.key '%s' is not a rule VAWLUME implements (%s).", ...
+        policy.rule_key, strjoin(implementedRules, ", "));
+end
 policy.rule_version = requiredText(rule, "version");
 policy.reads = requiredText(rule, "reads");
 if ~ismember(policy.reads, ["score", "probability"])
@@ -74,7 +91,18 @@ policy.requires_value_semantics = requiredLogical(rule, "requires_value_semantic
 
 policy.selection_threshold = requiredNumber(thresholds, "selection_threshold");
 policy.separation_margin = requiredNumber(thresholds, "separation_margin");
-policy.co_occurrence_threshold = requiredNumber(thresholds, "co_occurrence_threshold");
+if policy.rule_key == "threshold_with_separation"
+    % A threshold nothing reads would mislead whoever reads the policy, and one
+    % set out of reach would be a constant posing as a policy.
+    if isfield(thresholds, "co_occurrence_threshold")
+        error("vawlume:attribution:PolicyInvalid", ...
+            "Rule threshold_with_separation has no co-occurrence step; a policy " + ...
+            "using it must not declare co_occurrence_threshold.");
+    end
+    policy.co_occurrence_threshold = NaN;
+else
+    policy.co_occurrence_threshold = requiredNumber(thresholds, "co_occurrence_threshold");
+end
 
 if policy.separation_margin < 0
     error("vawlume:attribution:PolicyInvalid", ...
@@ -82,7 +110,8 @@ if policy.separation_margin < 0
 end
 % A co-occurrence bar below the selection bar would let this policy claim two
 % animals called on evidence too weak to assign one of them.
-if policy.co_occurrence_threshold < policy.selection_threshold
+if ~isnan(policy.co_occurrence_threshold) && ...
+        policy.co_occurrence_threshold < policy.selection_threshold
     error("vawlume:attribution:PolicyInvalid", ...
         "co_occurrence_threshold (%g) must not be below selection_threshold (%g).", ...
         policy.co_occurrence_threshold, policy.selection_threshold);

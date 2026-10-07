@@ -137,6 +137,17 @@ if outcome.contender_count == 1
     return
 end
 
+% 5'. Rule threshold_with_separation (contract 06 D11) stops here: several
+%    contenders are ambiguous, bound by the separation margin. It has no
+%    co-occurrence step, so it cannot claim more than one animal called.
+if policy.rule_key == "threshold_with_separation"
+    outcome.decision_status = "ambiguous";
+    outcome.applied_threshold = policy.separation_margin;
+    outcome.applied_threshold_semantics = thresholdSemantics( ...
+        "separation_margin", policy);
+    return
+end
+
 % 5. Several contenders. Claiming that more than one animal called requires
 %    each of them to be independently strong, not merely close to each other.
 if all(contenderValues >= policy.co_occurrence_threshold)

@@ -143,9 +143,46 @@ that mitigation with the transaction itself.
 | a participant not linked to the recording | `vawlume:attribution:EntityNotInRecording`, from `createRun`'s planner |
 | unconnected clocks | `vawlume:tracking:ClockDeclarationInvalid` (or the alignment layer's own refusal) |
 
+## Deciding (6.10)
+
+A native run is decided with `vawlume.attribution.decide`, as any other path's
+run is, under the native policy
+[`config/08_attribution_policies/native_level_difference_decision_policy.json`](../../config/08_attribution_policies/native_level_difference_decision_policy.json).
+It uses rule `threshold_with_separation` (contract D11): `selection_threshold`
+−3 dB and `separation_margin` 3 dB, both illustrative.
+
+| Situation | Decision |
+|---|---|
+| One candidate fits within 3 dB of the observation, and the other is more than 3 dB worse | `assigned`, that candidate |
+| Both fit, within 3 dB of each other (for example, both equidistant from the two microphones) | `ambiguous`, bound by `separation_margin`. **Never `simultaneous`** |
+| Neither fits within 3 dB | `unassigned` |
+| No candidate has a score (identity swap, tracking gap, clipped channel…) | `excluded`, reason "no candidate of this target carried a native score" |
+
+A second policy version decides the same candidates again, beside the first,
+and rewrites nothing.
+
 ## Reading it back
 
-`vawlume.attribution.report` reads a native run through its existing fields:
-targets, candidates, evidence and declared inputs. It does not yet return the
-evidence's `derived_measurement_id`, or native-specific QC prose; contract D15
-assigns both to 6.10.
+`vawlume.attribution.report` reads a native run through **the same field set**
+as an imported or backend run. A test compares the top-level fields, the QC
+fields, and the columns of targets, candidates, evidence, declared inputs and
+decisions across all three paths.
+
+- The **only** path branch is `qc_note`'s caveat prose. For a native run it
+  says the scores are VAWLUME's own, uncalibrated, comparable within this
+  recording only, and not a probability, and that equal scores are not evidence
+  of two callers.
+- `evidence.derived_measurement_id` shows the P4-3 citation.
+  `candidates.notes` shows each unscored candidate's
+  `no_score_reason=<code>`.
+- `declared_inputs` holds four rows for a native run. An imported run holds
+  none, because an undeclared dimension reads as *no row*.
+- QC adds three path-agnostic facts:
+  - `unscored_candidates_by_reason`: the reason each unscored candidate
+    states, or `not_stated`;
+  - `targets_without_scored_candidate`;
+  - `settings_profile_statements`: the run's settings profile's own
+    `calibration_status.state` and `scaling.comparability_scope`, read from the
+    profile file only while it still matches its registered checksum.
+
+  None is a verdict.

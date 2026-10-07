@@ -382,6 +382,19 @@ A policy is an input, never a constant. Applying a different one to the same
 candidates produces a different decision and changes no candidate row, which is
 what makes comparing policies over one body of evidence possible.
 
+`decision_rule.key` selects the rule, and an unknown key is refused. A second
+policy ships for the native estimator:
+[`native_level_difference_decision_policy.json`](08_attribution_policies/native_level_difference_decision_policy.json).
+- **Rule:** `threshold_with_separation`. It is identical to the shipped rule
+  through the separation step and has **no co-occurrence step**, so it can never
+  decide `simultaneous`. Two candidates that both fit mean the geometry cannot
+  separate them, which is `ambiguous`. A policy using this rule that declares a
+  `co_occurrence_threshold` is refused, because a threshold nothing reads would
+  mislead.
+- **Thresholds:** in dB of level-difference discrepancy, and illustrative.
+
+See [`../docs/development/44_native_estimation_run.md`](../docs/development/44_native_estimation_run.md).
+
 ### 14. Call-level normalization policies
 
 Location:

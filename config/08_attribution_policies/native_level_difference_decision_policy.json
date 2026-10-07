@@ -1,0 +1,72 @@
+{
+  "profile": {
+    "id": "vawlume.attribution.decision.native_level_difference",
+    "name": "Native level-difference decision policy",
+    "kind": "attribution_policy",
+    "profile_schema_version": "0.1-draft",
+    "profile_version": "1.0.0",
+    "description": "Versioned, checksum-bearing policy governing how the native estimator's candidate scores become one decision per attribution target. It reads the dB consistency score of vawlume.estimator.level_difference_consistency and has no co-occurrence step, so it can never decide 'simultaneous'. Registered as a config_profiles row of kind attribution_policy and named on every attribution_decisions row it produced."
+  },
+
+  "calibration_status": {
+    "state": "illustrative_prototype",
+    "meaning": "Every threshold below is a demonstration value in dB of level-difference discrepancy, chosen against the score ranges observed on synthetic scenes: the generating candidate scores about 0 dB, a well-separated wrong candidate between about -10 and -22 dB, and candidates the geometry cannot separate score equally. None is empirically calibrated, and none should be reported as an optimal or recommended setting. A decision produced under this policy is an estimate, never a validated result.",
+    "evidence_basis": "synthetic native scenes only, one of them generated from the method's own spreading assumption, which tests self-consistency and not accuracy",
+    "calibration_requires": "recordings with an independently established caller for each call, which is outside VAWLUME's control"
+  },
+
+  "decision_rule": {
+    "key": "threshold_with_separation",
+    "version": "1.0.0",
+    "reads": "score",
+    "reads_meaning": "The native candidate score: minus the absolute difference, in dB, between the observed inter-channel level difference and the one the candidate's position predicts. 0 is perfect agreement. Probability is never read; native candidates carry none.",
+    "requires_value_semantics": true,
+    "ordering": "higher_is_stronger",
+    "ordering_meaning": "A score closer to 0 dB is a better fit. The scale is at most 0."
+  },
+
+  "thresholds": {
+    "selection_threshold": -3.0,
+    "selection_threshold_meaning": "A candidate must fit the observed level difference to within 3 dB to be supportable at all. Below it, no candidate is assigned and the decision is unassigned: the rule ran, and nothing fit.",
+
+    "separation_margin": 3.0,
+    "separation_margin_meaning": "How far below the best fit, in dB, a candidate may fall and still be treated as indistinguishable from it. Two candidates within 3 dB of each other cannot be separated by this method, and the decision is ambiguous."
+  },
+
+  "statuses": {
+    "assigned": "Exactly one candidate fits within the selection threshold and no other is within the separation margin of it. One selected candidate.",
+    "ambiguous": "Two or more candidates fit and are within the separation margin of each other, typically because the geometry cannot separate them (for example, both equidistant from the two microphones). A claim about the evidence, not about the world. No candidate selected.",
+    "unassigned": "The rule ran and no candidate fit within the selection threshold. No candidate selected.",
+    "excluded": "The rule could not run because no candidate of the target has a score, for example when identity changes during the call or tracking has no sample there, or a caller declared a QC exclusion with a reason. No candidate selected.",
+    "simultaneous": "Not reachable. This rule has no co-occurrence step.",
+    "validated": "Not a status. No decision this prototype can produce is validated, and the vocabulary does not contain the word."
+  },
+
+  "exclusion_rules": {
+    "no_readable_value": {
+      "enabled": true,
+      "reason": "no candidate of this target carried a native score",
+      "meaning": "Distinct from unassigned. Unassigned means the rule ran and nothing fit; this means the rule could not run, and each candidate's notes say why it has no score."
+    }
+  },
+
+  "caller_declared_exclusions": {
+    "permitted": true,
+    "requires_reason": true,
+    "meaning": "A caller may exclude a target for a stated QC reason, for example a clipped channel noticed by hand. VAWLUME does not invent QC failures from the numbers."
+  },
+
+  "refusals": {
+    "no_candidates": "A target with no candidate rows at all is refused rather than silently decided.",
+    "decision_exists": "A second decision for the same target under the same policy version is refused. A completed decision is never rewritten in place; a different policy version is a different decision."
+  },
+
+  "what_this_policy_is_not": [
+    "not a probability that the selected entity called",
+    "not evidence of simultaneous calling: a level difference measured by two microphones over one window describes the sound that arrived, and cannot show that two animals produced it",
+    "not a judgement between candidates with equal scores: equal scores mean the geometry cannot separate them, and this policy reports that as ambiguous",
+    "not calibrated, and not derived from any calibrated quantity",
+    "not comparable across recordings: native scores are comparable within one recording only",
+    "not a re-scoring of candidates; candidate scores are inputs and are never rewritten"
+  ]
+}
