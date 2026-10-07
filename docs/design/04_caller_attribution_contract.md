@@ -25,6 +25,14 @@ both contracts in [`06_native_estimator_contract.md`](06_native_estimator_contra
 and its one bump, applied at 6.2, makes the live schema `0.13-draft`
 (`PRAGMA user_version = 13`).
 
+**Status at 6.11.** The live schema is still `0.13-draft`
+(`PRAGMA user_version = 13`); 6.3–6.11 changed no DDL. A third attribution
+path, `native_estimate`, now writes this contract's run, target, candidate,
+evidence and decision tables through the same public functions as the imported
+path, and reads back through the same `report`. Every clause here holds for it
+unless contract 06 says otherwise. The sentences below that Phase 6 made false
+carry visible corrections.
+
 The contract clauses below are frozen as written. This status block is not: it
 names the live schema, and 4.2 set the precedent of moving it when the version
 moves rather than leaving a stale claim in the sentence that advertises currency.
@@ -44,6 +52,12 @@ Plan §18 requires the canonical attribution model be proven with **imported**
 results before any backend or native estimator exists. The reasoning is worth
 restating because it constrains everything below: a representation designed around
 an estimator that does not exist yet will fit that estimator and nothing else.
+*(Corrected at 6.11: the native estimator now exists. It was written after this
+representation had held imported (Phase 4) and backend (Phase 5) results, as this
+paragraph required. It writes into the same tables through the same functions.
+Its one schema bump (6.2) extended them, for example with a citation from an
+evidence row to a stored measurement, and replaced nothing. See
+[`06_native_estimator_contract.md`](06_native_estimator_contract.md) D13 and D14.)*
 
 So Phase 4 builds the model and then tries to break it by importing a result it did
 not produce. What the imported path cannot hold is the phase's most valuable
@@ -519,6 +533,16 @@ lifted. A method that combines dimensions must state:
 
 A method that cannot state all five keeps the dimensions separate and says so. That
 is a legitimate outcome, and Phase 4 is an instance of it.
+
+*(Exercised at 6.8; shown end to end at 6.11.)* The native method states all
+five in its versioned settings profile,
+`config/10_estimator_settings/native_level_difference_estimator_v1.json`. Its
+loader refuses a profile missing any of them, and `native_estimator_demo` prints
+them from the profile version a stored run cites. On condition 3 the profile
+claims comparability **within one recording only**, so the refusal quoted above
+still stands across devices and sessions. Condition 5 is `uncalibrated`. See
+[`06_native_estimator_contract.md`](06_native_estimator_contract.md) D2 and
+[`../development/45_integrated_native_estimator_demonstration.md`](../development/45_integrated_native_estimator_demonstration.md).
 
 ---
 

@@ -14,6 +14,14 @@ at 6.2 for the native estimator
 the live schema `0.13-draft` (`PRAGMA user_version = 13`). The DDL realizing D1, D3, D4, D6, D7 and D13 is documented in
 [`../development/31_caller_attribution_schema.md`](../development/31_caller_attribution_schema.md).
 
+**Status at 6.11.** The live schema is still `0.13-draft`; 6.3–6.11 changed no
+DDL. Phase 6 lifted two of this contract's refusals for VAWLUME's own native
+path only. Spatial arithmetic within one frame now lives in `+geometry/`, and one
+versioned method in `+estimator/` combines dimensions. The backend path is
+unchanged: nothing computes a distance from a backend's estimate, and the native
+path consumes no backend output. Sentences Phase 6 made false carry visible
+corrections (6.3, 6.8).
+
 The contract clauses below are frozen as written. This status block is not: it
 names the live schema, and it moves when the version moves. The Phase 4
 contract set that precedent. **Nothing machine-checks it.**

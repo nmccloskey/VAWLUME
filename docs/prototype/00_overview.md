@@ -23,7 +23,7 @@ The project is currently organized around six linked goals.
 | **1. Relational ingestion of USV and other data** | Implemented for project metadata, DeepSqueak, MUPET, USVSEG, external events/alignment anchors, spatial/tracking inputs, acoustic-reference evidence, imported caller-attribution outputs, and localization-backend outputs. |
 | **2. Extractor consilience exploration / data-validation support** | Implemented for pairwise correspondence, ambiguity-preserving match groups, arbitrary-N agreement, feature comparison where semantics support it, independent manual-reference evaluation, and threshold sensitivity. |
 | **3. Multimodal temporal alignment** | Implemented as user-anchored source-to-reference clock alignment with native timestamps retained, fit/QC evidence preserved, and common-time projection exposed downstream. |
-| **4. Caller-attribution support** | Partially implemented. VAWLUME can represent spatial, tracking, identity, acoustic, source-localization, correspondence, and imported attribution evidence, import a localization backend's claims and estimates, and apply declared decision policies. It does not yet estimate callers natively. |
+| **4. Caller-attribution support** | Partially implemented. VAWLUME can represent spatial, tracking, identity, acoustic, source-localization, correspondence, and imported attribution evidence, import a localization backend's claims and estimates, and apply declared decision policies. A narrow native estimator scores two animals against two microphones from VAWLUME's own evidence. Its score is uncalibrated, comparable within one recording only, and not a probability. |
 | **5. Incorporating sequence / bout analysis** | Planned. Storage concepts exist, but no current workflow populates sequence or bout analyses. Future grouping rules must be explicit and provenance-bearing. |
 | **6. Niche EDA for the above** | Early implementation exists for consilience-oriented exploration, support-pattern characterization, feature disagreement, threshold screening, metadata-aware sampling, and spectrogram examples. This area is expected to grow with the other goals. |
 
@@ -65,7 +65,7 @@ Manual reference events and manual adjudication therefore remain independent of 
 
 Temporal-alignment uncertainty, pose-localization evidence, visual-identity evidence, acoustic evidence, source-localization evidence, correspondence evidence, and imported caller-attribution scores have different semantics. VAWLUME stores them separately rather than averaging them into a generic confidence value.
 
-A later analysis may combine them, but that combination should itself be explicit, versioned, and reproducible.
+An analysis may combine them, but that combination must itself be explicit, versioned, and reproducible. The native estimator is the one place VAWLUME does so. Its settings profile states which dimensions it uses and how, and every input stays a separately readable evidence row beside the score.
 
 ### 3.6 Preserve native clocks and derive common time
 
@@ -194,11 +194,13 @@ The current prototype can represent or register:
 - imported attribution claims produced by an external system; and
 - a localization backend's export: its windows and caller scores, localization estimates in a declared 2D or 3D coordinate system, per-channel values, track references, producer-native fields, and its declaration of which upstream evidence it consumed.
 
-VAWLUME currently **does not estimate who called from those multimodal inputs**. The two implemented attribution paths, imported and backend, preserve an external system's claims, relate its time windows to VAWLUME events under an explicit clock/correspondence rule, and can apply a declared decision policy. That policy does not implicitly combine pose, identity, alignment, acoustic, source-localization, and correspondence evidence into one probability. VAWLUME transforms no coordinate frame, and computes distances only within one declared frame, in its geometry primitives.
+Two attribution paths, imported and backend, preserve an external system's claims, relate its time windows to VAWLUME events under an explicit clock/correspondence rule, and can apply a declared decision policy. A decision policy does not combine pose, identity, alignment, acoustic, source-localization, and correspondence evidence into one probability.
 
-This keeps the architecture compatible with external localization/attribution systems while leaving room for a later VAWLUME-native estimator.
+A third path, the **native estimator**, scores candidate callers from VAWLUME's own evidence, for two animals and two microphones. For each call it asks how well each animal's tracked position explains the level difference the two microphones heard. That position is reached through a stored identity association and the aligned clocks, and the level difference is normalized for each channel's gain. The score is a versioned, uncalibrated dB consistency score, comparable within one recording only, and never a probability. It assumes spherical spreading. When a call does not follow that, the wrong animal can fit well. Every input the score used is stored as its own cited evidence row, and the score can be recomputed from those rows. VAWLUME transforms no coordinate frame, and computes distances only within one declared frame, in its geometry primitives.
 
-See [`docs/design/03_multimodal_input_contract.md`](../design/03_multimodal_input_contract.md) and the caller-attribution development documents under [`docs/development/`](../development/).
+All three paths write the same run, target, candidate, evidence, and decision tables and read back through one function, so external and native results stay comparable in form without being merged.
+
+See [`docs/design/03_multimodal_input_contract.md`](../design/03_multimodal_input_contract.md), [`docs/design/06_native_estimator_contract.md`](../design/06_native_estimator_contract.md), and the caller-attribution development documents under [`docs/development/`](../development/).
 
 ## 9. Sequence and bout analysis
 
@@ -245,7 +247,7 @@ The current prototype is deliberately bounded. It is not intended to provide, ye
 - automatic discovery of alignment anchors from raw signals;
 - full acquisition-system synchronization;
 - native pose estimation, image-based re-identification, or raw-video analysis;
-- a VAWLUME-native caller-attribution estimator;
+- a native caller estimator beyond two animals and two microphones, or one that models directivity, reflections, or simultaneous calling;
 - a calibrated universal caller-confidence score;
 - implemented sequence/bout/motif inference; or
 - automatic biological interpretation of extractor-native labels.

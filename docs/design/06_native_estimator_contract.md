@@ -18,6 +18,17 @@ precedent contracts 04 and 05 set. **Nothing machine-checks it**, because
 `check_repository_self_description` exempts `docs/design/` from its version
 check. The itinerary that bumps the schema moves this block by hand.
 
+**Status at 6.11.** The live schema is still `0.13-draft`; 6.3–6.11 changed no
+DDL. Itineraries 6.2–6.10 implemented the decisions below. Development docs 38–44
+document each module, and 6.9a made a native run one transaction. Itinerary 6.11
+added the integrated demonstration,
+[`examples/native_estimator_demo.m`](../../examples/native_estimator_demo.m),
+documented in
+[`../development/45_integrated_native_estimator_demonstration.md`](../development/45_integrated_native_estimator_demonstration.md),
+including what it could not show. That demonstration needed no new public
+function, column or schema change. The phase's sweep and closure follow 6.11,
+so this block does not yet say the phase is closed.
+
 This contract **extends** [`04_caller_attribution_contract.md`](04_caller_attribution_contract.md)
 and [`05_backend_localization_contract.md`](05_backend_localization_contract.md).
 It replaces neither. Every Phase 4 and Phase 5 clause holds for a native run
@@ -956,7 +967,12 @@ written by this repository. Therefore:
   build a **model-mismatch scene**, with the level difference generated under a
   directional source. It shows how the method fails when its dominant assumption
   is wrong. It shows only the direction of failure for one synthetic directivity,
-  not its rate in real animals.
+  not its rate in real animals. *(Recorded at 6.11: in the demonstration's scene,
+  a −9 dB bias at one microphone exceeded the 5.63 dB tolerance, which is half
+  the gap between the two candidates' predictions. The animal that did not
+  generate the call then scored −2.27 dB, ranked first, and was `assigned` under
+  the native policy. Nothing in the run flagged it. See
+  [`../development/45_integrated_native_estimator_demonstration.md`](../development/45_integrated_native_estimator_demonstration.md).)*
 - **Nothing establishes that any score is comparable across recordings** (D8),
   and none is claimed.
 - **Nothing establishes that normalization corrects anything in absolute terms.**

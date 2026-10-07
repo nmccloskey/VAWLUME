@@ -23,11 +23,11 @@ See the [prototype overview](docs/prototype/00_overview.md) for the current scop
 
 ## Current prototype
 
-Implemented today are provenance-aware source mapping and project intake; DeepSqueak, MUPET, and USVSEG import; pairwise and arbitrary-N cross-extractor correspondence and agreement; consilience summaries and independent manual-reference evaluation; anchor-based temporal alignment; multimodal spatial/tracking/acoustic-reference intake; imported caller-attribution representation; consilience-oriented exploratory analysis; and relational CSV export.
+Implemented today are provenance-aware source mapping and project intake; DeepSqueak, MUPET, and USVSEG import; pairwise and arbitrary-N cross-extractor correspondence and agreement; consilience summaries and independent manual-reference evaluation; anchor-based temporal alignment; multimodal spatial/tracking/acoustic-reference intake; caller-attribution representation for imported attribution tables and localization-backend exports; a narrow VAWLUME-native caller estimator; consilience-oriented exploratory analysis; and relational CSV export.
 
 The extractor-consilience workflow has run end to end on one real Pilot 3 recording containing DeepSqueak, MUPET, and USVSEG outputs. That demonstrates operational execution on real imported data, **not scientific validation**: comprehensive manually reviewed ground truth and threshold calibration have not been completed.
 
-Sequence/bout analysis remains a stated goal rather than an implemented workflow. A VAWLUME-native caller estimator is also future work; the current attribution path represents multimodal evidence and imported attribution claims without inventing a combined caller-confidence score.
+Sequence/bout analysis remains a stated goal rather than an implemented workflow. The native caller estimator covers two animals and two microphones only. It scores how well each animal's tracked position explains a call's inter-channel level difference. The score is uncalibrated, comparable within one recording only, and not a probability. Every input it used stays a separately readable evidence row. It has been exercised on synthetic data only.
 
 ## Requirements
 
@@ -51,6 +51,7 @@ matching_consensus_demo          % pairwise correspondence + consilience
 multi_extractor_agreement_demo   % arbitrary-N agreement
 multimodal_integration_demo      % geometry, tracking, identity, acoustic response
 caller_attribution_demo          % imported caller-attribution path
+native_estimator_demo            % VAWLUME's own caller score, including a failure
 consilience_exploration_demo     % consilience-oriented EDA
 csv_export_demo                  % relational CSV export
 ```

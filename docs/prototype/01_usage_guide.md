@@ -77,7 +77,15 @@ Concretely, the prototype can today:
   than resolving the windows that match nothing or match several events;
 - **decide** one status per target from stored candidates under a versioned,
   checksummed policy that keeps `ambiguous` and `simultaneous` apart, and retains
-  the threshold that bound each decision; and
+  the threshold that bound each decision;
+- **score** the candidate callers of a two-animal, two-microphone recording with
+  VAWLUME's own native estimator: it measures each call on both channels,
+  normalizes away the channels' gain difference, places each animal at the call
+  through a stored identity association and the aligned clocks, and asks how
+  well each animal's position explains the level difference the microphones
+  heard. The score is an uncalibrated dB consistency score, comparable within
+  that recording only, and never a probability. Every input it used is stored as
+  its own evidence row, and the score can be recomputed from them; and
 - **read back** a whole attribution run through one function, with QC that is
   counts, memberships and observed ranges and contains no quality score,
   threshold or verdict.
@@ -88,8 +96,12 @@ ambiguous visual crossing; it assigns no caller.
 [`../../examples/caller_attribution_demo.m`](../../examples/caller_attribution_demo.m)
 runs the whole imported attribution path, and what it does with a caller is
 narrower than it may look: it stores what an external system claimed, relates
-those claims to VAWLUME events, and applies a policy you declared. Nothing in
-this prototype estimates who called.
+those claims to VAWLUME events, and applies a policy you declared.
+[`../../examples/native_estimator_demo.m`](../../examples/native_estimator_demo.m)
+runs VAWLUME's own native estimator (§7.9). Its scores say how well each
+animal's position explains a call's level difference. They do not say who
+called, and one of its scenes shows the method confidently assigning the wrong
+animal.
 
 ### Important limitations
 
@@ -128,23 +140,25 @@ this prototype estimates who called.
   one versioned policy, `vawlume.acoustic.normalizeCallLevels`, now divides a
   call's band power by its own channel's estimate. The quotient is a relative,
   uncalibrated level within one recording, not an absolute one.)*
-- **VAWLUME estimates no caller.** Two attribution paths are implemented,
-  `imported` (a generic external attribution table) and `backend` (a
-  localization backend's export). Both store what an external system claimed,
-  relate those claims to VAWLUME events, and apply a policy you supplied. The
-  VAWLUME-native estimator is a later phase. *(Updated in 6.9: the native path
-  now exists. `vawlume.estimator.attributeCallers` writes native candidate
-  scores. Each score is an uncalibrated dB consistency score, not a probability,
-  and comparable only within one recording; see
-  [`../development/44_native_estimation_run.md`](../development/44_native_estimation_run.md).
-  A native decision policy ships with 6.10, and it cannot decide
-  `simultaneous`.)*
-- **A decision is not a combination of the evidence.** The shipped policy reads
-  one candidate column and no evidence row, so nothing combines pose,
-  visual-identity, alignment, acoustic, and source-localization evidence into a
-  claim about who vocalized. Those components remain separate precisely so a later declared
-  method can combine them deliberately. A decision is also not a probability,
-  and no status means `validated`.
+- **VAWLUME's own caller score is narrow, uncalibrated, and can be wrong
+  without saying so.** Three attribution paths are implemented: `imported` (a
+  generic external attribution table), `backend` (a localization backend's
+  export) and `native_estimate` (VAWLUME's own estimator, §7.9). The first two
+  store what an external system claimed. The native one scores two animals
+  against one ordered pair of microphones, under a spherical-spreading
+  assumption, as an uncalibrated dB consistency score comparable within one
+  recording only. It is not a probability, it cannot detect simultaneous
+  calling, and when a call's level difference does not follow spherical
+  spreading (a head turned away from one microphone, say) it can fit the wrong
+  animal well. Nothing in the run flags that. See
+  [`../development/45_integrated_native_estimator_demonstration.md`](../development/45_integrated_native_estimator_demonstration.md).
+- **A decision is not a combination of the evidence.** A decision policy reads
+  one candidate column and no evidence row. Pose, visual-identity, alignment,
+  acoustic, and source-localization evidence stay separate rows. The one place
+  they are combined is the native estimator's versioned method in
+  `vawlume.estimator`, under a settings profile that states which it uses and
+  how; its inputs remain separately readable beside its score. A decision is
+  also not a probability, and no status means `validated`.
 - **Every attribution threshold that ships is illustrative.** The mapping
   profile's correspondence floor and the decision policy's selection, separation
   and co-occurrence thresholds are demonstration values chosen to exercise
@@ -460,6 +474,7 @@ temporal_alignment_demo        % + manifest registration, transform fitting, com
 multimodal_integration_demo    % geometry, tracking, visual identity, acoustic response
 caller_attribution_demo        % + imported caller attribution, correspondence, decisions
 backend_localization_demo      % + localization backend: frames, estimates, five dimensions
+native_estimator_demo          % + VAWLUME's own caller score: six scenes, one failure
 consilience_exploration_demo   % + diagnostics, threshold screen, subset probe, gallery
 ```
 
@@ -467,7 +482,7 @@ Each returns a struct and prints a compact report; pass `Print=false` to
 suppress the printing. Every one is covered by an integration test, so the
 numbers they print are asserted rather than merely observed.
 
-Six are worth reading first. `matching_consensus_demo` is the complete
+Seven are worth reading first. `matching_consensus_demo` is the complete
 **pairwise** path, including consilience and threshold sensitivity.
 `multi_extractor_agreement_demo` is the complete **three-extractor** path:
 it imports all three extractors onto one recording, runs all three pairwise
@@ -509,6 +524,26 @@ reached from the backend's own numbers. A second, structurally different backend
 confidence) reads back through the same fields. It demonstrates five named
 refusals. See
 [`../development/37_integrated_backend_localization_demonstration.md`](../development/37_integrated_backend_localization_demonstration.md).
+
+`native_estimator_demo` is the complete **native-estimator** path, and the one
+to read before trusting a native score. Two microphones of deliberately
+different gain hear six calls from a two-animal session whose tracking runs on
+its own piecewise-aligned clock. The demo measures and normalizes each call,
+printing the raw and normalized level differences side by side. It previews,
+then applies, one native run, and prints the settings profile's five conditions
+from the stored profile. It recomputes one score from read-back rows in front of
+you, then decides every target under the native policy. The six scenes:
+
+- a separable call, generated from the method's own assumption, so it shows
+  **self-consistency, not accuracy**;
+- a symmetric one, which the method calls `ambiguous`;
+- an unfittable one;
+- a tracking gap and an identity swap, each unscored with its reason;
+- a **model-mismatch** call, where unmodelled directivity makes the wrong animal
+  fit well and be assigned.
+
+It demonstrates five named refusals. See
+[`../development/45_integrated_native_estimator_demonstration.md`](../development/45_integrated_native_estimator_demonstration.md).
 
 `consilience_exploration_demo` is the complete **extractor-consilience
 exploration** path, and it is the slowest of the set because it really executes
@@ -1907,6 +1942,116 @@ template to your backend's columns. See
 for the full contract, including what a backend can report that VAWLUME cannot
 hold.
 
+### 7.9 Score calls with VAWLUME's native estimator
+
+The **native estimator** is VAWLUME's own caller-attribution method, and the
+only place in VAWLUME where evidence dimensions are combined. For each call it
+asks one question: *how well does each participating animal's position explain
+the level difference the two microphones heard?*
+
+- **Observed.** The call's band power on each channel, each divided by that
+  channel's own response to reference noise in the same recording, compared as
+  `10*log10` of their ratio.
+- **Predicted.** For each animal, `20*log10(d_b / d_a)`: its declared bodypart's
+  distances to the two microphones at the call's midpoint, under spherical
+  spreading.
+- **Score.** `-|observed - predicted|`, in dB. 0 is perfect agreement; more
+  negative is worse.
+
+**What the score is:** a statement of fit between one explanation and one
+observation, computed by a versioned method
+(`vawlume.estimator.level_difference_consistency` 1.0.0) under a versioned,
+checksummed settings profile. That profile states five conditions: which
+evidence dimensions the method uses, what the number means, how inputs were
+scaled, how a score is reconstructed from its stored inputs, and its
+calibration status.
+
+**What it is not:**
+
+- It is not a probability, a likelihood, or a confidence that the animal called.
+- It is not calibrated.
+- It is **not comparable across recordings**. It is comparable only between the
+  candidates of one call, and between calls of one recording under one profile
+  version.
+- Equal scores mean the geometry cannot separate the animals. They are not
+  evidence that both called, and the method cannot detect simultaneous calling.
+- A good fit is not evidence that the assumption held. If a call is louder
+  toward one microphone for a reason the method does not model, such as head
+  direction or a reflection, the wrong animal can fit well. Nothing in the run
+  flags that.
+
+**Scope of v1:** exactly two participating animals and one ordered pair of
+placed microphones, in a frame whose unit is `cm`, `mm` or `m`, with detection
+or consensus-event targets. Anything else is refused by name.
+
+The path, in order:
+
+1. Declare the frame, the channels and their placements, register the tracking
+   stream in the same frame, and record identity associations (§7.5). Fit the
+   audio and tracking clocks to a common reference, or declare them the same
+   clock (§7.4).
+2. Register reference noise on both channels, measure it, and estimate each
+   channel's response (§7.6). The shipped normalization policy reads the
+   `acoustic_band_power` estimates of a noise family whose band covers the call
+   band.
+3. For each call, measure the window on both channels, then normalize it:
+
+   ```matlab
+   call = vawlume.acoustic.measureCallWindow(conn, struct(detection_id=d), [1 2], ...
+       BandHz=[200 300], SourceRoot=sessionFolder, Apply=true, RunKey="call-d" + d);
+   norm = vawlume.acoustic.normalizeCallLevels(conn, ...
+       struct(analysis_run_id=call.analysis_run_id), ...
+       struct(analysis_run_id=responseRunId), Apply=true, RunKey="norm-d" + d);
+   ```
+
+4. Register the shipped estimator settings profile once:
+
+   ```matlab
+   settings = vawlume.estimator.loadSettings();   % the shipped v1 profile
+   versionId = vawlume.db.registerProfileVersion(conn, struct(project_id=1), ...
+       struct(profile_key=settings.profile_key, profile_name=settings.profile_name, ...
+       version_label=settings.version_label, content_path=settings.path, ...
+       profile_kind=settings.profile_kind, ...
+       profile_schema_version=settings.profile_schema_version)).profile_version_id;
+   ```
+
+5. Preview, then apply, the run with `vawlume.estimator.attributeCallers`. The
+   run spec names the settings version, the targets, the two participants, the
+   audio clock, the tracking stream and its alignment run, and one
+   normalization run per target. Doc 44 has the full spec. The preview writes
+   nothing. The apply writes the run, its targets, candidates and every evidence
+   row in **one transaction**, or nothing.
+6. Decide with `vawlume.attribution.decide` under
+   `config/08_attribution_policies/native_level_difference_decision_policy.json`.
+   Its rule is `threshold_with_separation`, with an illustrative selection
+   threshold of −3 dB and separation margin of 3 dB. It reaches `assigned`,
+   `ambiguous`, `unassigned` and `excluded`, and never `simultaneous`.
+7. Read the run back with `vawlume.attribution.report`. It uses the same fields
+   as an imported or backend run, plus each unscored candidate's
+   `no_score_reason` in `candidates.notes` and the cited measurement in
+   `evidence.derived_measurement_id`.
+
+**Absence stays absence.** A call with no tracking sample, an identity that
+changes mid-call, an extrapolated clock placement, a clipped channel, an
+unplaced microphone or a missing response estimate gives its candidates no
+score, with the reason. A target with no scored candidate is `excluded`. The
+evidence that *was* available is still written.
+
+**Every input is its own row.** Clock placements (one per alignment run), each
+channel's normalized level, the level difference, the identity association used,
+each microphone distance per instant basis, and pose confidence are stored as
+separate evidence rows, each citing its source. Pose confidence and the
+alignment bound are recorded, not used to gate or weight.
+
+`native_estimator_demo` runs this path end to end, including the model-mismatch
+scene. See
+[`../development/43_native_estimator_method.md`](../development/43_native_estimator_method.md)
+for the method and its settings profile,
+[`../development/44_native_estimation_run.md`](../development/44_native_estimation_run.md)
+for the run, its evidence and its refusals, and
+[`../design/06_native_estimator_contract.md`](../design/06_native_estimator_contract.md)
+for the decisions behind it.
+
 ---
 
 ## 8. Outputs and data model
@@ -2324,6 +2469,19 @@ three-state declared inputs) with every key resolved or refused by name;
 explicit promotion of estimates, channel values and track references into
 source-localization, channel-cited and identity evidence, refused across frames
 through the shared geometry check;
+within-frame distance and position interpolation as pure geometry primitives,
+refused across frames; reference-to-native inverse clock transforms with
+explicit extrapolation; event-window tracking retrieval at declared instants;
+identity resolved over a whole call window with every failure named; per-call,
+per-channel band measurement from bounded audio reads; band-matched,
+policy-versioned call-level normalization against a recording's own response
+estimates, and the normalized inter-channel level difference; a checksummed
+estimator settings profile that must state its five conditions; the native
+level-difference consistency method; the native estimation run, previewed and
+then written in one transaction through the canonical attribution API, with
+every input stored as its own cited evidence row and every stored score
+reconstructible from storage; the native decision rule
+`threshold_with_separation`;
 policy-governed decisions carrying the versioned policy and the threshold that
 bound each one; one read-only report returning the whole run with counts,
 memberships and observed ranges as its only QC; and one automated
@@ -2440,7 +2598,8 @@ exported tables, figures, an example index and a provenance record.
 - A pixel coordinate system supports no real-distance computation. VAWLUME's
   distance primitive (`vawlume.geometry.distance`) reports a `px` frame's
   distance in `px` and never treats it as physical; whether a consumer may use
-  one is that consumer's declared decision.
+  one is that consumer's declared decision. The native estimator's v1 profile
+  accepts only `cm`, `mm` and `m`, so a `px` frame gives no native score.
 - Identity association intervals for one track may overlap. `identityCandidates`
   still returns every overlapping claim and never chooses; `resolveIdentity`
   applies a stated precedence rule when a caller asks for one answer. That rule
@@ -2459,10 +2618,43 @@ exported tables, figures, an example index and a provenance record.
 - Median is the only channel-response aggregation method, a response profile is
   scoped to one recording, and the caller supplies exact measurement identifiers
   because no discovery or selection helper exists.
-- **Both attribution paths, `imported` and `backend`, carry external claims.**
-  The VAWLUME-native estimator is a later phase, so nothing in this prototype
-  estimates a caller — it imports, relates, and decides over what somebody else
-  estimated.
+- **The `imported` and `backend` paths carry external claims.** They import,
+  relate, and decide over what somebody else estimated. Only the
+  `native_estimate` path scores callers from VAWLUME's own evidence.
+- **The native score is uncalibrated and comparable within one recording
+  only.** It is a dB consistency score, never a probability. Nothing establishes
+  that a score in one recording means the same in another, and none is claimed.
+  Every synthetic scene that scores correctly was generated from the method's
+  own spreading assumption, so it shows self-consistency, not accuracy.
+- **The native method assumes spherical spreading from a point source.** It
+  models no directivity, reflection, occlusion or frequency dependence. Its
+  tolerance to an unmodelled level bias is half the gap between the two
+  candidates' predictions. Beyond that, the wrong animal fits well, and no QC
+  fact says so.
+- **The native method cannot detect simultaneous calling.** A mixture of two
+  callers yields one observed level difference, scored as if one animal
+  produced it. Equal scores mean the geometry cannot separate the animals.
+- **Native v1 is two animals, two microphones, one bodypart, one instant.** The
+  profile scores the declared bodypart's position at the call's midpoint.
+  Distances at other instant bases are stored as evidence but do not enter the
+  score. Agreement-group targets are refused, because their calls are not
+  measured.
+- **Pose confidence and the clock's uncertainty bound are recorded, not used.**
+  The v1 profile gates and weights on neither. A low-confidence pose scores like
+  a high-confidence one, and both numbers sit beside the score for you to read.
+- **Call normalization is relative.** Each channel is divided by its own
+  uncalibrated response to a band-matched noise family in the same recording.
+  That removes the channels' relative gain difference only as far as the
+  reference family represents the call band, and says nothing about absolute
+  level. The noise family is the only reference family the shipped
+  normalization policy reads.
+- **You supply one normalization run per target.** Nothing discovers or
+  selects measurements or response estimates for you. The estimator checks
+  through each run's own lineage that it measured that target, in that
+  recording.
+- **The native decision policy's thresholds are illustrative.** The selection
+  threshold of −3 dB and separation margin of 3 dB were chosen to exercise
+  behaviour on synthetic scenes.
 - The imported table must be long, one row per (window, claimed caller). A
   system emitting one row per window with several caller columns needs its own
   profile; no universal reshaper is attempted, because guessing would
@@ -2481,9 +2673,10 @@ exported tables, figures, an example index and a provenance record.
 - The clock relationship is a caller declaration — `AlignmentRun` or
   `SameClock` — and is never inferred. A correspondence computed on incomparable
   clocks would be a plausible number and a wrong one.
-- **The shipped decision policy reads one candidate column and no evidence row.**
-  It is not a combination of the four uncertainty dimensions, not a probability
-  that the selected entity called, and not calibrated. No status means validated
+- **A shipped decision policy reads one candidate column and no evidence row.**
+  It combines nothing itself, it is not a probability that the selected entity
+  called, and it is not calibrated. For a native run, the column it reads is the
+  native method's score, which is the one combination VAWLUME performs. No status means validated
   and the vocabulary does not contain the word.
 - A target with no candidates is refused rather than decided, so a run whose
   every target must reach a decision needs candidates on all of them. Completion
@@ -2547,16 +2740,14 @@ deliberately not persisted (see §8.4). An empty sequence table therefore means
 no workflow has written one, not that the storage is absent or that no sequence
 exists in the data. `recording_epochs` is written only by the Phase 1 synthetic fixture builder
 — no ingest or analysis path populates it. `metric_definitions` and
-`derived_measurements` are now written, but only by the acoustic
-reference-response path: the shipped metric definitions are the three acoustic
-ones registered by `vawlume.db.registerBuiltinSemantics`, and no other analysis
-writes a derived measurement.
+`derived_measurements` are written only by the acoustic paths: reference
+response, call-window measurement, and call-level normalization. The shipped
+metric definitions are the acoustic ones registered by
+`vawlume.db.registerBuiltinSemantics`, and no other analysis writes a derived
+measurement.
 
-Every caller-attribution table is now written by a public code path, and both
-the `imported` and the `backend` attribution paths are reachable. What the schema
-still represents and no code produces is the **native estimate**:
-`attribution_runs.attribution_path` admits `native_estimate` for Phase 6, and
-`createRun` refuses it until something produces one.
+Every caller-attribution table is written by a public code path, and all three
+attribution paths, `imported`, `backend` and `native_estimate`, are reachable.
 
 ### Deliberately deferred
 
@@ -2565,13 +2756,17 @@ and string methods; sequence clustering; peri-event summaries; machine learning;
 continuous-signal ingestion; full acquisition synchronization; automatic outlier
 rejection in matching; a universal experimental ontology; a GUI; a CLI or batch
 wrapper; exhaustive extractor support; automatic biological interpretation of
-extractor-native classes; publication artefacts. For caller attribution:
-estimating a caller from VAWLUME's own evidence (Phase 6); any distance, angle
-or other geometric derivation from stored positions, and any transformation
-between coordinate frames; combining any evidence dimensions; comparing a
-backend's result with an imported one, and sensitivity analysis across paths
-(Phase 7); paging or filtering in `report`; a standalone read-back table of
-backend windows.
+extractor-native classes; publication artefacts. For caller attribution: any
+transformation between coordinate frames; angles, bearings, directivity models,
+time-difference-of-arrival, beamforming and source separation; a Bayesian,
+learned or trained estimator; any calibrated threshold or probability; more
+than two candidates or two channels in the native method; agreement-group
+targets for the native path; marginalizing over tracks, or reading an identity
+association's value as a weight; gating or weighting on pose confidence or
+clock uncertainty; consuming imported claims or backend estimates in the native
+path; comparing native, backend and imported results, sensitivity analysis
+across paths, and comparing normalization profiles (Phase 7); paging or
+filtering in `report`; a standalone read-back table of backend windows.
 
 ---
 
@@ -2582,7 +2777,9 @@ backend windows.
 - [`../design/01_prototype_development_outline.md`](../design/01_prototype_development_outline.md) — prototype development plan and completion criteria
 - [`../design/02_temporal_alignment_contract.md`](../design/02_temporal_alignment_contract.md) — alignment design contract, exit criteria, known limitations
 - [`../design/03_multimodal_input_contract.md`](../design/03_multimodal_input_contract.md) — multimodal input design contract. Spatial geometry, tracking input/identity, and acoustic response/QC estimation are implemented without caller attribution.
-- [`../design/04_caller_attribution_contract.md`](../design/04_caller_attribution_contract.md) — caller-attribution design contract: what a candidate, a decision, and an imported claim each mean, and why a detection is not an attribution claim. Imported and backend results use the same run, target, candidate, evidence, correspondence, decision, and read-back surfaces; the native-estimator path is not yet implemented.
+- [`../design/04_caller_attribution_contract.md`](../design/04_caller_attribution_contract.md) — caller-attribution design contract: what a candidate, a decision, and an imported claim each mean, and why a detection is not an attribution claim. Imported, backend and native results use the same run, target, candidate, evidence, decision, and read-back surfaces.
+- [`../design/05_backend_localization_contract.md`](../design/05_backend_localization_contract.md) — backend/localization design contract: what a localization estimate is, why a frame is part of a coordinate, and the five evidence dimensions.
+- [`../design/06_native_estimator_contract.md`](../design/06_native_estimator_contract.md) — native-estimator design contract: the method's five conditions, the two refusals Phase 6 lifted and where each lives, what an unscored candidate states, and what the phase cannot claim.
 
 ### Contracts per stage
 
@@ -2615,6 +2812,13 @@ backend windows.
 - [`../development/34_integrated_caller_attribution_demonstration.md`](../development/34_integrated_caller_attribution_demonstration.md) — the integrated caller-attribution example, its two target kinds, the refusals it demonstrates, and what it cannot show
 - [`../development/36_backend_attribution_intake.md`](../development/36_backend_attribution_intake.md) — the localization-backend adapter: profile, IR, intake, the two shapes, and what a backend can report that VAWLUME cannot hold
 - [`../development/37_integrated_backend_localization_demonstration.md`](../development/37_integrated_backend_localization_demonstration.md) — the integrated backend/localization example, its five dimensions, its refusals, and what it cannot show
+- [`../development/38_spatial_primitives.md`](../development/38_spatial_primitives.md) — within-frame distance and position interpolation, the one home of spatial arithmetic
+- [`../development/39_event_window_tracking_retrieval.md`](../development/39_event_window_tracking_retrieval.md) — the inverse clock transform and tracking positions at declared instants
+- [`../development/40_identity_over_window_and_candidate_geometry.md`](../development/40_identity_over_window_and_candidate_geometry.md) — identity over a call window and each candidate's microphone distances
+- [`../development/41_call_window_measurement.md`](../development/41_call_window_measurement.md) and [`../development/42_call_level_normalization.md`](../development/42_call_level_normalization.md) — per-call band measurement, band-matched normalization, and the level difference
+- [`../development/43_native_estimator_method.md`](../development/43_native_estimator_method.md) — the native method, its settings profile and its five conditions
+- [`../development/44_native_estimation_run.md`](../development/44_native_estimation_run.md) — the native run: one transaction, its evidence rows, reconstruction, refusals, deciding and reading back
+- [`../development/45_integrated_native_estimator_demonstration.md`](../development/45_integrated_native_estimator_demonstration.md) — the integrated native-estimator example, its six scenes, the model-mismatch failure, and what it cannot show
 - [`../development/35_consilience_exploration_workflow.md`](../development/35_consilience_exploration_workflow.md) — the exploratory workflow: its stages, the analysis-cost arithmetic, the diagnostic battery and what an undefined partial correlation means, fractional-factorial aliasing, subset sampling, the two support-pattern vocabularies, the thin shared feature space, the USVSEG frequency-extent limitation, and its explicit non-goals
 
 ### Configuration and schema
