@@ -485,9 +485,10 @@ function value = permittedArithmetic()
 % must be read. Never widen an entry into a package: these are exemptions for
 % specific non-spatial lines, and +geometry/ is the only spatial home.
 value = [
-    % RMS amplitude of an audio window: acoustic, not spatial.
+    % RMS amplitude of an audio window: acoustic, not spatial. The one shared
+    % core of reference and call-window measurement since 6.6.
     % (String literals are stripped before matching, so the unit label is absent.)
-    "src/+vawlume/+acoustic/measureReferenceResponse.m | sqrt(mean(samples .^ 2)), }];"
+    "src/+vawlume/+acoustic/private/acousticWindowMetrics.m | sqrt(mean(samples .^ 2)), }];"
     % Clock-fit residual RMSE, in seconds, inside +alignment/: temporal.
     "src/+vawlume/+alignment/solveTransform.m | rmse_s=sqrt(mean(residual .^ 2)),"
     "src/+vawlume/+alignment/private/alignmentFitBuildPlan.m | value.rmse_s(segment) = sqrt(mean(residual(rows) .^ 2));"

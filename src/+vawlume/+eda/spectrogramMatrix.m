@@ -21,7 +21,7 @@ function result = spectrogramMatrix(samples, sampleRateHz, options)
 % NO SIGNAL PROCESSING TOOLBOX FUNCTION IS CALLED. `spectrogram`, `stft`, `hann`
 % and `hamming` all live in that toolbox, and the repository does not depend on
 % it: the only other spectral computation in `src/` is `fft` at
-% measureReferenceResponse.m:153, which writes its method out rather than
+% +acoustic/private/acousticWindowMetrics.m, which writes its method out rather than
 % reaching for a toolbox. Adding the dependency for an illustration would make
 % the entire exploratory workflow unavailable to a base-MATLAB user, which is a
 % high price for a window function that is one line:

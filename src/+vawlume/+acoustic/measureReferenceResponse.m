@@ -120,43 +120,19 @@ reference = struct( ...
 end
 
 function [metrics, qcFlags] = calculateMetrics(samples, sampleRate, bandMin, bandMax)
-metrics = table(Size=[0 3], VariableTypes=["string", "double", "string"], ...
-    VariableNames=["metric_key", "value", "unit"]);
+% The arithmetic is acousticWindowMetrics, shared with measureCallWindow; only
+% the metric keys and band flag names are this method's own.
+[metrics, bandState] = acousticWindowMetrics(samples, sampleRate, bandMin, bandMax);
+metrics.metric_key = "acoustic_" + metrics.metric_key;
 qcFlags = strings(0, 1);
-if isempty(samples)
-    return
+switch bandState
+    case "incomplete"
+        qcFlags(end + 1, 1) = "incomplete_reference_band";
+    case "invalid"
+        qcFlags(end + 1, 1) = "invalid_reference_band";
+    case "above_nyquist"
+        qcFlags(end + 1, 1) = "reference_band_above_nyquist";
 end
-metrics = [metrics; {"acoustic_rms_amplitude", ...
-    sqrt(mean(samples .^ 2)), "full_scale_ratio"}];
-metrics = [metrics; {"acoustic_peak_abs_amplitude", ...
-    max(abs(samples)), "full_scale_ratio"}];
-
-hasMin = ~isnan(bandMin);
-hasMax = ~isnan(bandMax);
-if ~hasMin && ~hasMax
-    return
-end
-if hasMin ~= hasMax
-    qcFlags(end + 1, 1) = "incomplete_reference_band";
-    return
-end
-if bandMax <= bandMin
-    qcFlags(end + 1, 1) = "invalid_reference_band";
-    return
-end
-if bandMax > sampleRate / 2
-    qcFlags(end + 1, 1) = "reference_band_above_nyquist";
-    return
-end
-
-n = numel(samples);
-spectrum = fft(samples);
-frequency = (0:n-1)' * (sampleRate / n);
-foldedFrequency = min(frequency, sampleRate - frequency);
-selected = foldedFrequency >= bandMin & foldedFrequency <= bandMax;
-bandPower = sum(abs(spectrum(selected)) .^ 2) / (n ^ 2);
-metrics = [metrics; {"acoustic_band_power", bandPower, ...
-    "full_scale_ratio_squared"}];
 end
 
 function details = derivationDetails(reference, window, qcFlags)

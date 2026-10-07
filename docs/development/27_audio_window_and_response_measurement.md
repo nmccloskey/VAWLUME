@@ -93,3 +93,11 @@ evidence.
 
 Aggregation across these immutable measurement rows is a separate operation;
 see [`28_channel_response_estimates.md`](28_channel_response_estimates.md).
+
+## Shared core (since 6.6)
+
+The three computations above live in one private function,
+`+acoustic/private/acousticWindowMetrics.m`, which call-window measurement also
+uses. Reference results were proven bit-identical across the extraction. The
+reference method keeps its own metric keys and flag names. See
+[`41_call_window_measurement.md`](41_call_window_measurement.md).
