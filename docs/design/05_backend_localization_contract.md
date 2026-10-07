@@ -312,7 +312,11 @@ comment saying what the new member means and how it differs from
   number;
 - **VAWLUME combines none of the five.** A source localization sits beside pose,
   identity, acoustic and temporal evidence, and nothing in `src/` computes a
-  function of it and any other dimension.
+  function of it and any other dimension. *(Corrected at 6.8: the native method in
+  `src/+vawlume/+estimator/` now combines acoustic, pose and identity evidence, under
+  a settings profile that states the five conditions, and nowhere else does. It
+  never reads `source_localization`, which a native run declares `not_used`.
+  Contract 06 D7 and D12, revised invariant 5.)*
 
 So "the four evidence dimensions" becomes false in any sentence that describes
 the vocabulary, and "the four uncertainty dimensions" stays true. Itinerary 5.5

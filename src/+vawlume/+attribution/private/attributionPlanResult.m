@@ -17,4 +17,9 @@ result = struct(status=status, committed=false, ...
     participating_entities=plan.participating_entities, ...
     participating_links=plan.participating_links, ...
     provenance_snapshot=plan.provenance);
+% A native run states which upstream inputs it consumed (contract 06 D16). Added
+% for that path only, so imported and backend results keep their exact shape.
+if plan.context.attribution_path == "native_estimate"
+    result.declared_inputs = plan.declared_inputs;
+end
 end

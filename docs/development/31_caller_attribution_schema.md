@@ -159,6 +159,11 @@ either, which is a measurement rather than a position.
 pose localization, visual identity, acoustic, and source localization), while
 the upstream *uncertainty sources* of plan §4.6 stay four. `correspondence` and
 `imported_composite` are not dimensions. Nothing combines any of the five.
+*(Corrected at 6.8: the native method in `src/+vawlume/+estimator/` combines
+acoustic, pose and identity evidence into a candidate **score**, under a settings
+profile stating contract 06's five conditions. No evidence row holds a combined
+value; each input remains its own row. See
+[`43_native_estimator_method.md`](43_native_estimator_method.md).)*
 
 A `source_localization` row **cites** its estimate through
 `attribution_localization_estimate_id` and copies nothing: `value_real` and

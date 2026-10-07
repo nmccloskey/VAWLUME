@@ -61,6 +61,20 @@ try
             plan.settings_profile.profile_version_id, ...
         status="planned", notes=plan.provenance_json), "attribution_run_id");
     counts.attribution_runs = 1;
+    if plan.context.attribution_path == "native_estimate"
+        % Contract 06 D16: the run's own statement of what it consumed, declared
+        % by the settings profile version the run cites.
+        for index = 1:height(plan.declared_inputs)
+            row = plan.declared_inputs(index, :);
+            attributionInsertRow(conn, "attribution_run_declared_inputs", struct( ...
+                attribution_run_id=plan.run.attribution_run_id, ...
+                input_dimension=row.input_dimension, declaration=row.declaration, ...
+                declared_by_profile_version_id= ...
+                    plan.settings_profile.profile_version_id, ...
+                notes=row.notes));
+        end
+        counts.attribution_run_declared_inputs = height(plan.declared_inputs);
+    end
     for index = 1:height(plan.target_set.targets)
         row = plan.target_set.targets(index, :);
         targetId = attributionInsertRow(conn, "attribution_targets", struct( ...
@@ -96,6 +110,9 @@ counts.reused_analysis_run_extraction_inputs = ...
 counts.reused_analysis_run_sources = height(plan.analysis_sources);
 counts.reused_attribution_runs = 1;
 counts.reused_attribution_targets = height(plan.target_set.targets);
+if plan.context.attribution_path == "native_estimate"
+    counts.reused_attribution_run_declared_inputs = height(plan.declared_inputs);
+end
 end
 
 function counts = emptyCounts()

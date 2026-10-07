@@ -407,7 +407,36 @@ own reference response within one recording: not an absolute level, not a
 hardware calibration, and not comparable across recordings. See
 [`../docs/development/42_call_level_normalization.md`](../docs/development/42_call_level_normalization.md).
 
-### 15. Cross-profile examples
+### 15. Native-estimator settings profiles
+
+Location:
+
+```text
+config/10_estimator_settings/
+```
+
+An estimator settings profile is the licence VAWLUME's native caller-attribution
+method needs before it may combine evidence dimensions. It states the five
+conditions as machine-readable blocks: which dimensions the method uses and the
+role of each (`dimensions`), what its number means and is not (`score`), how
+inputs were scaled and why they are comparable (`scaling`, scope
+`within_recording`), which evidence rows each input becomes (`readability`), and
+its calibration status (`uncalibrated`). It also states every method parameter;
+**none has a default in code**, and `vawlume.estimator.loadSettings` refuses a
+profile that omits any block, any dimension or any parameter, by name.
+
+It has its own profile kind, `attribution_estimator_settings`, registered and
+checksummed in `config_profile_versions`. A native run must cite one, and that
+kind is refused on any other attribution path. The run's four declared inputs
+come from the profile's `dimensions` block.
+
+The shipped
+[`native_level_difference_estimator_v1.json`](10_estimator_settings/native_level_difference_estimator_v1.json)
+is for the dyadic, two-microphone method of
+[`../docs/development/43_native_estimator_method.md`](../docs/development/43_native_estimator_method.md).
+Its score is a dB discrepancy, not a probability.
+
+### 16. Cross-profile examples
 
 Examples that demonstrate how multiple profile kinds are associated can live in:
 

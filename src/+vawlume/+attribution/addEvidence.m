@@ -44,6 +44,24 @@ function result = addEvidence(conn, ref, evidence, options)
 % producer's assertion about the acquisition, and nothing inspects audio to
 % confirm it.
 %
+% derived_measurement_id cites the stored measurement a row reports (P4-3,
+% contract 06 D13 and D15), on any dimension. It counts as the row's source
+% pointer, and is refused unless:
+%
+%   the measurement exists                vawlume:attribution:EvidenceMeasurementNotFound
+%   ...is of the run's recording          vawlume:attribution:EvidenceMeasurementScopeMismatch
+%   ...measures this row's target event   vawlume:attribution:EvidenceMeasurementTargetMismatch
+%     (the same detection or consensus
+%     event; never an agreement group)
+%   ...reports the row's channel          vawlume:attribution:EvidenceMeasurementChannelMismatch
+%     (its recording_channel_id equals
+%     the row's, both present or both
+%     absent)
+%
+% The citation is an identifier, never a value: the row still carries its own
+% value_real, units and semantics, and nothing here reads the measurement's
+% number.
+%
 % Candidate-level identity evidence may cite a declared_entity_link through
 % external_event_id, or an identity_association through
 % tracking_identity_association_id. The cited statement must identify the same

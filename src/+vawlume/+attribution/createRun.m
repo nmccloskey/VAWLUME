@@ -12,7 +12,7 @@ function result = createRun(conn, recordingRef, runSpec, options)
 % RUNSPEC requires:
 %
 %   run_key                     project-scoped immutable identity
-%   attribution_path            "imported" or "backend"
+%   attribution_path            "imported", "backend" or "native_estimate"
 %   method                      free-text source system or method
 %   settings_profile_version_id checksum-bearing registered profile version
 %   target_set                  one explicit event-set specification
@@ -26,10 +26,32 @@ function result = createRun(conn, recordingRef, runSpec, options)
 %               optionally caller scores, localization estimates, per-channel
 %               values and track references -- read by
 %               vawlume.ingest.backendAttribution
+%   "native_estimate"
+%               VAWLUME's own estimator (vawlume.estimator), which scores
+%               candidates under a versioned settings profile
 %
-% Both land in the same windows, claims, candidates, evidence and decisions.
-% The schema also admits "native_estimate", which nothing produces yet, so
-% createRun refuses it rather than create a run with no writer.
+% All three land in the same candidates, evidence and decisions; the imported
+% and backend paths also store the external windows and claims. Any other path
+% is refused.
+%
+% A NATIVE RUN additionally requires:
+%
+%   settings_profile_version_id  a profile of kind attribution_estimator_settings
+%                                (vawlume:attribution:NativeRunProfileRequired).
+%                                That kind is refused on any other path
+%                                (vawlume:attribution:EstimatorProfileOnNonNativeRun)
+%   declared_inputs              a table of input_dimension, declaration (used or
+%                                not_used) and notes, naming each of
+%                                temporal_alignment, pose_localization,
+%                                visual_identity and acoustic exactly once, so the
+%                                run has no undeclared dimension. Take it from
+%                                vawlume.estimator.loadSettings(...).declared_inputs
+%
+% The declarations are stored in attribution_run_declared_inputs in the same
+% transaction, with declared_by_profile_version_id set to the run's settings
+% profile version, and the result carries them as declared_inputs. Only a
+% native run accepts declared_inputs here: a backend run's declarations are
+% written by backend intake from its own profile.
 %
 % A target_set contains exactly one of detection_ids, consensus_event_ids, or
 % agreement_group_ids. Agreement groups additionally require
@@ -54,7 +76,7 @@ function result = createRun(conn, recordingRef, runSpec, options)
 % entity linked to the recording), parent_attribution_run_id, run_label,
 % vawlume_version, source_commit, and notes.
 %
-% This pass creates no candidate, score, evidence, probability, or decision.
+% createRun creates no candidate, score, evidence, probability, or decision.
 % The run remains status "planned" and its analysis parent remains "started"
 % for the candidate and decision layers to complete.
 %

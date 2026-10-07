@@ -487,7 +487,13 @@ upstream uncertainty sources, which remain four. The evidence vocabulary itself 
 has **five** separated dimensions: Phase 5 added `source_localization`, a backend's
 estimate of where a sound came from
 ([`05_backend_localization_contract.md`](05_backend_localization_contract.md) D3).
-VAWLUME still combines none of them. The statement that nothing records which
+VAWLUME still combines none of them. *(Corrected at 6.8: one versioned native
+method, `vawlume.estimator.levelDifferenceConsistency`, now combines acoustic, pose
+and identity evidence into a candidate score, inside `src/+vawlume/+estimator/` only,
+under a settings profile that states contract 06's five conditions. No other
+package combines them, and every input stays its own evidence row; see
+[`06_native_estimator_contract.md`](06_native_estimator_contract.md) D7 and D12,
+revised invariant 5.)* The statement that nothing records which
 dimensions an exporting system used remains true **for an imported run**. A backend
 profile may now declare it per uncertainty source (D7, `attribution_run_declared_inputs`).
 The original sentences are left visible, following the 4.12a precedent above.

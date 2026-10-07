@@ -1,5 +1,5 @@
 {
-  "metadata_version": "0.11.0",
+  "metadata_version": "0.11.1",
   "schema_version": "0.13-draft",
   "coverage": {
     "complete_domains": [
@@ -2950,7 +2950,7 @@
           "description": "Specific possible caller supported or described by this evidence, when the observation is candidate-scoped. Null makes the observation about the target as a whole rather than every candidate."
         },
         "evidence_dimension": {
-          "description": "Closed high-level category that keeps temporal alignment, pose localization, visual identity, acoustic, source localization, correspondence, and imported composite evidence distinguishable. Source localization is where a sound originated per an external spatial estimate, not where a bodypart is. The first five are separate evidence dimensions, the last two are not dimensions, and VAWLUME combines none of them."
+          "description": "Closed high-level category that keeps temporal alignment, pose localization, visual identity, acoustic, source localization, correspondence, and imported composite evidence distinguishable. Source localization is where a sound originated per an external spatial estimate, not where a bodypart is. The first five are separate evidence dimensions and the last two are not dimensions. Each row stays one dimension: since 0.13-draft (Phase 6.8) the native estimator method in src/+vawlume/+estimator/ combines acoustic, pose and identity evidence into a candidate score under its settings profile, but no evidence row ever holds a combined value, and every input it used remains its own row."
         },
         "evidence_kind": {
           "description": "Source- or method-specific name for what was observed within the declared evidence dimension. It remains open text so an unfamiliar upstream measure need not be forced into a false standardized kind."

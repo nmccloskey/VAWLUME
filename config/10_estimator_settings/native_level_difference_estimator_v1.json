@@ -1,0 +1,120 @@
+{
+  "profile": {
+    "id": "vawlume.estimator.native_level_difference",
+    "name": "Native level-difference consistency estimator",
+    "kind": "attribution_estimator_settings",
+    "profile_schema_version": "0.1-draft",
+    "profile_version": "1.0.0",
+    "description": "Versioned, checksum-bearing settings for VAWLUME's native caller-attribution method. It states the five conditions under which evidence dimensions may be combined, and every method parameter. Registered as a config_profiles row of kind attribution_estimator_settings and cited by every native run as its settings profile version."
+  },
+
+  "method": {
+    "key": "vawlume.estimator.level_difference_consistency",
+    "version": "1.0.0"
+  },
+
+  "scope": {
+    "candidate_count": 2,
+    "channel_count": 2,
+    "target_event_sets": ["detections", "consensus_events"],
+    "meaning": "Exactly two participating entities and one ordered pair of placed channels. Any other count is refused by name and never extrapolated. Agreement-group targets are not supported, because their calls are not measured (contract 06 D6)."
+  },
+
+  "dimensions": {
+    "temporal_alignment": {
+      "declaration": "used",
+      "role": "Places the call on the tracking clock, so the score cannot exist without it; its uncertainty bound is recorded as evidence and is not used to gate or weight, and an extrapolated placement gives no score."
+    },
+    "pose_localization": {
+      "declaration": "used",
+      "role": "The declared bodypoint's position at the primary instant gives both microphone distances; pose confidence is recorded as evidence and is not used to gate or weight."
+    },
+    "visual_identity": {
+      "declaration": "used",
+      "role": "Decides which trajectory's positions belong to which candidate through one time-valid stored association; used as an eligibility gate, never as a weight, and identity_value is not read."
+    },
+    "acoustic": {
+      "declaration": "used",
+      "role": "The band-matched, normalized inter-channel level difference is the observed quantity the prediction is compared with; extractor-reported power is not used."
+    },
+    "source_localization": {
+      "declaration": "not_used",
+      "reason": "The native path consumes no backend output: no imported claim, backend estimate or source localization is read (contract 06 invariant 25)."
+    }
+  },
+
+  "score": {
+    "unit": "dB",
+    "orientation": "higher_is_stronger",
+    "meaning": "The negative absolute difference, in dB, between the inter-channel level difference the two microphones recorded and the difference the candidate's position predicts under spherical spreading. 0 is perfect agreement; more negative is worse. It says how well one explanation fits the observation, not how likely it is.",
+    "what_this_is_not": [
+      "not a probability",
+      "not a likelihood, a posterior, or a confidence that the candidate called",
+      "not calibrated, and not derived from any calibrated quantity",
+      "not comparable across recordings, sessions, devices or arenas",
+      "not evidence of simultaneous calling: equal scores mean the geometry cannot separate the candidates"
+    ]
+  },
+
+  "scaling": {
+    "acoustic": "Each channel's call band power is divided by that channel's own median response to a band-matched reference of a declared family in the same recording (normalization policy below), and the two channels are compared as 10*log10 of their ratio.",
+    "pose_localization": "Distances enter only as the ratio d_b / d_a within one declared frame, which no uniform isotropic rescaling of the frame changes; the frame's unit must be one the profile accepts as uniform-scale (accepted_frame_units).",
+    "comparability_scope": "within_recording",
+    "comparability_justification": "Both sides of the comparison are dB quantities about one recording at one call: two channels of one audio file normalized by that recording's own response estimates, and distances in one frame that the recording's placements also cite. Nothing establishes comparability across recordings, so none is claimed; scores are comparable between candidates of one target and between targets of one recording under one profile version."
+  },
+
+  "readability": {
+    "temporal_alignment": "call_clock_placement: one target-level row per alignment run used, in s, citing alignment_run_id",
+    "acoustic_per_channel": "call_band_power_normalized: one target-level row per channel, in ratio_to_channel_response, citing derived_measurement_id and recording_channel_id",
+    "acoustic_difference": "normalized_level_difference: one target-level row, in dB, naming channel indices a and b in its semantics; reconstructible from the two per-channel rows",
+    "visual_identity": "track_entity_association_used: one candidate-level text row, citing tracking_identity_association_id with identity_statement_kind identity_association",
+    "pose_localization_distance": "bodypoint_microphone_distance: one candidate-level row per channel and instant basis, in the frame unit, citing tracking_identity_association_id and recording_channel_id",
+    "pose_localization_confidence": "bodypoint_pose_confidence: one candidate-level row per instant basis, in upstream_score, citing tracking_identity_association_id",
+    "reconstruction": "Every score is recomputed from these rows, the rows they cite, and this stored profile version by calling the pure method, and must equal the stored score."
+  },
+
+  "calibration_status": {
+    "state": "uncalibrated",
+    "evidence_basis": "synthetic scenes only, some generated from this method's own propagation assumption, which tests self-consistency and not accuracy; no recording with an independently established caller has been seen",
+    "calibration_requires": "recordings with an independently established caller for each call, which is outside VAWLUME's control, plus calibrated channel response estimates"
+  },
+
+  "parameters": {
+    "spreading_assumption": "spherical",
+    "primary_instant_basis": "midpoint",
+    "bodypart": "snout",
+    "channel_pair": [1, 2],
+    "max_interpolation_gap_s": 0.1,
+    "accepted_frame_units": ["cm", "mm", "m"],
+    "min_distance": 0.001,
+    "refuse_extrapolated_alignment": true,
+    "refuse_clipped_channels": true,
+    "pose_confidence_gate": null,
+    "temporal_uncertainty_gate_s": null,
+    "normalization_policy": {
+      "profile_key": "vawlume.acoustic.normalization.band_matched_noise_reference",
+      "version": "1.0.0",
+      "path": "config/09_acoustic_normalization_policies/band_matched_noise_reference_v1.json"
+    }
+  },
+
+  "parameter_meanings": {
+    "spreading_assumption": "spherical: power falls as 1/d^2, so the predicted difference is 20*log10(d_b/d_a) dB. The only assumption v1 implements.",
+    "primary_instant_basis": "The instant basis the score uses (onset, midpoint, offset, window_median or window_min). Distances on every basis are still written as evidence.",
+    "bodypart": "The tracked bodypoint taken as the sound source.",
+    "channel_pair": "The ordered channel indices (a, b). The observed difference is positive when channel a is louder; the prediction uses the same orientation.",
+    "max_interpolation_gap_s": "Widest gap between two samples of one trace, in reference-clock seconds, across which a position may be interpolated.",
+    "accepted_frame_units": "Frame units the profile author asserts denote uniform-scale frames. Exact string membership; VAWLUME interprets nothing.",
+    "min_distance": "A distance below this, in the frame's own unit, gives no score (distance_degenerate), because the ratio's logarithm is undefined at zero.",
+    "refuse_extrapolated_alignment": "An extrapolated event placement or tracking bracket gives no score (alignment_extrapolated).",
+    "refuse_clipped_channels": "A clipped channel refuses the level difference, so every candidate gets no score (acoustic_clipped). Passed to vawlume.acoustic.levelDifference.",
+    "pose_confidence_gate": "null: pose confidence is recorded, not used to gate (contract 06 D4). v1 refuses any other value.",
+    "temporal_uncertainty_gate_s": "null: the alignment uncertainty bound is recorded, not used to gate (contract 06 D5). v1 refuses any other value.",
+    "normalization_policy": "The call-level normalization policy whose normalized levels the observed difference is computed from."
+  },
+
+  "extractor_reported_power": {
+    "state": "not_used",
+    "reason": "Extractor power fields are not interchangeable across extractors (contract 06 D6)."
+  }
+}

@@ -6,6 +6,8 @@ plan.context = validateRunSpec(runSpec);
 plan.recording = attributionResolveRecording(conn, recordingRef);
 plan.settings_profile = resolveSettingsProfile(conn, plan.recording, ...
     plan.context.settings_profile_version_id);
+assertProfileKindForPath(plan.context.attribution_path, plan.settings_profile);
+plan.declared_inputs = plan.context.declared_inputs;
 plan.target_set = attributionResolveTargetSet(conn, plan.recording, ...
     plan.context.target_set);
 [plan.participating_entity_ids, plan.participating_entities, ...
@@ -39,12 +41,11 @@ for name = required
     end
 end
 path = scalarText(runSpec.attribution_path, "runSpec.attribution_path");
-% 'imported' (Phase 4) and 'backend' (Phase 5) have intake paths. The schema
-% also admits 'native_estimate', but nothing produces one yet, so a run of that
-% path would be a container with no writer.
-if ~ismember(path, ["imported", "backend"])
+% 'imported' (Phase 4) and 'backend' (Phase 5) have intake paths; 'native_estimate'
+% (Phase 6) has the native estimator. Nothing else is a path.
+if ~ismember(path, ["imported", "backend", "native_estimate"])
     error("vawlume:attribution:RunSpecInvalid", ...
-        "attribution_path '%s' has no intake path yet; create an imported or a backend run.", path);
+        "attribution_path '%s' is not one of imported, backend or native_estimate.", path);
 end
 if ~isstruct(runSpec.target_set) || ~isscalar(runSpec.target_set)
     error("vawlume:attribution:RunSpecInvalid", ...
@@ -63,7 +64,81 @@ context = struct( ...
     run_label=optionalText(runSpec, "run_label"), ...
     vawlume_version=optionalText(runSpec, "vawlume_version"), ...
     source_commit=optionalText(runSpec, "source_commit"), ...
-    notes=optionalText(runSpec, "notes"));
+    notes=optionalText(runSpec, "notes"), ...
+    declared_inputs=declaredInputs(runSpec, path));
+end
+
+function declared = declaredInputs(runSpec, path)
+%DECLAREDINPUTS The run's statement of which upstream inputs it consumed.
+%
+% Contract 06 D16. A native run must declare all four upstream dimensions, so it
+% has no undeclared one; the estimator builds the table from its settings
+% profile's dimensions block. Imported runs declare nothing here, and a backend
+% run's declarations are written by backend intake from its own profile, so
+% neither accepts them through createRun: two writers for one run's
+% declarations would be two authorities.
+declared = table(strings(0, 1), strings(0, 1), strings(0, 1), ...
+    VariableNames=["input_dimension", "declaration", "notes"]);
+hasField = isfield(runSpec, "declared_inputs");
+if path ~= "native_estimate"
+    if hasField
+        error("vawlume:attribution:DeclaredInputsNotAccepted", ...
+            "runSpec.declared_inputs is accepted only for a native_estimate run; " + ...
+            "a backend run's declarations come from its intake profile.");
+    end
+    return
+end
+if ~hasField
+    error("vawlume:attribution:DeclaredInputsRequired", ...
+        "A native_estimate run requires runSpec.declared_inputs for all four " + ...
+        "upstream dimensions; build it with vawlume.estimator.loadSettings.");
+end
+raw = runSpec.declared_inputs;
+if isstruct(raw)
+    raw = struct2table(raw(:), AsArray=true);
+end
+if ~istable(raw) || ~all(ismember(["input_dimension", "declaration"], ...
+        string(raw.Properties.VariableNames)))
+    error("vawlume:attribution:DeclaredInputsInvalid", ...
+        "runSpec.declared_inputs must be a table of input_dimension, declaration and optional notes.");
+end
+dimensions = strtrim(string(raw.input_dimension(:)));
+declarations = strtrim(string(raw.declaration(:)));
+if ismember("notes", string(raw.Properties.VariableNames))
+    notes = string(raw.notes(:));
+    notes(ismissing(notes)) = "";
+else
+    notes = strings(height(raw), 1);
+end
+required = ["acoustic"; "pose_localization"; "temporal_alignment"; "visual_identity"];
+if ~isequal(sort(dimensions), required)
+    error("vawlume:attribution:DeclaredInputsIncomplete", ...
+        "A native_estimate run must declare each of %s exactly once.", ...
+        strjoin(required, ", "));
+end
+if any(~ismember(declarations, ["used", "not_used"]))
+    error("vawlume:attribution:DeclaredInputsInvalid", ...
+        "Every declaration must be used or not_used.");
+end
+[~, order] = sort(dimensions);
+declared = table(dimensions(order), declarations(order), notes(order), ...
+    VariableNames=["input_dimension", "declaration", "notes"]);
+end
+
+function assertProfileKindForPath(path, profile)
+% Contract 06 D16: the estimator settings kind licenses a native run and nothing
+% else; a native run carries nothing else.
+isEstimator = profile.profile_kind == "attribution_estimator_settings";
+if path == "native_estimate" && ~isEstimator
+    error("vawlume:attribution:NativeRunProfileRequired", ...
+        "A native_estimate run requires a settings profile of kind " + ...
+        "attribution_estimator_settings, not %s.", profile.profile_kind);
+end
+if path ~= "native_estimate" && isEstimator
+    error("vawlume:attribution:EstimatorProfileOnNonNativeRun", ...
+        "An attribution_estimator_settings profile licenses only a native_estimate " + ...
+        "run, not an %s run.", path);
+end
 end
 
 function profile = resolveSettingsProfile(conn, recording, profileVersionId)
@@ -238,7 +313,13 @@ sourcesOkay = analysisSourcesMatch(conn, analysis.analysis_run_id, ...
     plan.analysis_sources);
 storedTargets = attributionReadTargets(conn, run.attribution_run_id);
 targetsOkay = attributionTargetsEqual(storedTargets, plan.target_set.targets);
-if ~(identityOkay && profileOkay && extractionOkay && sourcesOkay && targetsOkay)
+% Only a native run's declarations are createRun's to compare; a backend run's
+% belong to its intake.
+declaredOkay = plan.context.attribution_path ~= "native_estimate" || ...
+    declaredInputsMatch(conn, run.attribution_run_id, ...
+    plan.context.declared_inputs, plan.settings_profile.profile_version_id);
+if ~(identityOkay && profileOkay && extractionOkay && sourcesOkay && ...
+        targetsOkay && declaredOkay)
     run.action = "conflict";
     run.conflict_message = "Attribution run_key '" + plan.context.run_key + ...
         "' exists with different settings, sources, participants, or targets.";
@@ -251,6 +332,20 @@ rows = fetch(conn, "SELECT profile_version_id, assignment_role " + ...
 okay = height(rows) == 1 && ...
     double(rows.profile_version_id(1)) == profileVersionId && ...
     presentText(rows.assignment_role(1)) == "attribution_settings";
+end
+
+function okay = declaredInputsMatch(conn, runId, expected, profileVersionId)
+rows = fetch(conn, "SELECT input_dimension, declaration, " + ...
+    "declared_by_profile_version_id, IFNULL(notes,'') AS notes " + ...
+    "FROM attribution_run_declared_inputs WHERE attribution_run_id=" + ...
+    string(runId) + " ORDER BY input_dimension");
+okay = height(rows) == height(expected);
+if okay && height(expected) > 0
+    okay = all(presentText(rows.input_dimension) == expected.input_dimension) && ...
+        all(presentText(rows.declaration) == expected.declaration) && ...
+        all(presentText(rows.notes) == expected.notes) && ...
+        all(double(rows.declared_by_profile_version_id) == profileVersionId);
+end
 end
 
 function okay = extractionInputsMatch(conn, analysisId, expected)
