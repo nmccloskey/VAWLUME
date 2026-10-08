@@ -73,6 +73,9 @@ function result = attributeCallers(conn, recordingRef, runSpec, options)
 %   measured event is in another recording   vawlume:estimator:InputRecordingMismatch
 %   a target without a normalization run, or a run that is not one, or that
 %   measures another event               vawlume:estimator:NormalizationRunInvalid
+%   normalized levels made under another policy key or version than the
+%   profile's parameters.normalization_policy
+%                                        vawlume:estimator:NormalizationPolicyMismatch
 %   createRun's own refusals (event sets, recording, participants), raised by
 %   createRun's planner
 %   clocks that are not connected        vawlume:tracking:ClockDeclarationInvalid,
@@ -262,7 +265,7 @@ geometry = vawlume.estimator.candidateGeometry(conn, eventRef, spec.clock, ...
     tracking, double(spec.participating_entity_ids), pair);
 
 normalization = readNormalization(conn, spec.normalization_runs, eventColumn, ...
-    eventId, kind, recordingId, pair);
+    eventId, kind, recordingId, pair, parameters.normalization_policy);
 difference = vawlume.acoustic.levelDifference(normalization.sides(1), ...
     normalization.sides(2), parameters.refuse_clipped_channels);
 method = vawlume.estimator.levelDifferenceConsistency(geometry.entities, ...
@@ -283,7 +286,7 @@ plan.candidate_ids = table(zeros(0, 1), zeros(0, 1), ...
 end
 
 function normalization = readNormalization(conn, runs, eventColumn, eventId, kind, ...
-        recordingId, pair)
+        recordingId, pair, declaredPolicy)
 if ~ismember(eventColumn, string(runs.Properties.VariableNames))
     error("vawlume:estimator:NormalizationRunInvalid", ...
         "runSpec.normalization_runs has no %s column.", eventColumn);
@@ -351,6 +354,18 @@ for k = 1:2
         side.reason = "not_normalized_in_run";
     else
         details = jsondecode(char(rows.derivation_details_json(hit)));
+        % The profile names the policy the observed difference is computed from
+        % (condition 3). Key and version are its identity; a path is a location.
+        if string(details.policy_profile_key) ~= declaredPolicy.profile_key || ...
+                string(details.policy_version) ~= declaredPolicy.version
+            error("vawlume:estimator:NormalizationPolicyMismatch", ...
+                "Normalization run %d normalized channel %d under %s %s; the " + ...
+                "settings profile declares %s %s. A native run is scored only " + ...
+                "from levels normalized under the policy its profile names.", ...
+                runId, pair(k), string(details.policy_profile_key), ...
+                string(details.policy_version), declaredPolicy.profile_key, ...
+                declaredPolicy.version);
+        end
         side.status = "normalized";
         side.value = double(rows.value_real(hit));
         side.unit = string(rows.unit(hit));

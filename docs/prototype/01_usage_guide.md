@@ -2025,7 +2025,11 @@ The path, in order:
    `config/08_attribution_policies/native_level_difference_decision_policy.json`.
    Its rule is `threshold_with_separation`, with an illustrative selection
    threshold of −3 dB and separation margin of 3 dB. It reaches `assigned`,
-   `ambiguous`, `unassigned` and `excluded`, and never `simultaneous`.
+   `ambiguous`, `unassigned` and `excluded`, and never `simultaneous`. Name
+   this policy explicitly: `decide` refuses a co-occurrence policy, including
+   the shipped default, over a native run
+   (`vawlume:attribution:PolicyRuleNotApplicable`), because a level-difference
+   score cannot evidence two animals calling at once.
 7. Read the run back with `vawlume.attribution.report`. It uses the same fields
    as an imported or backend run, plus each unscored candidate's
    `no_score_reason` in `candidates.notes` and the cited measurement in

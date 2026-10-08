@@ -42,6 +42,7 @@ It also needs `profile`, `method`, `scope` (2 candidates, 2 channels) and
 |---|---|
 | `SettingsBlockMissing` | a block is missing |
 | `SettingsDimensionUndeclared` | a dimension is undeclared |
+| `SettingsDimensionMisdeclared` | an upstream dimension is declared `not_used`. Method 1.0.0 uses all four to compute every score, so the declaration would be stored with the run as a false statement of condition 1 (added at 6.12a; the 6.12 sweep showed such a profile was accepted and scored from the acoustic input regardless). The `not_used` vocabulary stays for a later method version that leaves a dimension out |
 | `SettingsParameterMissing` | a parameter is missing; **no parameter has a code default** |
 | `SettingsGateNotImplemented` | `pose_confidence_gate` or `temporal_uncertainty_gate_s` is not null, because v1 records those dimensions and gates nothing on them (contract D4, D5) |
 | `SettingsInvalid` | a claim this version cannot support: `calibrated`, a scope other than 2/2, another spreading assumption, another comparability scope, or a `source_localization` that is used |

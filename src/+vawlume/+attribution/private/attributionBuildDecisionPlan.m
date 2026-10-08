@@ -8,6 +8,17 @@ repoRoot = resolveRepoRoot(options.RepoRoot);
 policy = attributionLoadPolicy(policyPathOf(policyRef), repoRoot);
 
 run = attributionResolveRun(conn, runRef);
+% Contract 06 D11, enforced at itinerary 6.12a: a native consistency score cannot
+% evidence simultaneous calling, so no rule with a co-occurrence step applies to a
+% native run, whatever its thresholds. Refused before anything is read or written.
+if run.attribution_path == "native_estimate" && ...
+        policy.rule_key == "threshold_with_separation_and_co_occurrence"
+    error("vawlume:attribution:PolicyRuleNotApplicable", ...
+        "Run %s is a native_estimate run; rule %s can claim simultaneous " + ...
+        "calling, which a native consistency score cannot evidence. Decide a " + ...
+        "native run under a threshold_with_separation policy.", run.run_key, ...
+        policy.rule_key);
+end
 % The policy profile is scoped to the run's project and cites the artifact by a
 % repository-relative path, so a stored decision names a file a later reader can
 % actually find rather than one machine's absolute path.
@@ -53,11 +64,11 @@ for index = 1:height(targets)
         outcome.existing_decision_id = existing.attribution_decision_id;
         plan.has_conflicts = true;
     end
-    plan.decisions = [plan.decisions; decisionRow(outcome)]; %#ok<AGROW>
+    plan.decisions = [plan.decisions; decisionRow(outcome)];
     for selected = 1:numel(outcome.selected_candidate_ids)
         plan.selections = [plan.selections; selectionRow(targetId, ...
             outcome.selected_candidate_ids(selected), ...
-            outcome.selection_role)]; %#ok<AGROW>
+            outcome.selection_role)];
     end
 end
 end

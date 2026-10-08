@@ -66,6 +66,19 @@ for dimension = ["temporal_alignment", "pose_localization", "visual_identity", .
 end
 end
 
+function testADimensionTheMethodUsesCannotBeDeclaredNotUsed(testCase)
+% Itinerary 6.12a (F6.12-1). The 6.12 sweep showed a profile declaring
+% acoustic not_used was accepted, stored with the run, and scored from the
+% acoustic difference regardless. Condition 1 must not be falsifiable by a
+% profile version.
+for dimension = ["temporal_alignment", "pose_localization", "visual_identity", "acoustic"]
+    document = testCase.TestData.shipped;
+    document.dimensions.(dimension).declaration = "not_used";
+    path = writeProfile(testCase, document, "not-used-" + dimension);
+    verifyErrorNaming(testCase, path, "vawlume:estimator:SettingsDimensionMisdeclared", dimension);
+end
+end
+
 function testAMissingParameterIsRefusedNotDefaulted(testCase)
 for parameter = string(fieldnames(testCase.TestData.shipped.parameters))'
     document = testCase.TestData.shipped;

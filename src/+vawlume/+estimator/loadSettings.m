@@ -28,8 +28,11 @@ function settings = loadSettings(profilePath, options)
 % second, unversioned copy of the method. A stated null is a statement; an
 % absent field is refused.
 %
+% A dimension the method uses may not be declared not_used: method 1.0.0 uses all
+% four, so each must read "used" (SettingsDimensionMisdeclared, itinerary 6.12a).
+%
 % Errors (all vawlume:estimator:...): SettingsNotFound, SettingsBlockMissing,
-% SettingsDimensionUndeclared, SettingsParameterMissing,
+% SettingsDimensionUndeclared, SettingsDimensionMisdeclared, SettingsParameterMissing,
 % SettingsGateNotImplemented, SettingsInvalid.
 %
 % The result carries declared_inputs: the four (input_dimension, declaration,
@@ -137,6 +140,17 @@ for index = 1:numel(upstream)
     declaration = requiredText(raw.(name), "declaration", "dimensions." + name);
     if ~ismember(declaration, ["used", "not_used"])
         invalid("dimensions.%s.declaration must be used or not_used", name);
+    end
+    % Method 1.0.0 (the only version this loader admits) uses all four
+    % structurally, so "not_used" here would be stored with the run as a false
+    % statement of condition 1. The vocabulary stays: a later method version
+    % may legitimately leave a dimension out.
+    if declaration ~= "used"
+        error("vawlume:estimator:SettingsDimensionMisdeclared", ...
+            "dimensions.%s is declared %s, but method %s %s uses it to " + ...
+            "compute every score. A profile may not declare a dimension the " + ...
+            "method uses as not_used (condition 1).", name, declaration, ...
+            "vawlume.estimator.level_difference_consistency", "1.0.0");
     end
     role = requiredText(raw.(name), "role", "dimensions." + name);
     dimensions.(name) = struct(declaration=declaration, role=role);

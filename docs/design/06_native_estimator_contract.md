@@ -29,6 +29,22 @@ including what it could not show. That demonstration needed no new public
 function, column or schema change. The phase's sweep and closure follow 6.11,
 so this block does not yet say the phase is closed.
 
+**Status at 6.12a.** Still `0.13-draft`; 6.12a changed only comment lines in
+`schema.sql`. The 6.12 sweep found three statements the licence makes that no
+code checked, and 6.12a enforces each, by name and before any write:
+- D2's dimension declarations: a profile may not declare `not_used` a dimension
+  method 1.0.0 uses (`SettingsDimensionMisdeclared`);
+- the profile's `parameters.normalization_policy`: normalized levels made under
+  another policy key or version are refused (`NormalizationPolicyMismatch`);
+- D11's rule restriction: `decide` refuses a co-occurrence rule over a native
+  run (`PolicyRuleNotApplicable`).
+
+Invariant 25 gained a static guard. Two clarifications:
+- `window_min` (the minimum distance over observed samples) is an accepted
+  instant basis beside D4's four, and is stored as evidence like them.
+- D14's "export of a migrated fixture" means a freshly built 0.13 fixture: no
+  schema migration path exists in this prototype.
+
 This contract **extends** [`04_caller_attribution_contract.md`](04_caller_attribution_contract.md)
 and [`05_backend_localization_contract.md`](05_backend_localization_contract.md).
 It replaces neither. Every Phase 4 and Phase 5 clause holds for a native run
@@ -606,6 +622,11 @@ by before/after decisions on the existing fixtures.
 
 **Rejected: a co-occurrence threshold set out of reach.** That is a constant
 posing as a policy.
+
+*(Enforced at 6.12a: nothing above stopped a native run from being decided
+under the existing co-occurrence rule instead, which with dB thresholds called
+the symmetric scene `simultaneous`. `decide` now refuses that rule for a
+`native_estimate` run, `vawlume:attribution:PolicyRuleNotApplicable`.)*
 
 **A latent defect found while deciding this.** `attributionLoadPolicy` requires
 `decision_rule.key` but never dispatches on it: any key string runs the shipped

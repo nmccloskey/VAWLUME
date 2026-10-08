@@ -1909,6 +1909,11 @@ CREATE TABLE attribution_candidates (
 -- of them - is only checkable if the dimensions are enumerable. The kind is open
 -- for the reason tracking_identity_associations.evidence_kind is open: a closed
 -- vocabulary would force an unfamiliar upstream system into the wrong category.
+-- (Corrected at 6.12a: since 0.13-draft the native method in
+-- src/+vawlume/+estimator/ combines acoustic, pose and identity evidence into a
+-- candidate score under a settings profile stating contract 06's five
+-- conditions. Nothing else combines them, and no evidence row holds a combined
+-- value: each stays one dimension.)
 --
 -- 'imported_composite' is how somebody else's already-combined score is stored
 -- WITHOUT VAWLUME computing one. Its semantics must say who combined what.
@@ -1930,6 +1935,9 @@ CREATE TABLE attribution_candidates (
 -- pose_localization, visual_identity, acoustic and source_localization - while
 -- the upstream uncertainty sources stay four. 'correspondence' and
 -- 'imported_composite' are not dimensions. VAWLUME combines none of the five.
+-- (Corrected at 6.12a: the native method combines acoustic, pose and identity
+-- evidence into a candidate score, as noted above. It never reads
+-- source_localization, and no row of this table holds a combined value.)
 --
 -- A source_localization row CITES its estimate through
 -- attribution_localization_estimate_id and copies nothing: no coordinate, no

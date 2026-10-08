@@ -46,6 +46,12 @@ function result = decide(conn, runRef, policyRef, options)
 %       show two simultaneous sources. A policy using it that declares
 %       co_occurrence_threshold is refused; the summary reports it as NaN.
 %
+% A native_estimate run is decided only under threshold_with_separation. A
+% co-occurrence rule over a native run is refused, whatever its thresholds
+% (vawlume:attribution:PolicyRuleNotApplicable; contract 06 D11, enforced at
+% 6.12a). Omitting POLICYREF selects the shipped co-occurrence policy, so a
+% native run must name its policy.
+%
 % Name-value arguments:
 %   Apply       persist the batch (default false)
 %   Targets     decide only these attribution_target_ids (default: all)

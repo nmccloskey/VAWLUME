@@ -74,6 +74,20 @@ silently is the failure doc 28 designed against.
 - **`addEvidence` requires `identity_statement_kind = identity_association` on
   every row that cites an association.** So the pose rows carry it too: the
   distance rests on that association.
+- **Only the first no-score reason is stored.** The method returns every
+  applicable reason (`no_score_reasons`) and the primitive's own word for a
+  missing position (`geometry_reason_detail`). The candidate row keeps
+  `no_score_reason=<first>` only, in D10's order, and `report`'s
+  `unscored_candidates_by_reason` counts first reasons. A candidate both
+  uncovered and clipped is stored as uncovered.
+- **Invariants 24 and 26 are properties of this producer, not of the canonical
+  layer.** `attributeCallers` never writes a probability, and every distance
+  and pose-confidence row it writes cites the association its track was
+  resolved through. `addCandidates` and `addEvidence` are path-agnostic. A
+  hand-written call on a native run can still add a probability, or a
+  `pose_localization` row citing only a track label in `source_locator`; the
+  6.12 sweep showed the second is accepted. A path-aware rule there is
+  deferred to Phase 7.
 
 ## Reconstruction (condition 4)
 
@@ -95,6 +109,13 @@ It then calls `vawlume.estimator.levelDifferenceConsistency` on those values.
 Every stored score must be recomputed exactly (to 1e-12), and every unscored
 candidate's stored reason must be returned again. Injection check: when the run
 was changed to skip the primary-basis distance rows, this test failed.
+
+**What the reason check does not show.** A scored candidate is a genuine
+reconstruction. For an unscored candidate with fewer than two stored
+primary-basis distances, the test seeds the method's input with the stored
+reason and then compares the output with that same stored reason, so the check
+only confirms the method echoes it. Only the first reason is compared, because
+only the first is stored.
 
 ## Apply writes one transaction
 
@@ -138,6 +159,7 @@ that mitigation with the transaction itself.
 | a tracking stream of another recording | `vawlume:estimator:InputRecordingMismatch` |
 | a normalization run of another recording's event | `vawlume:estimator:InputRecordingMismatch` |
 | a missing or wrong normalization run | `vawlume:estimator:NormalizationRunInvalid` |
+| normalized levels made under another policy key or version than the profile's `parameters.normalization_policy` (6.12a) | `vawlume:estimator:NormalizationPolicyMismatch` |
 | mixed event sets | `vawlume:attribution:TargetSetMixed`, from `createRun`'s planner |
 | another recording's target | `vawlume:attribution:TargetSetCrossesRecording`, from `createRun`'s planner |
 | a participant not linked to the recording | `vawlume:attribution:EntityNotInRecording`, from `createRun`'s planner |
@@ -160,6 +182,15 @@ It uses rule `threshold_with_separation` (contract D11): `selection_threshold`
 
 A second policy version decides the same candidates again, beside the first,
 and rewrites nothing.
+
+**Only `threshold_with_separation` applies to a native run (6.12a).** `decide`
+refuses a `threshold_with_separation_and_co_occurrence` policy over a
+`native_estimate` run, whatever its thresholds
+(`vawlume:attribution:PolicyRuleNotApplicable`), before anything is written.
+The 6.12 sweep showed why: with dB thresholds that rule called the symmetric
+scene `simultaneous`, and the shipped 0–1 policy silently made every scored
+target `unassigned`. Omitting the policy selects the shipped co-occurrence
+policy, so a native run must name its policy.
 
 ## Reading it back
 

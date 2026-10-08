@@ -122,6 +122,12 @@ function testEveryStoredScoreIsReconstructedFromStorage(testCase)
 % cite, and the stored settings profile version. Nothing is carried over from the
 % run. Each scored candidate's score is recomputed by the pure method and must
 % equal the stored score; each unscored candidate's reason must be recovered.
+%
+% Only the scored branch is a reconstruction. An unscored candidate with fewer
+% than two stored primary-basis distances is fed its stored reason
+% (storedGeometry), so the comparison below only shows the method echoes it.
+% Only the first reason is stored, so only the first is compared (6.12 sweep,
+% F6.12-7; doc 44).
 f = testCase.TestData.fixture;
 apply(f, "native-reconstruct");
 conn = f.conn;
@@ -352,6 +358,25 @@ unknown.decision_rule.key = "highest_score_wins";
 verifyError(testCase, @() vawlume.attribution.decide(f.conn, runRef, ...
     writePolicy(f, unknown, "unknown.json"), RepoRoot=f.repo_root), ...
     "vawlume:attribution:PolicyRuleUnknown");
+% Itinerary 6.12a (F6.12-3, contract 06 D11): no co-occurrence rule applies to a
+% native run. The 6.12 sweep decided this run's symmetric geometry as
+% "simultaneous" under a co-occurrence copy with dB thresholds, and every scored
+% target as "unassigned" under the shipped 0-1 policy.
+decisionsBefore = height(vawlume.attribution.report(f.conn, runRef).decisions);
+phase4 = string(fullfile(f.repo_root, "config", "08_attribution_policies", ...
+    "prototype_attribution_decision_policy.json"));
+verifyError(testCase, @() vawlume.attribution.decide(f.conn, runRef, phase4, ...
+    RepoRoot=f.repo_root, Apply=true), "vawlume:attribution:PolicyRuleNotApplicable");
+inDecibels = jsondecode(fileread(phase4));
+inDecibels.profile.profile_version = "0.1.0-db-test";
+inDecibels.thresholds.selection_threshold = -3;
+inDecibels.thresholds.separation_margin = 3;
+inDecibels.thresholds.co_occurrence_threshold = -1;
+verifyError(testCase, @() vawlume.attribution.decide(f.conn, runRef, ...
+    writePolicy(f, inDecibels, "cooccurrence_db.json"), RepoRoot=f.repo_root), ...
+    "vawlume:attribution:PolicyRuleNotApplicable");
+verifyEqual(testCase, height(vawlume.attribution.report(f.conn, runRef).decisions), ...
+    decisionsBefore, "A refused policy writes no decision.");
 text = string(shipped.what_this_policy_is_not);
 verifyTrue(testCase, any(contains(text, "simultaneous calling")));
 verifyTrue(testCase, any(contains(text, "equal scores mean the geometry cannot separate")));
@@ -488,6 +513,14 @@ wrongKind = runSpec(f, "refused");
 wrongKind.settings_profile_version_id = f.wrong_kind_profile;
 try_(wrongKind, "vawlume:estimator:SettingsProfileKindInvalid");
 
+% Itinerary 6.12a (F6.12-2): detection 1 normalized again under another policy
+% version than the profile's parameters.normalization_policy names.
+otherPolicy = otherPolicyNormalization(f);
+otherPolicyRun = runSpec(f, "refused");
+otherPolicyRun.normalization_runs.analysis_run_id( ...
+    otherPolicyRun.normalization_runs.detection_id == 1) = otherPolicy;
+try_(otherPolicyRun, "vawlume:estimator:NormalizationPolicyMismatch");
+
 unconnected = runSpec(f, "refused");
 unconnected.tracking.alignment_run_id = f.audio_run;
 try_(unconnected, "vawlume:tracking:ClockDeclarationInvalid");
@@ -514,6 +547,35 @@ for file = files'
 end
 verifyEmpty(testCase, hits, strjoin(hits, newline));
 verifyNotEmpty(testCase, regexp("x = ""INSERT INTO t VALUES (1)"";", pattern, "once"));
+end
+
+function testTheEstimatorPackageReadsNoImportedOrBackendTable(testCase)
+% Contract 06 invariant 25, guarded since itinerary 6.12a: the native estimator
+% reads no imported claim, backend estimate or imported_composite row. String
+% literals are KEPT, so SQL text is seen; comments are removed.
+%
+% Scope is the estimator package itself. Its route into +attribution/ is the
+% canonical writer, whose source_localization validator reads
+% attribution_localization_estimates by design; native rows never reach it,
+% because the estimator writes no source_localization evidence.
+root = fullfile(testCase.TestData.fixture.repo_root, "src", "+vawlume", "+estimator");
+files = [dir(fullfile(root, "*.m")); dir(fullfile(root, "private", "*.m"))];
+pattern = "imported_attribution_|attribution_localization_estimates|" + ...
+    "imported_composite|attribution_native_attributes";
+hits = strings(0, 1);
+for file = files'
+    for line = splitlines(string(fileread(fullfile(file.folder, file.name))))'
+        code = regexprep(line, "%.*$", "");
+        if ~isempty(regexp(code, pattern, "once"))
+            hits(end + 1, 1) = file.name + ": " + strtrim(code); %#ok<AGROW>
+        end
+    end
+end
+verifyEmpty(testCase, hits, strjoin(hits, newline));
+verifyNotEmpty(testCase, regexp("rows = fetch(conn, ""SELECT * FROM " + ...
+    "attribution_localization_estimates"");", pattern, "once"), "The probe can fire.");
+verifyEmpty(testCase, regexp("evidence_dimension = ""pose_localization"";", ...
+    pattern, "once"), "A dimension name is not a table.");
 end
 
 % ============================================================= helpers ===
@@ -930,6 +992,26 @@ for k = 1:numel(detections)
     runs(k) = normalized.analysis_run_id;
 end
 runs = table(detections(:), runs(:), VariableNames=["detection_id", "analysis_run_id"]);
+end
+
+function runId = otherPolicyNormalization(f)
+% A normalization of detection 1's call run under a copy of the shipped policy
+% whose only difference is its version. Created once; a second call reuses it.
+rows = fetch(f.conn, "SELECT analysis_run_id FROM analysis_runs WHERE run_key='norm-d1-other-policy'");
+if ~isempty(rows) && height(rows) > 0
+    runId = double(rows.analysis_run_id(1));
+    return
+end
+document = jsondecode(fileread(fullfile(f.repo_root, "config", ...
+    "09_acoustic_normalization_policies", "band_matched_noise_reference_v1.json")));
+document.profile.profile_version = "1.0.1-test";
+path = writePolicy(f, document, "other_normalization_policy.json");
+call = fetch(f.conn, "SELECT analysis_run_id FROM analysis_runs WHERE run_key='call-d1'");
+response = fetch(f.conn, "SELECT analysis_run_id FROM analysis_runs WHERE run_key='response'");
+runId = vawlume.acoustic.normalizeCallLevels(f.conn, ...
+    struct(analysis_run_id=double(call.analysis_run_id(1))), ...
+    struct(analysis_run_id=double(response.analysis_run_id(1))), PolicyPath=path, ...
+    RepoRoot=f.repo_root, Apply=true, RunKey="norm-d1-other-policy").analysis_run_id;
 end
 
 function runId = foreignNormalization(conn)
