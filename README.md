@@ -66,7 +66,8 @@ The examples create disposable synthetic inputs and require no data of your own.
 - [`schema/README.md`](schema/README.md) — schema authority, regeneration, and ERD notes.
 - [`docs/design/`](docs/design/) — design contracts and forward-looking architecture.
 - [`docs/development/`](docs/development/) — implementation contracts, boundaries, and completed development work.
-- [`docs/reference/extractors/`](docs/reference/extractors/) — extractor-specific mapping references.
+- [`docs/reference/extractors/`](docs/reference/extractors/) — extractor-specific mapping reference documents.
+- [References and methodological context](docs/references.md) — publications for supported USV extractors and selected scientific context for the pipeline.
 
 ## Supported extractor integrations
 
