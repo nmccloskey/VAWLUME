@@ -22,6 +22,19 @@ Added at schema version `0.13-draft`, for the native estimator:
 `config_profiles.profile_kind` member `attribution_estimator_settings`. See
 [`attribution_evidence`](#attribution_evidence).
 
+Added at schema version `0.14-draft` (`PRAGMA user_version = 14`), for
+integrated validation (contract 07 D9 and D10):
+
+- two trigger pairs that make contract 06 invariants 24 and 26 hold for every
+  writer, `trg_attribution_candidate_native_no_probability` and
+  `trg_attribution_evidence_native_identity_cited`, each with an `_update` twin;
+- the table `attribution_candidate_no_score_reasons`, with
+  `trg_no_score_reason_requires_unscored_candidate`.
+
+See
+[`attribution_candidate_no_score_reasons`](#attribution_candidate_no_score_reasons)
+and [What the schema enforces](#what-the-schema-enforces).
+
 The design reasoning lives in
 [`../design/04_caller_attribution_contract.md`](../design/04_caller_attribution_contract.md),
 extended for the backend path by
@@ -130,6 +143,30 @@ checks only for contradiction with a higher-is-stronger score: a higher score
 must have a lower rank, and equal scores must share a rank. It neither fills rank
 gaps nor breaks a tie. For a score whose native ordering has another meaning,
 retain the raw score and omit rank.
+
+### `attribution_candidate_no_score_reasons`
+
+Added at schema version `0.14-draft`. **Every reason a producer gave for not
+scoring one candidate**, one row per reason.
+
+- `reason_ordinal` is the producer's order, starting at 1. It is not a severity.
+- `reason_code` is the producer's code, verbatim, and is not blank. It is free
+  text, because the closed set belongs to the producing method and is versioned
+  with it (contract 06 D10).
+- The primary key is `(attribution_candidate_id, reason_ordinal)`.
+  `UNIQUE(attribution_candidate_id, reason_code)` refuses one reason stated
+  twice.
+- A reason may be stated only for a candidate whose `score` is NULL
+  (`trg_no_score_reason_requires_unscored_candidate`, insert-only).
+- Reasons are deleted with their candidate.
+
+Through `0.13-draft` only the first reason survived, as a
+`no_score_reason=<code>` token in `notes`. 7.4 moves the writers to this table,
+and 7.5 moves `report`. Until then the table exists and nothing writes it.
+
+**Reading it:** an unscored candidate with no reason rows is a candidate whose
+producer stated none, which `report` counts as `not_stated`. It is not a
+candidate with an empty reason.
 
 ### `attribution_evidence`
 
@@ -594,6 +631,20 @@ Added at schema version `0.13-draft`, for the native estimator:
 - a cited derived measurement cannot be deleted while an evidence row cites it;
 - `attribution_estimator_settings` is a declared profile kind.
 
+Added at schema version `0.14-draft`, for integrated validation:
+
+- a `native_estimate` candidate carries no `probability` and no
+  `probability_semantics` (on insert and on update), whoever writes it.
+  Imported and backend candidates are unaffected;
+- a `native_estimate` `pose_localization` or `visual_identity` evidence row
+  cites `tracking_identity_association_id` (on insert and on update).
+  Because the citation's `ON DELETE SET NULL` is an update, an association such
+  a row cites cannot be deleted. The A-1 CHECK already did this for any row
+  stating `identity_statement_kind = 'identity_association'`; the twin covers
+  native pose rows, which cite without a stated kind;
+- a no-score reason belongs to an unscored candidate, appears once per
+  candidate, and occupies one ordinal.
+
 ## What the schema does **not** enforce
 
 This is the half that stops a later reader assuming a guarantee that was never
@@ -647,6 +698,20 @@ For the native-estimator change (`0.13-draft`):
 - **Nothing checks that an `attribution_estimator_settings` profile states
   anything.** The kind names a contract. Validating that a profile meets it is
   the loader's job.
+
+For the integrated-validation change (`0.14-draft`):
+
+- **Nothing checks that a native score's semantics say it is not a
+  probability.** That half of invariant 24 is a property of text, held by the
+  producer and its tests.
+- **Nothing checks that a cited association belongs to the candidate's entity**,
+  or is time-valid for the call. Those are write-path refusals
+  (`EvidenceSourceInvalid` and the estimator's identity resolution).
+- **Nothing stops a candidate's score being set later while reason rows
+  exist.** The reason guard is insert-only, by the section 14 convention,
+  because candidates are frozen once their run completes. A direct `UPDATE`
+  could leave a scored candidate with reasons.
+- **Nothing checks a reason code against a method's vocabulary.**
 
 ## Phase 3 debts closed here
 

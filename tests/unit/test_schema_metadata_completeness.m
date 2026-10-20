@@ -101,14 +101,14 @@ verifyEqual(testCase, report.described_relationships, report.structural_relation
 end
 
 function testAPartialDocumentPassesIdentityButClaimsNothing(testCase)
-% A document describing three of 110 objects is not wrong, it is unfinished.
+% A document describing three of 111 objects is not wrong, it is unfinished.
 % Identity mode must not confuse the two, or Part 3's subparts could never run.
 cleanup = addSourcePath(); %#ok<NASGU>
 
 report = validateFixture(testCase, validDocument(), "identity");
 verifyTrue(testCase, report.passed);
 verifyEqual(testCase, report.described_objects, 2);
-verifyEqual(testCase, report.structural_objects, 110);
+verifyEqual(testCase, report.structural_objects, 111);
 end
 
 % ---------------------------------------------------------------------------
@@ -190,8 +190,8 @@ report = validateFixture(testCase, document, "complete");
 verifyFalse(testCase, report.passed);
 detail = char(strjoin(report.findings.detail, " "));
 verifySubstring(testCase, detail, "not described");
-% 110 structural objects, 3 described by the fixture.
-verifySubstring(testCase, detail, "107 object(s)");
+% 111 structural objects, 3 described by the fixture.
+verifySubstring(testCase, detail, "108 object(s)");
 end
 
 function testTheGlobalGateDetectsUndescribedRelationships(testCase)
@@ -208,9 +208,9 @@ report = validateFixture(testCase, document, "complete");
 relationshipFindings = report.findings.detail( ...
     contains(report.findings.detail, "relationship(s) have no description"));
 verifyNotEmpty(testCase, relationshipFindings, ...
-    "Every domain was claimed complete with 1 of 258 relationships described, " + ...
+    "Every domain was claimed complete with 1 of 259 relationships described, " + ...
     "and nothing was reported.");
-verifySubstring(testCase, char(relationshipFindings(1)), "257");
+verifySubstring(testCase, char(relationshipFindings(1)), "258");
 end
 
 % ---------------------------------------------------------------------------
@@ -218,7 +218,7 @@ end
 % ---------------------------------------------------------------------------
 
 function document = validDocument()
-% Partial by construction: two objects of 110, and no domain claimed.
+% Partial by construction: two objects of 111, and no domain claimed.
 document = struct();
 document.metadata_version = "0.1.0";
 document.schema_version = vawlume.schema.repositoryVersion(RepoRoot=repoRootForTest());

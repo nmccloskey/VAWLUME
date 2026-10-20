@@ -1,6 +1,6 @@
 -- VAWLUME prototype relational schema
--- Version: 0.13-draft
--- Date: 2026-10-06
+-- Version: 0.14-draft
+-- Date: 2026-10-20
 -- Target: SQLite (MATLAB-centered workflow)
 --
 -- Design priorities:
@@ -47,9 +47,9 @@ CREATE TABLE schema_info (
 );
 
 INSERT OR IGNORE INTO schema_info(schema_version, description)
-VALUES ('0.13-draft', 'Native estimator attribution: attribution evidence may cite the derived measurement it reports, scope-guarded to its run''s recording and RESTRICT so that a computed score cannot outlive an input it was computed from; and an attribution_estimator_settings profile kind for the versioned settings that state a native method''s five combination conditions');
+VALUES ('0.14-draft', 'Integrated validation: a native_estimate run refuses a candidate probability and a pose or identity evidence row that cites no tracking identity association, for every writer; and every reason a producer gave for not scoring a candidate is stored, in the producer''s order, only for an unscored candidate');
 
-PRAGMA user_version = 13;
+PRAGMA user_version = 14;
 
 -- ============================================================================
 -- 1. Project and configuration-profile infrastructure
@@ -1877,6 +1877,11 @@ CREATE TABLE attribution_targets (
 -- and its semantics string attributes that claim to its source.
 --
 -- candidate_rank is a presentation of score, not a second opinion about it.
+--
+-- (0.14-draft) A native_estimate candidate carries no probability and no
+-- probability_semantics, refused by trigger in section 14 for every writer
+-- (contract 06 invariant 24). Why an unscored candidate has no score is stored in
+-- attribution_candidate_no_score_reasons, not in notes.
 CREATE TABLE attribution_candidates (
     attribution_candidate_id INTEGER PRIMARY KEY,
     attribution_target_id INTEGER NOT NULL REFERENCES attribution_targets(attribution_target_id) ON DELETE CASCADE,
@@ -1961,6 +1966,11 @@ CREATE TABLE attribution_candidates (
 -- attribution run first. channel_response_estimate_sources follows the same rule
 -- for the same reason. Scope is guarded by trigger in both directions; whether the
 -- measurement is about the same event and channel as the row is a write-path rule.
+--
+-- (0.14-draft) On a native_estimate run, a pose_localization or visual_identity
+-- row must cite tracking_identity_association_id, refused by trigger in section
+-- 14 for every writer (contract 06 invariant 26). The update twin also refuses
+-- deleting an association such a row cites, since its SET NULL is an update.
 CREATE TABLE attribution_evidence (
     attribution_evidence_id INTEGER PRIMARY KEY,
     attribution_target_id INTEGER NOT NULL REFERENCES attribution_targets(attribution_target_id) ON DELETE CASCADE,
@@ -2351,6 +2361,36 @@ CREATE TABLE attribution_run_declared_inputs (
     declared_by_profile_version_id INTEGER NOT NULL REFERENCES config_profile_versions(profile_version_id) ON DELETE RESTRICT,
     notes               TEXT,
     PRIMARY KEY(attribution_run_id, input_dimension)
+);
+
+-- Every reason a producer gave for not scoring a candidate. Added at 0.14-draft.
+--
+-- An unscored candidate is a row with a NULL score; WHY it is unscored is a
+-- separate fact, and often more than one. The native method returns every
+-- applicable reason in a fixed order (identity first, then tracking, alignment,
+-- placement, frame, distance, acoustic), and through 0.13-draft only the first
+-- survived, as a notes token. A candidate unscored for two reasons under one
+-- profile and for one of them under a variant then looked unchanged, so a
+-- sensitivity comparison could not say which obstacle a variant had removed.
+-- Contract 07 D10.
+--
+-- reason_ordinal is the PRODUCER's order, 1 being the reason it states first. It
+-- is not a severity and not a ranking VAWLUME imposes. reason_code is free text
+-- on purpose: the closed set belongs to the producing method and is versioned
+-- with it (contract 06 D10), so a schema vocabulary would force a version bump
+-- for a method's new reason. A delimited list in one column was rejected: it is
+-- the '|'-join defect this schema dropped at 0.10-draft, and P4-2 again.
+--
+-- A reason may be stated only for a candidate that has no score; a trigger in
+-- section 14 refuses the rest. A scored candidate had no reason not to be scored.
+CREATE TABLE attribution_candidate_no_score_reasons (
+    attribution_candidate_id INTEGER NOT NULL REFERENCES attribution_candidates(attribution_candidate_id) ON DELETE CASCADE,
+    reason_ordinal      INTEGER NOT NULL CHECK (reason_ordinal >= 1),
+    reason_code         TEXT NOT NULL CHECK (length(trim(reason_code)) > 0),
+    PRIMARY KEY(attribution_candidate_id, reason_ordinal),
+    -- One statement of a reason per candidate. A repeated code is the same claim
+    -- twice, and its two ordinals would disagree about the producer's order.
+    UNIQUE(attribution_candidate_id, reason_code)
 );
 -- ============================================================================
 -- 14. Integrity triggers for cross-table invariants SQLite cannot express as CHECKs
@@ -3627,6 +3667,110 @@ WHEN NEW.derived_measurement_id IS NOT NULL
 )
 BEGIN
     SELECT RAISE(ABORT, 'Attribution evidence cites a derived measurement whose recording is not its run''s recording');
+END;
+
+-- --- Native-run invariants enforced for every writer (0.14-draft) -----------
+--
+-- Contract 06 invariants 24 and 26 held at 0.13-draft only because the native
+-- estimator never wrote the forbidden rows; the canonical layer would have
+-- accepted a hand-written probability or a label-only pose row on a native run
+-- (6.13 recorded both as QUALIFIED). These two trigger pairs make them hold for
+-- any writer, direct SQL included (contract 07 D9). Imported and backend runs are
+-- untouched: their probabilities are the exporting system's claims, and their
+-- identity rows may rest on a declared entity link.
+--
+-- The run's path is resolved through the target. A target that does not exist
+-- resolves to no path, so the guard stays silent and the foreign-key error
+-- reports the real problem.
+
+-- A native candidate carries no probability. The native method's score is a dB
+-- consistency, never a probability, and nothing converts one into the other; a
+-- probability column filled on a native run would be a claim no native producer
+-- made. probability_semantics is refused too, since semantics for an absent
+-- value describe nothing.
+CREATE TRIGGER trg_attribution_candidate_native_no_probability
+BEFORE INSERT ON attribution_candidates
+FOR EACH ROW
+WHEN (NEW.probability IS NOT NULL OR NEW.probability_semantics IS NOT NULL)
+ AND (
+    SELECT ar.attribution_path
+    FROM attribution_targets at
+    JOIN attribution_runs ar ON ar.attribution_run_id = at.attribution_run_id
+    WHERE at.attribution_target_id = NEW.attribution_target_id
+) = 'native_estimate'
+BEGIN
+    SELECT RAISE(ABORT, 'A native_estimate candidate carries no probability: its score is not one');
+END;
+
+-- Guarded on update: setting a probability later is the same false claim.
+CREATE TRIGGER trg_attribution_candidate_native_no_probability_update
+BEFORE UPDATE ON attribution_candidates
+FOR EACH ROW
+WHEN (NEW.probability IS NOT NULL OR NEW.probability_semantics IS NOT NULL)
+ AND (
+    SELECT ar.attribution_path
+    FROM attribution_targets at
+    JOIN attribution_runs ar ON ar.attribution_run_id = at.attribution_run_id
+    WHERE at.attribution_target_id = NEW.attribution_target_id
+) = 'native_estimate'
+BEGIN
+    SELECT RAISE(ABORT, 'A native_estimate candidate carries no probability: its score is not one');
+END;
+
+-- On a native run, a track reaches an entity only through a cited
+-- tracking_identity_associations row. A pose_localization or visual_identity row
+-- without one would attach a trajectory's position or label to an entity by
+-- name alone, which is the inference invariant 26 forbids. Which association, and
+-- whether it belongs to the candidate's entity, is a write-path rule.
+CREATE TRIGGER trg_attribution_evidence_native_identity_cited
+BEFORE INSERT ON attribution_evidence
+FOR EACH ROW
+WHEN NEW.evidence_dimension IN ('pose_localization', 'visual_identity')
+ AND NEW.tracking_identity_association_id IS NULL
+ AND (
+    SELECT ar.attribution_path
+    FROM attribution_targets at
+    JOIN attribution_runs ar ON ar.attribution_run_id = at.attribution_run_id
+    WHERE at.attribution_target_id = NEW.attribution_target_id
+) = 'native_estimate'
+BEGIN
+    SELECT RAISE(ABORT, 'A native_estimate pose or identity evidence row must cite a tracking identity association');
+END;
+
+-- Guarded on update, which includes the ON DELETE SET NULL action of
+-- tracking_identity_association_id: deleting an association a native pose or
+-- identity row cites is refused, because a score computed from that row could no
+-- longer be reconstructed. That is contract 06 D13's rule for derived
+-- measurements, applied to the identity input. Delete the attribution run first.
+CREATE TRIGGER trg_attribution_evidence_native_identity_cited_update
+BEFORE UPDATE ON attribution_evidence
+FOR EACH ROW
+WHEN NEW.evidence_dimension IN ('pose_localization', 'visual_identity')
+ AND NEW.tracking_identity_association_id IS NULL
+ AND (
+    SELECT ar.attribution_path
+    FROM attribution_targets at
+    JOIN attribution_runs ar ON ar.attribution_run_id = at.attribution_run_id
+    WHERE at.attribution_target_id = NEW.attribution_target_id
+) = 'native_estimate'
+BEGIN
+    SELECT RAISE(ABORT, 'A native_estimate pose or identity evidence row must cite a tracking identity association');
+END;
+
+-- A no-score reason belongs to an unscored candidate. Insert-only, by the schema
+-- section 14 convention: a reason row is never repointed by any writer, and a
+-- candidate is frozen once its run completes. The candidate must exist first, so
+-- a dangling identifier reaches the foreign-key error that describes it.
+CREATE TRIGGER trg_no_score_reason_requires_unscored_candidate
+BEFORE INSERT ON attribution_candidate_no_score_reasons
+FOR EACH ROW
+WHEN EXISTS (
+    SELECT 1 FROM attribution_candidates ac
+    WHERE ac.attribution_candidate_id = NEW.attribution_candidate_id
+      AND ac.score IS NOT NULL
+)
+BEGIN
+    SELECT RAISE(ABORT, 'A no-score reason may be stated only for a candidate that has no score');
 END;
 -- ============================================================================
 -- 15. Analysis-ready views

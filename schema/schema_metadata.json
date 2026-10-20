@@ -1,6 +1,6 @@
 {
-  "metadata_version": "0.11.1",
-  "schema_version": "0.13-draft",
+  "metadata_version": "0.12.0",
+  "schema_version": "0.14-draft",
   "coverage": {
     "complete_domains": [
       { "domain": "identity_config_provenance", "object_count": 10 },
@@ -11,7 +11,7 @@
       { "domain": "matching_agreement", "object_count": 16 },
       { "domain": "alignment_external", "object_count": 15 },
       { "domain": "tracking_acoustic_derived", "object_count": 12 },
-      { "domain": "attribution", "object_count": 12 },
+      { "domain": "attribution", "object_count": 13 },
       { "domain": "views", "object_count": 14 }
     ]
   },
@@ -2922,7 +2922,7 @@
           "description": "Declaration that makes score interpretable by naming what the number measures, its direction, scale, or source convention as applicable. Required whenever score is present."
         },
         "probability": {
-          "description": "Optional value between zero and one asserted as a probability for this candidate under probability_semantics. It is not calibrated by VAWLUME and is never derived automatically from score."
+          "description": "Optional value between zero and one asserted as a probability for this candidate under probability_semantics. It is not calibrated by VAWLUME and is never derived automatically from score. A native_estimate candidate never carries one, for any writer: the native score is not a probability."
         },
         "probability_semantics": {
           "description": "Declaration of whose probability claim is stored and what event or interpretation it concerns. Required whenever probability is present; it does not certify calibration."
@@ -2971,7 +2971,7 @@
           "description": "Declares whether identity evidence rests on a source-declared entity link or on a tracking identity association. When present, the corresponding external-event or tracking-association reference is required so the two statement types cannot be used silently."
         },
         "tracking_identity_association_id": {
-          "description": "Tracking association cited when this observation uses reviewed or otherwise explicit track-to-entity identity evidence. This answers which identity-association statement was read, not which source event supplied a label."
+          "description": "Tracking association cited when this observation uses reviewed or otherwise explicit track-to-entity identity evidence. This answers which identity-association statement was read, not which source event supplied a label. On a native_estimate run every pose_localization and visual_identity row must cite one, so a cited association cannot be deleted while such a row stands."
         },
         "external_event_id": {
           "description": "External event cited when this observation uses a source-declared entity link. This preserves a declared label lookup separately from tracking identity evidence and does not turn it into visual identification."
@@ -3313,6 +3313,22 @@
         },
         "notes": {
           "description": "Additional context about the declaration. Never parsed as a declaration value."
+        }
+      }
+    },
+    "attribution_candidate_no_score_reasons": {
+      "kind": "table",
+      "domain": "attribution",
+      "description": "Every reason a producer gave for not scoring one candidate, one row per reason, in the producer's own order. An unscored candidate is a candidate row with no score; this table says why, and often there is more than one reason. A reason may be stated only for a candidate that has no score.",
+      "columns": {
+        "attribution_candidate_id": {
+          "description": "Unscored candidate the reason is about."
+        },
+        "reason_ordinal": {
+          "description": "Position of this reason in the order the producer stated its reasons, starting at 1 for the first. It is the producer's order, not a severity or a ranking VAWLUME imposes."
+        },
+        "reason_code": {
+          "description": "The producer's code for why it could not score the candidate, verbatim, such as identity_changes_within_window or alignment_extrapolated for the native estimator. The set of codes belongs to the producing method and its version, so it is not a schema vocabulary. A reason is a statement that the method could not look, never evidence against the candidate."
         }
       }
     },
@@ -5837,6 +5853,13 @@
       "target_table": "config_profile_versions",
       "target_columns": ["profile_version_id"],
       "description": "Names the exact profile version that carried this declaration. A cited version cannot be deleted while the declaration stands."
+    },
+    {
+      "source_table": "attribution_candidate_no_score_reasons",
+      "source_columns": ["attribution_candidate_id"],
+      "target_table": "attribution_candidates",
+      "target_columns": ["attribution_candidate_id"],
+      "description": "Names the unscored candidate a no-score reason explains. The reasons are deleted with their candidate."
     }
   ]
 }

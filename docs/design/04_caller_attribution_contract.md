@@ -39,6 +39,11 @@ plans one bump to `0.14-draft`, owned by 7.2, and compares runs of this
 representation without extending its meaning. D6's "precisely what Phase 7
 needs" is realized there as decision-policy variants (contract 07 D2, D6).
 
+**Status at 7.2.** Phase 7's one bump, applied at 7.2, makes the live schema
+`0.14-draft` (`PRAGMA user_version = 14`). It adds trigger pairs refusing a
+probability and an uncited pose or identity row on a native run, and a table for
+every no-score reason. Nothing in this contract's imported path changes.
+
 The contract clauses below are frozen as written. This status block is not: it
 names the live schema, and 4.2 set the precedent of moving it when the version
 moves rather than leaving a stale claim in the sentence that advertises currency.

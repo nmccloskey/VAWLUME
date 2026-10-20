@@ -45,7 +45,7 @@ verifyTrue(testCase, report.passed, ...
     "The committed semantic metadata no longer matches the committed schema: " + ...
     newline + strjoin(report.findings.detail, newline));
 verifyEqual(testCase, report.mode, "identity");
-verifyEqual(testCase, report.structural_objects, 110);
+verifyEqual(testCase, report.structural_objects, 111);
 end
 
 % ---------------------------------------------------------------------------

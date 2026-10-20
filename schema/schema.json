@@ -12403,6 +12403,14 @@
         {
           "name": "trg_attribution_candidate_entity_scope",
           "def": "CREATE TRIGGER trg_attribution_candidate_entity_scope\nBEFORE INSERT ON attribution_candidates\nFOR EACH ROW\nWHEN (\n    SELECT COUNT(*)\n    FROM attribution_targets at\n    JOIN attribution_runs ar ON ar.attribution_run_id = at.attribution_run_id\n    JOIN recording_entity_links rel ON rel.recording_id = ar.recording_id\n    WHERE at.attribution_target_id = NEW.attribution_target_id\n      AND rel.entity_id = NEW.entity_id\n) = 0\nBEGIN\n    SELECT RAISE(ABORT, 'Candidate caller is not an entity linked to this recording');\nEND"
+        },
+        {
+          "name": "trg_attribution_candidate_native_no_probability",
+          "def": "CREATE TRIGGER trg_attribution_candidate_native_no_probability\nBEFORE INSERT ON attribution_candidates\nFOR EACH ROW\nWHEN (NEW.probability IS NOT NULL OR NEW.probability_semantics IS NOT NULL)\n AND (\n    SELECT ar.attribution_path\n    FROM attribution_targets at\n    JOIN attribution_runs ar ON ar.attribution_run_id = at.attribution_run_id\n    WHERE at.attribution_target_id = NEW.attribution_target_id\n) = 'native_estimate'\nBEGIN\n    SELECT RAISE(ABORT, 'A native_estimate candidate carries no probability: its score is not one');\nEND"
+        },
+        {
+          "name": "trg_attribution_candidate_native_no_probability_update",
+          "def": "CREATE TRIGGER trg_attribution_candidate_native_no_probability_update\nBEFORE UPDATE ON attribution_candidates\nFOR EACH ROW\nWHEN (NEW.probability IS NOT NULL OR NEW.probability_semantics IS NOT NULL)\n AND (\n    SELECT ar.attribution_path\n    FROM attribution_targets at\n    JOIN attribution_runs ar ON ar.attribution_run_id = at.attribution_run_id\n    WHERE at.attribution_target_id = NEW.attribution_target_id\n) = 'native_estimate'\nBEGIN\n    SELECT RAISE(ABORT, 'A native_estimate candidate carries no probability: its score is not one');\nEND"
         }
       ],
       "def": "CREATE TABLE attribution_candidates (\n    attribution_candidate_id INTEGER PRIMARY KEY,\n    attribution_target_id INTEGER NOT NULL REFERENCES attribution_targets(attribution_target_id) ON DELETE CASCADE,\n    entity_id           INTEGER NOT NULL REFERENCES experimental_entities(entity_id) ON DELETE RESTRICT,\n    candidate_status    TEXT NOT NULL DEFAULT 'candidate' CHECK (candidate_status IN (\n                            'candidate',\n                            'selected',\n                            'rejected'\n                        )),\n    candidate_rank      INTEGER CHECK (candidate_rank IS NULL OR candidate_rank \u003e= 1),\n    score               REAL,\n    score_semantics     TEXT,\n    probability         REAL CHECK (probability IS NULL OR (probability \u003e= 0 AND probability \u003c= 1)),\n    probability_semantics TEXT,\n    source_label        TEXT,\n    notes               TEXT,\n    UNIQUE(attribution_target_id, entity_id),\n    -- A number without stated semantics is not interpretable evidence. Applied\n    -- uniformly here because these tables are new and have no legacy to\n    -- accommodate; P3-1 exists because the same rule was once applied unevenly.\n    CHECK (score IS NULL OR score_semantics IS NOT NULL),\n    CHECK (probability IS NULL OR probability_semantics IS NOT NULL)\n)"
@@ -12756,6 +12764,14 @@
         {
           "name": "trg_attribution_evidence_measurement_scope_update",
           "def": "CREATE TRIGGER trg_attribution_evidence_measurement_scope_update\nBEFORE UPDATE ON attribution_evidence\nFOR EACH ROW\nWHEN NEW.derived_measurement_id IS NOT NULL\n AND EXISTS (SELECT 1 FROM derived_measurements dmx\n             WHERE dmx.derived_measurement_id = NEW.derived_measurement_id)\n AND EXISTS (SELECT 1 FROM attribution_targets atx\n             WHERE atx.attribution_target_id = NEW.attribution_target_id)\n AND (\n    SELECT COALESCE(\n        (SELECT ar.recording_id FROM acoustic_references ar\n         WHERE ar.acoustic_reference_id = dm.acoustic_reference_id),\n        dm.recording_id,\n        (SELECT d.recording_id FROM detections d WHERE d.detection_id = dm.detection_id),\n        (SELECT ce.recording_id FROM consensus_events ce\n         WHERE ce.consensus_event_id = dm.consensus_event_id),\n        (SELECT es.recording_id FROM external_events ee\n         JOIN external_streams es ON es.external_stream_id = ee.external_stream_id\n         WHERE ee.external_event_id = dm.external_event_id),\n        (SELECT re.recording_id FROM recording_epochs re WHERE re.epoch_id = dm.epoch_id),\n        (SELECT s.recording_id FROM sequences s WHERE s.sequence_id = dm.sequence_id),\n        (SELECT s.recording_id FROM bouts b JOIN sequences s ON s.sequence_id = b.sequence_id\n         WHERE b.bout_id = dm.bout_id))\n    FROM derived_measurements dm\n    WHERE dm.derived_measurement_id = NEW.derived_measurement_id\n) IS NOT (\n    SELECT ar.recording_id\n    FROM attribution_targets at\n    JOIN attribution_runs ar ON ar.attribution_run_id = at.attribution_run_id\n    WHERE at.attribution_target_id = NEW.attribution_target_id\n)\nBEGIN\n    SELECT RAISE(ABORT, 'Attribution evidence cites a derived measurement whose recording is not its run''s recording');\nEND"
+        },
+        {
+          "name": "trg_attribution_evidence_native_identity_cited",
+          "def": "CREATE TRIGGER trg_attribution_evidence_native_identity_cited\nBEFORE INSERT ON attribution_evidence\nFOR EACH ROW\nWHEN NEW.evidence_dimension IN ('pose_localization', 'visual_identity')\n AND NEW.tracking_identity_association_id IS NULL\n AND (\n    SELECT ar.attribution_path\n    FROM attribution_targets at\n    JOIN attribution_runs ar ON ar.attribution_run_id = at.attribution_run_id\n    WHERE at.attribution_target_id = NEW.attribution_target_id\n) = 'native_estimate'\nBEGIN\n    SELECT RAISE(ABORT, 'A native_estimate pose or identity evidence row must cite a tracking identity association');\nEND"
+        },
+        {
+          "name": "trg_attribution_evidence_native_identity_cited_update",
+          "def": "CREATE TRIGGER trg_attribution_evidence_native_identity_cited_update\nBEFORE UPDATE ON attribution_evidence\nFOR EACH ROW\nWHEN NEW.evidence_dimension IN ('pose_localization', 'visual_identity')\n AND NEW.tracking_identity_association_id IS NULL\n AND (\n    SELECT ar.attribution_path\n    FROM attribution_targets at\n    JOIN attribution_runs ar ON ar.attribution_run_id = at.attribution_run_id\n    WHERE at.attribution_target_id = NEW.attribution_target_id\n) = 'native_estimate'\nBEGIN\n    SELECT RAISE(ABORT, 'A native_estimate pose or identity evidence row must cite a tracking identity association');\nEND"
         }
       ],
       "def": "CREATE TABLE attribution_evidence (\n    attribution_evidence_id INTEGER PRIMARY KEY,\n    attribution_target_id INTEGER NOT NULL REFERENCES attribution_targets(attribution_target_id) ON DELETE CASCADE,\n    attribution_candidate_id INTEGER REFERENCES attribution_candidates(attribution_candidate_id) ON DELETE CASCADE,\n    evidence_dimension  TEXT NOT NULL CHECK (evidence_dimension IN (\n                            'temporal_alignment',\n                            'pose_localization',\n                            'visual_identity',\n                            'acoustic',\n                            'correspondence',\n                            'imported_composite',\n                            'source_localization'\n                        )),\n    evidence_kind       TEXT NOT NULL,\n    value_real          REAL,\n    value_text          TEXT,\n    value_units         TEXT,\n    value_semantics     TEXT,\n    identity_statement_kind TEXT CHECK (identity_statement_kind IS NULL OR identity_statement_kind IN (\n                            'declared_entity_link',\n                            'identity_association'\n                        )),\n    tracking_identity_association_id INTEGER REFERENCES tracking_identity_associations(tracking_identity_association_id) ON DELETE SET NULL,\n    external_event_id   INTEGER REFERENCES external_events(external_event_id) ON DELETE SET NULL,\n    alignment_run_id    INTEGER REFERENCES time_alignment_runs(alignment_run_id) ON DELETE SET NULL,\n    source_file_id      INTEGER REFERENCES source_files(source_file_id) ON DELETE SET NULL,\n    mapping_profile_version_id INTEGER REFERENCES config_profile_versions(profile_version_id) ON DELETE SET NULL,\n    source_locator      TEXT,\n    notes               TEXT,\n    recording_channel_id INTEGER REFERENCES recording_channels(recording_channel_id) ON DELETE CASCADE,\n    attribution_localization_estimate_id INTEGER REFERENCES attribution_localization_estimates(attribution_localization_estimate_id) ON DELETE CASCADE,\n    derived_measurement_id INTEGER REFERENCES derived_measurements(derived_measurement_id) ON DELETE RESTRICT,\n    CHECK (value_real IS NULL OR value_semantics IS NOT NULL),\n    -- A source localization cites the estimate it rests on, and only a source\n    -- localization may. CASCADE rather than SET NULL above, because this CHECK\n    -- makes an orphaned source_localization row illegal: evidence about an\n    -- estimate that no longer exists says nothing.\n    CHECK ((evidence_dimension = 'source_localization')\n         = (attribution_localization_estimate_id IS NOT NULL)),\n    -- An identity-derived row names which kind of statement it rests on, and\n    -- points at the row it read. A-1.\n    CHECK (identity_statement_kind IS NULL\n       OR (identity_statement_kind = 'identity_association'\n            AND tracking_identity_association_id IS NOT NULL)\n       OR (identity_statement_kind = 'declared_entity_link'\n            AND external_event_id IS NOT NULL))\n)"
@@ -14173,6 +14189,125 @@
         }
       ],
       "def": "CREATE TABLE attribution_run_declared_inputs (\n    attribution_run_id  INTEGER NOT NULL REFERENCES attribution_runs(attribution_run_id) ON DELETE CASCADE,\n    input_dimension     TEXT NOT NULL CHECK (input_dimension IN (\n                            'temporal_alignment',\n                            'pose_localization',\n                            'visual_identity',\n                            'acoustic'\n                        )),\n    declaration         TEXT NOT NULL CHECK (declaration IN ('used','not_used')),\n    declared_by_profile_version_id INTEGER NOT NULL REFERENCES config_profile_versions(profile_version_id) ON DELETE RESTRICT,\n    notes               TEXT,\n    PRIMARY KEY(attribution_run_id, input_dimension)\n)"
+    },
+    {
+      "name": "attribution_candidate_no_score_reasons",
+      "type": "table",
+      "columns": [
+        {
+          "name": "attribution_candidate_id",
+          "type": "INTEGER",
+          "nullable": false
+        },
+        {
+          "name": "reason_ordinal",
+          "type": "INTEGER",
+          "nullable": false
+        },
+        {
+          "name": "reason_code",
+          "type": "TEXT",
+          "nullable": false
+        }
+      ],
+      "indexes": [
+        {
+          "name": "sqlite_autoindex_attribution_candidate_no_score_reasons_2",
+          "def": "UNIQUE (attribution_candidate_id, reason_code)",
+          "table": "attribution_candidate_no_score_reasons",
+          "columns": [
+            "attribution_candidate_id",
+            "reason_code"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_attribution_candidate_no_score_reasons_1",
+          "def": "PRIMARY KEY (attribution_candidate_id, reason_ordinal)",
+          "table": "attribution_candidate_no_score_reasons",
+          "columns": [
+            "attribution_candidate_id",
+            "reason_ordinal"
+          ]
+        }
+      ],
+      "constraints": [
+        {
+          "name": "attribution_candidate_id",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (attribution_candidate_id)",
+          "table": "attribution_candidate_no_score_reasons",
+          "columns": [
+            "attribution_candidate_id"
+          ]
+        },
+        {
+          "name": "reason_ordinal",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (reason_ordinal)",
+          "table": "attribution_candidate_no_score_reasons",
+          "columns": [
+            "reason_ordinal"
+          ]
+        },
+        {
+          "name": "- (Foreign key ID: 0)",
+          "type": "FOREIGN KEY",
+          "def": "FOREIGN KEY (attribution_candidate_id) REFERENCES attribution_candidates (attribution_candidate_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE",
+          "table": "attribution_candidate_no_score_reasons",
+          "referenced_table": "attribution_candidates",
+          "columns": [
+            "attribution_candidate_id"
+          ],
+          "referenced_columns": [
+            "attribution_candidate_id"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_attribution_candidate_no_score_reasons_2",
+          "type": "UNIQUE",
+          "def": "UNIQUE (attribution_candidate_id, reason_code)",
+          "table": "attribution_candidate_no_score_reasons",
+          "columns": [
+            "attribution_candidate_id",
+            "reason_code"
+          ]
+        },
+        {
+          "name": "sqlite_autoindex_attribution_candidate_no_score_reasons_1",
+          "type": "PRIMARY KEY",
+          "def": "PRIMARY KEY (attribution_candidate_id, reason_ordinal)",
+          "table": "attribution_candidate_no_score_reasons",
+          "columns": [
+            "attribution_candidate_id",
+            "reason_ordinal"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (reason_ordinal \u003e= 1)",
+          "table": "attribution_candidate_no_score_reasons",
+          "columns": [
+            "reason_ordinal"
+          ]
+        },
+        {
+          "name": "-",
+          "type": "CHECK",
+          "def": "CHECK (length(trim(reason_code)) \u003e 0)",
+          "table": "attribution_candidate_no_score_reasons",
+          "columns": [
+            "reason_code"
+          ]
+        }
+      ],
+      "triggers": [
+        {
+          "name": "trg_no_score_reason_requires_unscored_candidate",
+          "def": "CREATE TRIGGER trg_no_score_reason_requires_unscored_candidate\nBEFORE INSERT ON attribution_candidate_no_score_reasons\nFOR EACH ROW\nWHEN EXISTS (\n    SELECT 1 FROM attribution_candidates ac\n    WHERE ac.attribution_candidate_id = NEW.attribution_candidate_id\n      AND ac.score IS NOT NULL\n)\nBEGIN\n    SELECT RAISE(ABORT, 'A no-score reason may be stated only for a candidate that has no score');\nEND"
+        }
+      ],
+      "def": "CREATE TABLE attribution_candidate_no_score_reasons (\n    attribution_candidate_id INTEGER NOT NULL REFERENCES attribution_candidates(attribution_candidate_id) ON DELETE CASCADE,\n    reason_ordinal      INTEGER NOT NULL CHECK (reason_ordinal \u003e= 1),\n    reason_code         TEXT NOT NULL CHECK (length(trim(reason_code)) \u003e 0),\n    PRIMARY KEY(attribution_candidate_id, reason_ordinal),\n    -- One statement of a reason per candidate. A repeated code is the same claim\n    -- twice, and its two ordinals would disagree about the producer's order.\n    UNIQUE(attribution_candidate_id, reason_code)\n)"
     },
     {
       "name": "v_detection_core",
@@ -19336,6 +19471,19 @@
       ],
       "parent_cardinality": "exactly_one",
       "def": "FOREIGN KEY (attribution_run_id) REFERENCES attribution_runs (attribution_run_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
+    },
+    {
+      "table": "attribution_candidate_no_score_reasons",
+      "columns": [
+        "attribution_candidate_id"
+      ],
+      "cardinality": "zero_or_one",
+      "parent_table": "attribution_candidates",
+      "parent_columns": [
+        "attribution_candidate_id"
+      ],
+      "parent_cardinality": "exactly_one",
+      "def": "FOREIGN KEY (attribution_candidate_id) REFERENCES attribution_candidates (attribution_candidate_id) ON UPDATE NO ACTION ON DELETE CASCADE MATCH NONE"
     }
   ],
   "driver": {

@@ -29,6 +29,10 @@ path's representation. D10's open "Phase 7 question" carries its answer, and
 D7's deferral of a declared-inputs block for the generic imported profile
 stands.
 
+**Status at 7.2.** Phase 7's one bump, applied at 7.2, makes the live schema
+`0.14-draft` (`PRAGMA user_version = 14`). Its new triggers apply to
+`native_estimate` runs only, and backend runs are unaffected.
+
 The contract clauses below are frozen as written. This status block is not: it
 names the live schema, and it moves when the version moves. The Phase 4
 contract set that precedent. **Nothing machine-checks it.**

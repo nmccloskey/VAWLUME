@@ -52,6 +52,12 @@ plans one bump to `0.14-draft`, owned by 7.2. Four clauses below carry visible
 opening and D16's P6-1 item. Each correction names the itinerary that makes it
 true.
 
+**Status at 7.2.** Phase 7's one bump, applied at 7.2, makes the live schema
+`0.14-draft` (`PRAGMA user_version = 14`). Invariants 24 and 26 are now schema
+rules for every writer (contract 07 D9). `attribution_candidate_no_score_reasons`
+exists, but nothing writes it until 7.4, so D10's `notes` convention is still
+what the estimator writes at this status.
+
 This contract **extends** [`04_caller_attribution_contract.md`](04_caller_attribution_contract.md)
 and [`05_backend_localization_contract.md`](05_backend_localization_contract.md).
 It replaces neither. Every Phase 4 and Phase 5 clause holds for a native run

@@ -124,16 +124,6 @@ verifyRefused(testCase, ...
     "CHECK constraint failed");
 end
 
-% --- the version moved once ---------------------------------------------------
-
-function testSchemaIsThirteenDraft(testCase)
-conn = testCase.TestData.conn;
-info = fetch(conn, "SELECT schema_version FROM schema_info");
-pragma = fetch(conn, "PRAGMA user_version");
-verifyEqual(testCase, string(info.schema_version), "0.13-draft");
-verifyEqual(testCase, double(pragma{1, 1}), 13);
-end
-
 % --- helpers --------------------------------------------------------------
 
 function sql = evidenceSql(measurementId)

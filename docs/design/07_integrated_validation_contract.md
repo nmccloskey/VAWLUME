@@ -10,6 +10,21 @@ negotiated by each later itinerary.
 Written against schema `0.13-draft` (`PRAGMA user_version = 13`), verified at 7.1
 on `dev` at `7d31eeb`. Phase 7 plans **at most one** version bump, to
 `0.14-draft` (`PRAGMA user_version = 14`), owned by itinerary 7.2 (D10).
+**Itinerary 7.2 applied it; the live schema is `0.14-draft`.** It holds D9's two
+trigger pairs and D10's no-score-reason table with its trigger, and nothing
+else. The DDL is documented in
+[`../development/31_caller_attribution_schema.md`](../development/31_caller_attribution_schema.md).
+
+**Status at 7.2, two findings:**
+
+- **The `ON DELETE SET NULL` action fires D9's update twin.** This was tested
+  under both `recursive_triggers` settings. A pre-existing CHECK already made an
+  association undeletable while any row states `identity_statement_kind =
+  'identity_association'`. The twin adds the same protection for native pose
+  rows, which cite an association without stating a kind.
+- **`schema_metadata.json` describes no triggers.** Its grammar has no trigger
+  entries, so the trigger meanings D10 lists live in `schema.sql`'s comments.
+  The new table, columns and relationship are described there.
 
 The contract clauses below are frozen as written. This status block is not. It
 names the live schema and moves when the version moves, following the

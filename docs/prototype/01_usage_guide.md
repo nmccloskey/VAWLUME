@@ -5,7 +5,7 @@
 > planned functionality. Where this guide and an older design document disagree,
 > the repository is the authority.
 >
-> **Status.** Early prototype. The schema (`0.13-draft`, `PRAGMA user_version = 13`),
+> **Status.** Early prototype. The schema (`0.14-draft`, `PRAGMA user_version = 14`),
 > the configuration contracts, and the `vawlume.*` package API are working design
 > hypotheses and may change before any public release. Every numeric threshold
 > shipped with the prototype is an illustrative demonstration value, not a
