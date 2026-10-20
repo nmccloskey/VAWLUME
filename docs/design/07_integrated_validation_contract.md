@@ -760,6 +760,17 @@ embedded newline, for 7.13's CSV audit.
 only if its integration test's assertions stay identical. Otherwise it records
 why the demonstration keeps its own scene.
 
+*(Corrected at 7.3a: the three test copies retire onto a second, smaller
+shipped builder, `vawlume.db.buildAlignmentSessionFixture`, not onto
+`buildIntegratedFixture`. Each copy builds a module-specific scene on an
+identical session core, and its assertions depend on that scene: the piecewise
+audio clock's 900 s breakpoint, linear-motion ground truth, a claim tie, a
+partial claim, a third participant, a second frame. The integrated scene holds
+none of these. The core (clocks, seeding, tracking) now exists once; each test
+keeps its own scene, with every assertion unchanged. The integrated builder
+remains the Phase 7 scene for cross-module and cross-path work. The
+demonstration's own session stays 7.16's decision.)*
+
 **If the builder is over-large** (the map's most likely `a`), 7.3 stops after
 the extractor, audio, clock and native scenes, and hands the backend and
 imported scenes to `7.3a`.

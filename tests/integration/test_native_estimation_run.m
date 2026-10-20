@@ -783,52 +783,30 @@ end
 % ============================================================= fixture ===
 
 function [fixture, cleanup] = setUpSession()
+%SETUPSESSION The shared alignment session (vawlume.db.buildAlignmentSessionFixture,
+% 7.3a), plus this suite's recordings, participants, channels, identity, audio,
+% acoustic chain and refusal material.
 repoRoot = repoRootPath();
 addpath(fullfile(repoRoot, "src"));
-workspace = string(fullfile(tempdir, "vawlume_native_run_" + ...
-    string(java.util.UUID.randomUUID)));
-mkdir(workspace);
+recordings = struct(path_or_uri=["audio/session.wav"; "audio/other.wav"], ...
+    relative_path=["audio/session.wav"; "audio/other.wav"], ...
+    native_recording_id=["REC_SESSION_01"; "REC_OTHER"], sample_rate_hz=[1000; 1000], ...
+    channel_count=[2; 2]);
+recordings = arrayfun(@(k) struct(path_or_uri=recordings.path_or_uri(k), ...
+    relative_path=recordings.relative_path(k), ...
+    native_recording_id=recordings.native_recording_id(k), ...
+    sample_rate_hz=recordings.sample_rate_hz(k), ...
+    channel_count=recordings.channel_count(k)), 1:2);
+[fixture, session] = vawlume.db.buildAlignmentSessionFixture(RepoRoot=repoRoot, ...
+    WorkspacePrefix="vawlume_native_run_", Recordings=recordings, ...
+    RegisterSemantics=true, Regions=[300.5 1.5; 700.05 1; 1100.1 1], ...
+    Tracks=["track0", "track1", "track2"]);
+cleanup = onCleanup(@() tearDown(session, fullfile(repoRoot, "src")));
+conn = fixture.conn;
+workspace = fixture.workspace;
 mkdir(fullfile(workspace, "audio"));
-conn = sqlite(char(fullfile(workspace, "session.sqlite")), "create");
-cleanup = onCleanup(@() tearDown(conn, workspace, fullfile(repoRoot, "src")));
-vawlume.db.applySchema(conn, fullfile(repoRoot, "schema", "schema.sql"));
-vawlume.db.registerBuiltinSemantics(conn, repoRoot);
-
-execute(conn, "INSERT INTO projects(project_key, project_name) VALUES " + ...
-    "('synthetic_alignment_session', 'Synthetic alignment session')");
-execute(conn, "INSERT INTO source_files(project_id, file_role, path_or_uri, " + ...
-    "relative_path) VALUES (1, 'recording_audio', 'audio/session.wav', " + ...
-    "'audio/session.wav'),(1, 'recording_audio', 'audio/other.wav', 'audio/other.wav')");
-execute(conn, "INSERT INTO recordings(project_id, source_file_id, native_recording_id, " + ...
-    "sample_rate_hz, channel_count) VALUES (1, 1, 'REC_SESSION_01', 1000, 2)," + ...
-    "(1, 2, 'REC_OTHER', 1000, 2)");
-
-fixture = struct(conn=conn, workspace=workspace, repo_root=repoRoot, knot=900, ...
-    video_scale=0.9992, video_offset=53.40, mics=[0 0; 100 0], gains=[1 0.5]);
-fixture.scale = [1.0015; 0.9990];
-fixture.offset = [117.25; (1.0015 - 0.9990) * fixture.knot + 117.25];
-audioTimes = [10; 400; 900; 1200; 1500];
-segment = 1 + double(audioTimes >= fixture.knot);
-neuralTimes = fixture.scale(segment) .* audioTimes + fixture.offset(segment);
-videoTimes = (neuralTimes - fixture.video_offset) / fixture.video_scale;
-writetable(behaviorTable(), fullfile(workspace, "video_events.csv"));
-writetable(neuralTable(neuralTimes), fullfile(workspace, "neural_events.csv"));
-writetable(anchorTable(audioTimes, videoTimes, neuralTimes), ...
-    fullfile(workspace, "sync_anchors.csv"));
-manifestPath = fullfile(workspace, "alignment_manifest.json");
-copyfile(fullfile(repoRoot, "config", "06_alignment_manifests", ...
-    "synthetic_session_alignment_manifest.json"), manifestPath);
-vawlume.ingest.alignment(conn, string(manifestPath), RepoRoot=repoRoot, ...
-    SourceRoot=workspace, Apply=true);
-execute(conn, "UPDATE time_alignment_runs SET method='piecewise_affine' " + ...
-    "WHERE source_timebase_id = (SELECT timebase_id FROM timebases " + ...
-    "WHERE timebase_name='audio_native')");
-vawlume.alignment.fit(conn, struct(run_key="synthetic_session_01_alignment"), ...
-    SourceTimebase="audio_native", Breakpoints=fixture.knot, Apply=true);
-vawlume.alignment.fit(conn, struct(run_key="synthetic_session_01_alignment"), ...
-    SourceTimebase="video_native", Apply=true);
-fixture.audio_run = runIdFor(conn, "audio_native");
-fixture.video_run = runIdFor(conn, "video_native");
+fixture.mics = [0 0; 100 0];
+fixture.gains = [1 0.5];
 
 execute(conn, "INSERT INTO extractors(extractor_id, extractor_key, extractor_name) " + ...
     "VALUES (90,'synthetic','Synthetic')");
@@ -851,9 +829,6 @@ execute(conn, "INSERT INTO experimental_entities(entity_id, project_id, entity_t
 execute(conn, "INSERT INTO recording_entity_links(recording_id, entity_id) VALUES (1,1),(1,2)");
 fixture.A = 1; fixture.B = 2; fixture.unlinked = 5;
 
-vawlume.geometry.registerCoordinateSystem(conn, struct(project_id=1), struct( ...
-    coordinate_system_key="arena_2d", coordinate_system_name="Arena floor plane", ...
-    dimensionality=2, unit="cm"));
 for channel = 1:2
     vawlume.geometry.registerRecordingChannel(conn, struct(recording_id=1), ...
         struct(channel_index=channel));
@@ -861,17 +836,6 @@ for channel = 1:2
         channel_index=channel, coordinate_system_key="arena_2d", ...
         position_x=fixture.mics(channel, 1), position_y=fixture.mics(channel, 2)));
 end
-
-regions = [videoAround(fixture, 300.5, 1.5); videoAround(fixture, 700.05, 1); ...
-    videoAround(fixture, 1100.1, 1)];
-writeTrackingCsv(fullfile(workspace, "arena_tracking.csv"), regions);
-profilePath = fullfile(workspace, "tracking_profile.json");
-writelines(string(fileread(fullfile(repoRoot, "config", "01_mapping_profiles", ...
-    "tracking", "generic_tracking_mapping_profile.json"))), profilePath);
-vawlume.tracking.register(conn, struct(recording_id=1), struct( ...
-    artifact_path="arena_tracking.csv", profile_path=profilePath, ...
-    timebase_key="video_native", stream_name="arena_tracking"), ...
-    Apply=true, RepoRoot=repoRoot, SourceRoot=workspace);
 registerIdentity(fixture);
 % A tracking stream of the other recording, for the refusal.
 execute(conn, "INSERT INTO timebases(project_id, recording_id, timebase_name, " + ...
@@ -1055,79 +1019,11 @@ reference = vawlume.alignment.applyTransform(fixture.conn, fixture.audio_run, au
 value = (reference - fixture.video_offset) / fixture.video_scale;
 end
 
-function region = videoAround(fixture, audioTime, halfWidth)
-center = videoTimeOf(fixture, audioTime);
-region = [center - halfWidth, center + halfWidth];
-end
-
-function writeTrackingCsv(path, regions)
-lines = "time_s,subject,bodypart,x,y,likelihood";
-for r = 1:height(regions)
-    times = (ceil(regions(r, 1) * 30):floor(regions(r, 2) * 30))' / 30;
-    for t = times'
-        for track = ["track0", "track1", "track2"]
-            [x, y] = truePosition(track, t);
-            for part = ["snout", "tail_base"]
-                lines(end + 1, 1) = compose("%.9f", t) + "," + track + "," + part + ...
-                    "," + compose("%.9f", x) + "," + compose("%.9f", y) + ",0.95"; %#ok<AGROW>
-            end
-        end
-    end
-end
-writelines(lines, path);
-end
-
-function tbl = behaviorTable()
-tbl = table(["b1"; "b2"; "b3"], ["Intruder enters"; "Sniffing"; "SYNC_FLASH"], ...
-    ["10"; "20"; "30"], ["12"; missing; "30"], ["F01"; "M01"; ""], ...
-    ["door"; "center"; "sync"], VariableNames=["event_id", "event", ...
-    "start_time_s", "end_time_s", "subject", "zone"]);
-end
-
-function tbl = neuralTable(neuralTimes)
-ids = "n" + string(1:numel(neuralTimes))';
-tbl = table(ids, repmat("TTL1_HIGH", numel(ids), 1), ...
-    compose("%.9f", neuralTimes * 1000), repmat("5", numel(ids), 1), ...
-    repmat("1", numel(ids), 1), ...
-    VariableNames=["pulse_id", "marker", "timestamp_ms", "amplitude_v", "channel"]);
-end
-
-function tbl = anchorTable(audioTimes, videoTimes, neuralTimes)
-keys = "sync0" + string(1:numel(audioTimes))';
-markers = repelem(keys, 3);
-streams = repmat(["audio"; "video"; "neural"], numel(keys), 1);
-timestamps = strings(3 * numel(keys), 1);
-eventIds = strings(3 * numel(keys), 1);
-for index = 1:numel(keys)
-    base = (index - 1) * 3;
-    timestamps(base + 1) = compose("%.9f", audioTimes(index));
-    timestamps(base + 2) = compose("%.9f", videoTimes(index));
-    timestamps(base + 3) = compose("%.9f", neuralTimes(index));
-    eventIds(base + 3) = "n" + string(index);
-end
-tbl = table(markers, streams, timestamps, repmat("primary", 3 * numel(keys), 1), ...
-    repmat("true", 3 * numel(keys), 1), repmat("0.002", 3 * numel(keys), 1), eventIds, ...
-    VariableNames=["marker", "stream", "timestamp_s", "role", "include", ...
-    "uncertainty_s", "event_id"]);
-end
-
-function value = runIdFor(conn, timebaseKey)
-rows = fetch(conn, "SELECT t.alignment_run_id FROM time_alignment_runs t " + ...
-    "JOIN timebases tb ON tb.timebase_id = t.source_timebase_id " + ...
-    "WHERE tb.timebase_name = '" + timebaseKey + "'");
-value = double(rows.alignment_run_id(1));
-end
-
-function tearDown(conn, workspace, sourcePath)
-if isopen(conn)
-    close(conn);
-end
-if isfolder(workspace)
-    rmdir(workspace, "s");
-end
-rmpath(sourcePath);
-end
-
 function root = repoRootPath()
 root = string(fileparts(fileparts(fileparts(mfilename("fullpath")))));
+end
+
+function tearDown(session, sourcePath)
+delete(session);   % closes the connection and removes the workspace
+rmpath(sourcePath);
 end
