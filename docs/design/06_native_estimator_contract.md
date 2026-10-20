@@ -45,6 +45,13 @@ Invariant 25 gained a static guard. Two clarifications:
 - D14's "export of a migrated fixture" means a freshly built 0.13 fixture: no
   schema migration path exists in this prototype.
 
+**Status at 7.1.** Still `0.13-draft`. Phase 7's contract,
+[`07_integrated_validation_contract.md`](07_integrated_validation_contract.md),
+plans one bump to `0.14-draft`, owned by 7.2. Four clauses below carry visible
+7.1 corrections: D10's no-score reasons, D12's invariants 24 and 26, D14's I-5
+opening and D16's P6-1 item. Each correction names the itinerary that makes it
+true.
+
 This contract **extends** [`04_caller_attribution_contract.md`](04_caller_attribution_contract.md)
 and [`05_backend_localization_contract.md`](05_backend_localization_contract.md).
 It replaces neither. Every Phase 4 and Phase 5 clause holds for a native run
@@ -583,6 +590,12 @@ Absence stays visible: an unscored entity is a candidate row, not a missing row.
 `channel_unplaced`, `frame_unit_not_accepted`, `distance_degenerate`,
 `acoustic_unavailable`, `acoustic_clipped`.
 
+*(Corrected at 7.1, effective from 7.4: the method returns every applicable
+reason, but the `notes` convention above stores only the first. From `0.14-draft`
+every reason is stored, in the method's order, in
+`attribution_candidate_no_score_reasons`, and native runs written after 7.4 no
+longer carry the `notes` token. Contract 07 D10.)*
+
 **Evidence rows written per target** (6.9 implements; 6.11 prints):
 
 | Dimension | Kind | Grain | Value | Units | Citations |
@@ -672,6 +685,12 @@ Carried from `phase_5.11_handoff.md` §9A. The changed ones are worded here as
 26. A track reaches an entity only through a cited
     `tracking_identity_associations` row. No string comparison between a track
     label and an entity identifier exists in `+estimator/` or `+tracking/`.
+
+*(Corrected at 7.1: 6.13 measured 24 and 26 as QUALIFIED. They held for
+everything the estimator writes, but the canonical layer accepted a hand-written
+native probability or a label-only pose row. Contract 07 D9 makes both schema
+rules (7.2) with named API refusals (7.4). Contract 07 revises their wording,
+and 7.18 verifies them as HOLD.)*
 27. The native decision policy cannot produce `simultaneous`.
 28. Normalization never crosses recordings, and never mixes metric, reference
     family or band.
@@ -729,6 +748,10 @@ Backend intake must write it and `report` must read it. That is behaviour in
 6.2's tripwire forbids it. **Named opening:** the next itinerary that edits
 backend intake, or Phase 7 consolidation.
 
+*(Corrected at 7.1: Phase 7 applied the same test and found no consumer. No
+Phase 7 comparison joins on a backend estimate's ordinal. I-5 is re-deferred
+beyond v2; contract 07 D10.)*
+
 **P4-2 does not ride**, for contract 05 D9's reasons. The estimator's own profile
 is relational: a settings profile version on the run, plus declared inputs.
 
@@ -783,6 +806,9 @@ language. That leaves two code paths inserting into one table. They interpret
 different configuration contracts, so `02_general.md` §6 is not breached. It is
 recorded as a minor consolidation item for whichever itinerary next edits
 backend intake.
+
+*(Corrected at 7.1: the item, P6-1, is owned by Phase 7 itinerary 7.4, which
+reduces the two writers to one; contract 07's ledger audit.)*
 
 ### D17. The method uses distance ratios; the profile names the frame units it accepts
 
@@ -994,6 +1020,10 @@ written by this repository. Therefore:
   generate the call then scored −2.27 dB, ranked first, and was `assigned` under
   the native policy. Nothing in the run flagged it. See
   [`../development/45_integrated_native_estimator_demonstration.md`](../development/45_integrated_native_estimator_demonstration.md).)*
+  *(Corrected at 7.1: Phase 7 adds read-only QC facts that make this margin
+  visible per target (`vawlume.estimator.qcFacts`, owned by 7.10). They still
+  cannot flag the failure, because a wrong animal that fits well looks ordinary
+  in every stored quantity. Contract 07 D8.)*
 - **Nothing establishes that any score is comparable across recordings** (D8),
   and none is claimed.
 - **Nothing establishes that normalization corrects anything in absolute terms.**

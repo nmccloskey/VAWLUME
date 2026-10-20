@@ -33,6 +33,12 @@ path, and reads back through the same `report`. Every clause here holds for it
 unless contract 06 says otherwise. The sentences below that Phase 6 made false
 carry visible corrections.
 
+**Status at 7.1.** Still `0.13-draft`. Phase 7's contract,
+[`07_integrated_validation_contract.md`](07_integrated_validation_contract.md),
+plans one bump to `0.14-draft`, owned by 7.2, and compares runs of this
+representation without extending its meaning. D6's "precisely what Phase 7
+needs" is realized there as decision-policy variants (contract 07 D2, D6).
+
 The contract clauses below are frozen as written. This status block is not: it
 names the live schema, and 4.2 set the precedent of moving it when the version
 moves rather than leaving a stale claim in the sentence that advertises currency.
@@ -485,6 +491,10 @@ A contract that is quietly wrong in one sentence is worse than one that shows wh
 was wrong, and this particular sentence matters to Phase 7: comparing an imported
 attribution against a native one will want to know whether the two used the same
 evidence, and that question is currently unanswerable.
+
+*(Corrected at 7.1: it stays unanswerable for an imported run. Phase 7's
+comparison reports each of that run's dimensions as `unknown`, never as
+`not_used`, and conditions on nothing. Contract 07 D4 and invariant 45.)*
 
 An optional declared field naming the exporter's input modalities was considered at
 4.12a and **declined**, because nothing would read it and plan §4.7 is explicit that a

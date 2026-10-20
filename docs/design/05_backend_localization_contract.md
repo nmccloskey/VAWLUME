@@ -22,6 +22,13 @@ unchanged: nothing computes a distance from a backend's estimate, and the native
 path consumes no backend output. Sentences Phase 6 made false carry visible
 corrections (6.3, 6.8).
 
+**Status at 7.1.** Still `0.13-draft`. Phase 7's contract,
+[`07_integrated_validation_contract.md`](07_integrated_validation_contract.md),
+plans one bump to `0.14-draft`, owned by 7.2. It adds nothing to the backend
+path's representation. D10's open "Phase 7 question" carries its answer, and
+D7's deferral of a declared-inputs block for the generic imported profile
+stands.
+
 The contract clauses below are frozen as written. This status block is not: it
 names the live schema, and it moves when the version moves. The Phase 4
 contract set that precedent. **Nothing machine-checks it.**
@@ -542,6 +549,10 @@ spatial eligibility term would make it a caller judgement in disguise. The
 correspondence layer deliberately reads no caller label for exactly this reason.
 A shared primitive acquiring a domain term is also the UniversalMatcher §14
 forbids. If spatial correspondence proves valuable, it is a Phase 7 question.
+
+*(Answered at 7.1: not in v2. Phase 7 compares event sets only through stored
+rows of a named analysis and adds no correspondence term of any kind.
+Contract 07 D3 and its non-goals.)*
 
 ### D11. Phase 5 computes no distance, angle, or geometric derivation
 
