@@ -839,9 +839,11 @@ smoke database, cost calibration). Under the user's runtime policy, the long
 parts must be handed off as scripts. The split:
 
 - **7.14** (R1) may run any time after 7.2;
-- **7.14a** (R2) runs on the committed candidate after 7.13;
-- **7.14b**, if needed, reads the user-run logs and writes the acceptance
-  record.
+- **7.14a** (R2 up to the long run) runs on the committed candidate after
+  7.13. It hands R2-C to the user as a script;
+- **7.14b** reads R2-C's results and everything that depends on them (R2-F's
+  support patterns, the optional R2-H), then writes the acceptance record
+  (R2-K).
 
 D19 records the harness's ownership.
 
