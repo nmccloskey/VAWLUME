@@ -62,12 +62,12 @@ There is one row per event, ordered by event kind, event id and extent basis.
 
 | Column | Values |
 |---|---|
-| `correspondence_unit` | `one_to_one` when both runs target the event; `unmatched_left` / `unmatched_right` when only one does |
+| `correspondence_unit` | `one_to_one` when both runs target the event; `unmatched_left` / `unmatched_right` when only one does; across event sets also `one_to_many`, `many_to_one`, `many_to_many` (below) |
 | `event_kind`, `event_id`, `agreement_extent_method` | The shared event |
 | `left_target_ids`, `right_target_ids` | Every stored target id (cells) |
 | `top_entity_agreement` | `same`, `different`, `tie_left`, `tie_right`, `left_unscored`, `right_unscored`, `both_unscored`, `orientation_unknown`, `not_applicable_unit` |
 | `selected_set_relation` | `equal`, `disjoint`, `subset`, `superset`, `overlap`, `left_empty`, `right_empty`, `both_empty`, `not_applicable_unit` |
-| `left_decision_status`, `right_decision_status` | The stored status under the side's policy, or `no_decision` |
+| `left_decision_status`, `right_decision_status` | The stored status under the side's policy, or `no_decision`; `no_counterpart` for the side an unmatched unit lacks; `not_applicable_unit` for a side with several targets |
 | `left_declared_<dim>`, `right_declared_<dim>` | `used`, `not_used` or `unknown`. No declaration row is `unknown`, never `not_used`. An imported run is `unknown` on all four dimensions |
 | `score_comparability` | `comparable`, or `not_comparable:<reason>` |
 
@@ -83,9 +83,10 @@ There is one row per event, ordered by event kind, event id and extent basis.
 
 The basis each side used is in `sides.rank_basis`.
 
-**Pairs.** `pairs` has the per-target columns with a `unit_id`. It is for units
-with several targets on a side (7.7). It is empty over one event set, and is
-never promoted to unit agreement.
+**Pairs.** `pairs` has the per-target columns with a `unit_id`. It holds one
+row per (left, right) target pair of a unit with several targets on a side, and
+one row per target of an unmatched unit, against `no_counterpart`. It is never
+promoted to unit agreement.
 
 ## Decision statuses (`status_crosstab`, `status_counts`)
 
@@ -126,9 +127,80 @@ row (`different`, `disjoint`). Both are reported.
 
 ## Scores (`CompareScores=true`)
 
-For each `one_to_one` unit and entity, `scores` gives each side's stored score
-and semantics side by side. There is no difference column. It is allowed only
+For each `one_to_one` unit, each within-unit pair, and each entity, `scores`
+gives the target ids and each side's stored score and semantics side by side. There is no difference column. It is allowed only
 when `score_comparability` is `comparable`.
+
+## Across event sets (`Correspondence=`, itinerary 7.7)
+
+```matlab
+result = vawlume.attribution.compare(conn, dsRunRef, mupetRunRef, ...
+    Correspondence=struct(analysis_run_id=dsMupetAnalysisId))   % or struct(run_key=...)
+```
+
+**The join is the stored one.** One named analysis supplies it, and no
+"latest analysis" is ever assumed:
+
+| Left / right | Analysis | Stored rows |
+|---|---|---|
+| detections / detections | `cross_extractor_matching` | `match_group_members` |
+| detections / detections | `multi_extractor_agreement` | `agreement_group_members` (restricted to the two runs' targets) |
+| detections / consensus events | the `cross_extractor_matching` analysis that produced the consensus events | `consensus_event_members` |
+| detections / agreement groups | that `multi_extractor_agreement` analysis | `agreement_group_members` |
+
+**A unit** is one connected component of those rows, restricted to the two
+runs' targets. Its type is decided by counting its targets on each side:
+
+- `one_to_one`;
+- `one_to_many`: the right side has several, a right-side split;
+- `many_to_one`;
+- `many_to_many`;
+- `unmatched_left` / `unmatched_right`: a target in no stored group with a
+  counterpart.
+
+Units are ordered by smallest left, then smallest right target id. Their
+`event_kind` is `correspondence_component`.
+
+**Within a unit, nothing is picked.**
+
+- A `one_to_one` unit is compared like a same-set target.
+- A unit with several targets on a side keeps `not_applicable_unit` in `units`.
+  Every (left, right) target pair is reported in `pairs` and is never promoted.
+- An unmatched target's own decision is reported against `no_counterpart`, in
+  `units` and in `pairs`. It is neither a disagreement nor dropped.
+- The status cross-tab counts only `one_to_one` units.
+
+**Values.** Native runs over two event sets of one recording, under one
+settings version, are `comparable`. `correspondence.value_note` says that the
+two targets are different measured windows of the same call.
+
+**Refused by name:**
+
+- `CorrespondenceAnalysisRequired`: different event sets and no analysis named.
+- `CorrespondenceAnalysisInvalid`: any of these:
+  - a missing analysis, or one of another project;
+  - an analysis that is not complete, or of another kind;
+  - an analysis that does not take both runs' event sets as inputs or
+    outputs;
+  - an analysis with no rows on the recording;
+  - an analysis named for one event set;
+  - two derived event sets, such as consensus events of two configurations.
+    Those join through shared member detections, which is 7.9's.
+
+**Proof that the join is stored.** On the 7.3 fixture:
+
+- the split, merge and miss scenes give `one_to_many`, `many_to_one` and
+  `unmatched_left`, as the manifest says;
+- for all three pairwise analyses and the agreement analysis, the units equal
+  components computed independently from SQL;
+- a second DeepSqueak–MUPET analysis under `min_temporal_iou = 0.9` stores
+  different groups, and the units change exactly as the rows do. The split
+  becomes unmatched on both sides.
+
+A static guard finds no `+matching`, `+agreement`, `+consilience` or
+`+interval` call, no interval field (`start_time`, `end_time`, overlap, IoU) and
+no SQL write in `compare` or its two helpers. It fails on an injected planner
+call and on injected overlap arithmetic.
 
 ## Comparing a variant with its reference (for 7.8)
 

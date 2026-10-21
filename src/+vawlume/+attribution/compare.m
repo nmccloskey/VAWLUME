@@ -10,10 +10,12 @@ function result = compare(conn, leftRunRef, rightRunRef, options)
 % produces no merged caller, consensus decision, combined score, "best" run or
 % composite agreement score. Disagreement is reported, never collapsed.
 %
-% READ-ONLY. Each run is read through vawlume.attribution.report; the only other
-% read is the registered decision-policy row of each side, to re-read the policy
-% file that orients its ranks. Nothing is written, recomputed or re-decided, and
-% no producer or decide is called.
+% READ-ONLY. Each run is read through vawlume.attribution.report. The only other
+% reads are each side's registered decision-policy row, to re-read the policy
+% file that orients its ranks, and, with Correspondence, the named analysis's
+% stored membership rows (read-only SQL, contract 07 D1). Nothing is written,
+% recomputed, re-matched or re-decided, and no producer, matching or agreement
+% function, or decide is called.
 %
 % SYNTHETIC AGREEMENT IS CIRCULAR. Two runs agreeing on data this repository
 % generated shows that the machinery joins correctly, never that either run is
@@ -26,14 +28,33 @@ function result = compare(conn, leftRunRef, rightRunRef, options)
 %                 decisions under more than one policy version
 %   CompareScores false (default). true adds the scores table, and is refused
 %                 unless the two runs' scores are on one scale (below)
+%   Correspondence  the ONE stored analysis that joins two different event sets
+%                 (contract 07 D3): struct(analysis_run_id=...) or
+%                 struct(run_key=...) in the runs' project. Its stored rows
+%                 are the only join, read through
+%                   detections vs detections  match_group_members (a
+%                     cross_extractor_matching analysis) or agreement_group_members
+%                     (a multi_extractor_agreement analysis, restricted to the
+%                     two runs' extractors)
+%                   detections vs consensus events  consensus_event_members of
+%                     the matching analysis that produced those events
+%                   detections vs agreement groups  agreement_group_members
+%                 A unit is one connected component of those rows restricted to
+%                 the two runs' targets. Nothing is re-matched and nothing is
+%                 forced 1:1; no "latest analysis" is ever assumed
 %   RepoRoot      repository root for relative policy URIs; inferred by default
 %
 % REFUSED BY NAME, BEFORE ANY TABLE IS BUILT:
 %   runs of different recordings          vawlume:attribution:ComparisonRecordingMismatch
 %   runs over different event sets        vawlume:attribution:CorrespondenceAnalysisRequired
 %     (different extractors, detections against consensus events, different
-%     configurations): such targets correspond only through a named analysis,
-%     compare's Correspondence option (itinerary 7.7)
+%     configurations) with no Correspondence named
+%   a named analysis that is missing, of another project, not complete, of
+%     another kind, not built over both runs' event sets, without rows on
+%     the recording, or named for one event set
+%                                         vawlume:attribution:CorrespondenceAnalysisInvalid
+%     Two derived event sets (consensus events of two configurations) join
+%     through shared member detections: itinerary 7.9, refused here by name
 %   decisions under several policy versions, none named
 %                                         vawlume:attribution:DecisionPolicyRequired
 %   a named policy that decided nothing on that run
@@ -50,11 +71,18 @@ function result = compare(conn, leftRunRef, rightRunRef, options)
 %                  version, event set, the decision policy read (id, key,
 %                  version, read status, rule key, producible statuses) and the
 %                  rank basis
-%   units          one row per unit, ordered by event kind, event id and extent
-%                  basis; unit_id numbers them in that order. Same-event-set
-%                  units are one target each (correspondence_unit one_to_one),
-%                  or unmatched_left / unmatched_right for a target only one run
-%                  has. Columns, each a closed vocabulary:
+%   correspondence what joined the targets: kind (same_event_set,
+%                  matching_membership, agreement_membership,
+%                  consensus_membership), the analysis id, key and type, and a
+%                  value note
+%   units          one row per unit; unit_id numbers them in order. On one
+%                  event set: ordered by event kind, event id and extent basis;
+%                  each unit is one event (one_to_one, or unmatched_left /
+%                  unmatched_right for an event only one run targets). Across
+%                  event sets: ordered by smallest left target id, then
+%                  smallest right; event_kind is correspondence_component and
+%                  event_id NaN, and the target ids carry identity. Columns,
+%                  each a closed vocabulary:
 %
 %     correspondence_unit    one_to_one, one_to_many, many_to_one, many_to_many,
 %                            unmatched_left, unmatched_right
@@ -69,7 +97,10 @@ function result = compare(conn, leftRunRef, rightRunRef, options)
 %                            left_empty, right_empty, both_empty,
 %                            not_applicable_unit (left relative to right)
 %     left_decision_status, right_decision_status   the stored status under the
-%                            side's policy, or no_decision
+%                            side's policy, or no_decision; no_counterpart for
+%                            the side an unmatched unit lacks;
+%                            not_applicable_unit for a side with several
+%                            targets in the unit
 %     left_declared_<dim>, right_declared_<dim>    used, not_used or unknown for
 %                            temporal_alignment, pose_localization,
 %                            visual_identity and acoustic. No row is unknown,
@@ -78,8 +109,11 @@ function result = compare(conn, leftRunRef, rightRunRef, options)
 %                            (producer_scale, method, settings_profile_version)
 %
 %   pairs          one row per (left target, right target) inside a unit with
-%                  several targets on a side (7.7). Empty for one event set.
-%                  Never promoted to unit agreement
+%                  several targets on a side, with the per-target values; and
+%                  one row per target of an unmatched unit, its own decision
+%                  against no_counterpart (NaN for the missing target). Never
+%                  promoted to unit agreement, never a representative target,
+%                  and an unmatched target is neither a disagreement nor dropped
 %   status_crosstab  every (left status, right status) cell over one_to_one
 %                  units, with unit_count and cell_kind, decided in this order:
 %                  structural_empty (a status one side's decision rule cannot
@@ -104,8 +138,11 @@ function result = compare(conn, leftRunRef, rightRunRef, options)
 %                  unpromoted claim is never compared as a candidate
 %   claim_counts   per side: claims_promoted, claims_not_promoted,
 %                  windows_uncorresponded
-%   scores         only with CompareScores=true: per one_to_one unit and entity,
-%                  each side's stored score and semantics, side by side
+%   scores         only with CompareScores=true: per one_to_one unit or
+%                  within-unit pair and entity, each side's stored score and
+%                  semantics, side by side. Across event sets the two targets
+%                  are different measured windows of one call
+%                  (correspondence.value_note)
 %   lineage_note, comparison_note, source
 %
 % See also VAWLUME.ATTRIBUTION.REPORT, VAWLUME.MATCHING.COMPARE
@@ -117,6 +154,7 @@ arguments
     options.LeftPolicy = []
     options.RightPolicy = []
     options.CompareScores (1,1) logical = false
+    options.Correspondence = []
     options.RepoRoot (1,1) string = ""
 end
 
@@ -126,7 +164,22 @@ if strlength(repoRoot) == 0
 end
 leftReport = vawlume.attribution.report(conn, leftRunRef);
 rightReport = vawlume.attribution.report(conn, rightRunRef);
-assertComparable(leftReport, rightReport);
+assertSameRecording(leftReport, rightReport);
+if isempty(options.Correspondence)
+    assertSameEventSet(leftReport, rightReport);
+    unitList = sameSetUnits(leftReport, rightReport);
+    correspondence = struct(kind="same_event_set", analysis_run_id=NaN, ...
+        analysis_run_key="", analysis_run_type="", value_note="");
+else
+    [analysis, components] = attributionCorrespondenceUnits(conn, leftReport, ...
+        rightReport, options.Correspondence);
+    unitList = componentUnits(components);
+    correspondence = struct(kind=analysis.kind, analysis_run_id=analysis.analysis_run_id, ...
+        analysis_run_key=analysis.run_key, analysis_run_type=analysis.run_type, ...
+        value_note="Targets in two event sets are different measured windows of " + ...
+        "the same call where a stored analysis joins them; even a comparable score " + ...
+        "pair was computed over different windows.");
+end
 left = sideOf(conn, leftReport, options.LeftPolicy, repoRoot, "left");
 right = sideOf(conn, rightReport, options.RightPolicy, repoRoot, "right");
 comparability = scoreComparability(leftReport, rightReport);
@@ -140,11 +193,12 @@ if options.CompareScores && comparability ~= "comparable"
         leftReport.attribution_run_id, rightReport.attribution_run_id, comparability);
 end
 
-units = unitTable(left, right, comparability);
+[units, pairs] = unitTable(left, right, unitList, comparability);
 result = struct( ...
     sides=[sideRow(left); sideRow(right)], ...
+    correspondence=correspondence, ...
     units=units, ...
-    pairs=emptyPairs(), ...
+    pairs=pairs, ...
     status_crosstab=crosstab(units, left, right), ...
     status_counts=table(), ...
     reasons=[reasonRows(left); reasonRows(right)], ...
@@ -158,19 +212,22 @@ result = struct( ...
 result.status_counts = statusCounts(result.status_crosstab, units);
 result.claim_counts = [claimCounts(left, result); claimCounts(right, result)];
 if options.CompareScores
-    result.scores = scoreRows(units, left, right);
+    result.scores = scoreRows(units, pairs, left, right);
 end
 end
 
 % ------------------------------------------------------------- refusals ---
 
-function assertComparable(left, right)
+function assertSameRecording(left, right)
 if left.recording_id ~= right.recording_id
     error("vawlume:attribution:ComparisonRecordingMismatch", ...
         "Run %d is on recording %d and run %d on recording %d; a comparison is " + ...
         "within one recording.", left.attribution_run_id, left.recording_id, ...
         right.attribution_run_id, right.recording_id);
 end
+end
+
+function assertSameEventSet(left, right)
 a = eventSet(left);
 b = eventSet(right);
 if a ~= b
@@ -322,36 +379,53 @@ end
 
 % ---------------------------------------------------------------- units ---
 
-function units = unitTable(left, right, comparability)
-leftKeys = eventKeys(left.report.targets);
-rightKeys = eventKeys(right.report.targets);
-keys = sortKeys([leftKeys; rightKeys]);
+function [units, pairs] = unitTable(left, right, unitList, comparability)
+% One row per unit, in UNITLIST's order. A one_to_one unit is compared as a
+% unit. A unit with several targets on a side keeps not_applicable_unit and
+% reports every (left, right) target pair in PAIRS, never promoted. An
+% unmatched unit reports each target's own decision against no_counterpart,
+% in PAIRS too; it is neither a disagreement nor dropped.
 units = emptyUnits();
-for k = 1:height(keys)
-    key = keys(k, :);
-    leftIds = matching(left.report.targets, leftKeys, key);
-    rightIds = matching(right.report.targets, rightKeys, key);
-    row = struct(unit_id=k, event_kind=key.event_kind, event_id=key.event_id, ...
-        agreement_extent_method=key.agreement_extent_method);
-    row.left_target_ids = {leftIds'};
-    row.right_target_ids = {rightIds'};
-    if isscalar(leftIds) && isscalar(rightIds)
-        row.correspondence_unit = "one_to_one";
+pairs = emptyPairs();
+for k = 1:numel(unitList)
+    item = unitList(k);
+    leftIds = item.left_target_ids;
+    rightIds = item.right_target_ids;
+    row = struct(unit_id=k, event_kind=item.event_kind, event_id=item.event_id, ...
+        agreement_extent_method=item.agreement_extent_method);
+    row.left_target_ids = {leftIds};
+    row.right_target_ids = {rightIds};
+    row.correspondence_unit = unitType(numel(leftIds), numel(rightIds));
+    row.top_entity_agreement = "not_applicable_unit";
+    row.selected_set_relation = "not_applicable_unit";
+    row.left_decision_status = sideStatus(left, leftIds);
+    row.right_decision_status = sideStatus(right, rightIds);
+    if row.correspondence_unit == "one_to_one"
         pair = attributionCompareTargets(left, right, leftIds, rightIds);
         row.top_entity_agreement = pair.top_entity_agreement;
         row.selected_set_relation = pair.selected_set_relation;
         row.left_decision_status = pair.left_decision_status;
         row.right_decision_status = pair.right_decision_status;
-    else
-        if isempty(rightIds)
-            row.correspondence_unit = "unmatched_left";
-        else
-            row.correspondence_unit = "unmatched_right";
+    elseif isempty(rightIds) || isempty(leftIds)
+        for id = leftIds
+            pairs(end + 1, :) = {k, id, NaN, "not_applicable_unit", ...
+                "not_applicable_unit", statusOf(left, id), "no_counterpart", ...
+                comparability}; %#ok<AGROW>
         end
-        row.top_entity_agreement = "not_applicable_unit";
-        row.selected_set_relation = "not_applicable_unit";
-        row.left_decision_status = statusOf(left, leftIds);
-        row.right_decision_status = statusOf(right, rightIds);
+        for id = rightIds
+            pairs(end + 1, :) = {k, NaN, id, "not_applicable_unit", ...
+                "not_applicable_unit", "no_counterpart", statusOf(right, id), ...
+                comparability}; %#ok<AGROW>
+        end
+    else
+        for l = leftIds
+            for r = rightIds
+                pair = attributionCompareTargets(left, right, l, r);
+                pairs(end + 1, :) = {k, l, r, pair.top_entity_agreement, ...
+                    pair.selected_set_relation, pair.left_decision_status, ...
+                    pair.right_decision_status, comparability}; %#ok<AGROW>
+            end
+        end
     end
     for dim = dimensions()
         row.("left_declared_" + dim) = declared(left.report, dim);
@@ -360,6 +434,62 @@ for k = 1:height(keys)
     row.score_comparability = comparability;
     added = struct2table(row, AsArray=true);
     units = [units; added(:, unitColumns())]; %#ok<AGROW>
+end
+end
+
+function value = unitType(leftCount, rightCount)
+% Contract 07 D3's counts, the ones matchingBuildGroups applies.
+if leftCount == 0
+    value = "unmatched_right";
+elseif rightCount == 0
+    value = "unmatched_left";
+elseif leftCount == 1 && rightCount == 1
+    value = "one_to_one";
+elseif leftCount == 1
+    value = "one_to_many";
+elseif rightCount == 1
+    value = "many_to_one";
+else
+    value = "many_to_many";
+end
+end
+
+function value = sideStatus(side, ids)
+% A unit-level status exists only for a single target; a side with no target
+% in the unit has no counterpart, which is not "no decision".
+if isempty(ids)
+    value = "no_counterpart";
+elseif ~isscalar(ids)
+    value = "not_applicable_unit";
+else
+    value = statusOf(side, ids);
+end
+end
+
+function list = sameSetUnits(leftReport, rightReport)
+% One unit per event key shared or not; ordered by event kind, id and basis.
+leftKeys = eventKeys(leftReport.targets);
+rightKeys = eventKeys(rightReport.targets);
+keys = sortKeys([leftKeys; rightKeys]);
+list = struct(event_kind={}, event_id={}, agreement_extent_method={}, ...
+    left_target_ids={}, right_target_ids={});
+for k = 1:height(keys)
+    key = keys(k, :);
+    list(end + 1) = struct(event_kind=key.event_kind, event_id=key.event_id, ...
+        agreement_extent_method=key.agreement_extent_method, ...
+        left_target_ids=matching(leftReport.targets, leftKeys, key)', ...
+        right_target_ids=matching(rightReport.targets, rightKeys, key)'); %#ok<AGROW>
+end
+end
+
+function list = componentUnits(components)
+% Across event sets a unit has no single event; its targets carry identity.
+list = struct(event_kind={}, event_id={}, agreement_extent_method={}, ...
+    left_target_ids={}, right_target_ids={});
+for k = 1:numel(components)
+    list(end + 1) = struct(event_kind="correspondence_component", event_id=NaN, ...
+        agreement_extent_method="", left_target_ids=components(k).left_target_ids, ...
+        right_target_ids=components(k).right_target_ids); %#ok<AGROW>
 end
 end
 
@@ -554,20 +684,26 @@ end
 
 % --------------------------------------------------------------- scores ---
 
-function value = scoreRows(units, left, right)
+function value = scoreRows(units, pairs, left, right)
+% Side by side, per (unit, left target, right target, entity): one_to_one units
+% and every within-unit pair. Never a difference, never a pooled value.
 value = emptyScores();
 oneToOne = units(units.correspondence_unit == "one_to_one", :);
-for k = 1:height(oneToOne)
-    l = left.report.candidates(left.report.candidates.attribution_target_id == ...
-        oneToOne.left_target_ids{k}, :);
-    r = right.report.candidates(right.report.candidates.attribution_target_id == ...
-        oneToOne.right_target_ids{k}, :);
+couples = [oneToOne.unit_id, cellfun(@(x) x(1), oneToOne.left_target_ids), ...
+    cellfun(@(x) x(1), oneToOne.right_target_ids)];
+both = pairs(~isnan(pairs.left_target_id) & ~isnan(pairs.right_target_id), :);
+couples = [couples; both.unit_id, both.left_target_id, both.right_target_id];
+for k = 1:size(couples, 1)
+    l = left.report.candidates(left.report.candidates.attribution_target_id == couples(k, 2), :);
+    r = right.report.candidates(right.report.candidates.attribution_target_id == couples(k, 3), :);
     for entity = union(l.entity_id, r.entity_id)'
         [ls, lsem] = scoreOf(l, entity);
         [rs, rsem] = scoreOf(r, entity);
-        value(end + 1, :) = {oneToOne.unit_id(k), entity, ls, rs, lsem, rsem}; %#ok<AGROW>
+        value(end + 1, :) = {couples(k, 1), couples(k, 2), couples(k, 3), entity, ...
+            ls, rs, lsem, rsem}; %#ok<AGROW>
     end
 end
+value = sortrows(value, ["unit_id", "left_target_id", "right_target_id", "entity_id"]);
 end
 
 function [score, semantics] = scoreOf(rows, entity)
@@ -581,8 +717,9 @@ end
 end
 
 function value = emptyScores()
-value = table(zeros(0, 1), zeros(0, 1), zeros(0, 1), zeros(0, 1), strings(0, 1), ...
-    strings(0, 1), VariableNames=["unit_id", "entity_id", "left_score", ...
+value = table(zeros(0, 1), zeros(0, 1), zeros(0, 1), zeros(0, 1), zeros(0, 1), ...
+    zeros(0, 1), strings(0, 1), strings(0, 1), VariableNames=["unit_id", ...
+    "left_target_id", "right_target_id", "entity_id", "left_score", ...
     "right_score", "left_score_semantics", "right_score_semantics"]);
 end
 
