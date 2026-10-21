@@ -47,7 +47,9 @@ function value = report(conn, runRef, options)
 % THE GRAIN OF EACH TABLE, because confusing them is the easiest way to
 % miscount:
 %
-%   targets              one row per attribution target
+%   targets              one row per attribution target, with the stored event it
+%                        names (detection_id, consensus_event_id or
+%                        agreement_group_id, and agreement_extent_method)
 %   candidates           one row per (target, candidate entity)
 %   no_score_reasons     one row per (unscored candidate, stated reason), in the
 %                        producer's order: reason_ordinal 1 is the reason it
@@ -214,7 +216,8 @@ tables = struct();
 for name = names
     switch name
         case "targets"
-            targets = attributionReadTargetGeometry(conn, runId);
+            targets = withTargetEvents(conn, runId, ...
+                attributionReadTargetGeometry(conn, runId));
             if ~isempty(filter)
                 targets = targets(ismember(targets.attribution_target_id, filter), :);
             end
@@ -245,6 +248,38 @@ for name = names
             tables.decision_selections = readSelections(conn, runId, where("t"));
     end
 end
+end
+
+function targets = withTargetEvents(conn, runId, targets)
+%WITHTARGETEVENTS Which stored event each target names (7.5a).
+%
+% Exactly one of detection_id, consensus_event_id and agreement_group_id is
+% present; the other two are NaN. agreement_extent_method is the basis an
+% agreement-group target declared, and "" otherwise. These are the identifiers
+% two runs over one event set share, so a reader can say "the same target"
+% without SQL of its own (contract 07 D3).
+rows = fetch(conn, "SELECT attribution_target_id, " + ...
+    "IFNULL(detection_id,-1) AS detection_id, " + ...
+    "IFNULL(consensus_event_id,-1) AS consensus_event_id, " + ...
+    "IFNULL(agreement_group_id,-1) AS agreement_group_id, " + ...
+    "IFNULL(agreement_extent_method,'') AS agreement_extent_method " + ...
+    "FROM attribution_targets WHERE attribution_run_id=" + string(runId) + ...
+    " ORDER BY attribution_target_id");
+count = height(targets);
+targets.detection_id = NaN(count, 1);
+targets.consensus_event_id = NaN(count, 1);
+targets.agreement_group_id = NaN(count, 1);
+targets.agreement_extent_method = strings(count, 1);
+if count == 0
+    return
+end
+[found, at] = ismember(targets.attribution_target_id, double(rows.attribution_target_id));
+targets.detection_id(found) = arrayfun(@negativeSentinel, double(rows.detection_id(at(found))));
+targets.consensus_event_id(found) = arrayfun(@negativeSentinel, ...
+    double(rows.consensus_event_id(at(found))));
+targets.agreement_group_id(found) = arrayfun(@negativeSentinel, ...
+    double(rows.agreement_group_id(at(found))));
+targets.agreement_extent_method(found) = presentText(rows.agreement_extent_method(at(found)));
 end
 
 function clause = targetClause(filter)

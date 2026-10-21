@@ -212,6 +212,24 @@ verifyGreaterThan(testCase, height(reports.native_detections.no_score_reasons), 
 verifyEqual(testCase, height(reports.imported.no_score_reasons), 0);
 end
 
+function testTargetsNameTheirStoredEvent(testCase)
+% 7.5a: report.targets carries each target's stored event id, so two runs over
+% one event set meet on it without SQL of their own (contract 07 D3).
+f = testCase.TestData.fixture;
+m = f.manifest;
+for name = ["native_detections", "imported", "backend"]
+    r = vawlume.attribution.report(f.conn, ...
+        struct(attribution_run_id=m.runs.(name).attribution_run_id), Tables="targets");
+    verifyEqual(testCase, sort(r.targets.detection_id), sort(m.scenes.deepsqueak_detection_id), name);
+    verifyTrue(testCase, all(isnan(r.targets.consensus_event_id) & ...
+        isnan(r.targets.agreement_group_id) & r.targets.agreement_extent_method == ""), name);
+end
+r = vawlume.attribution.report(f.conn, ...
+    struct(attribution_run_id=m.runs.native_consensus.attribution_run_id), Tables="targets");
+verifyEqual(testCase, sort(r.targets.consensus_event_id), sort(m.scenes.consensus_event_id));
+verifyTrue(testCase, all(isnan(r.targets.detection_id)));
+end
+
 function testWindowsAreReadBackAsStored(testCase)
 % I-3: one row per stored window, native times verbatim, and every
 % correspondence's window is one of them.

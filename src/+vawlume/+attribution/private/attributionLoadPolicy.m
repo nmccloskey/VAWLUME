@@ -75,6 +75,17 @@ if ~ismember(policy.rule_key, implementedRules)
         "decision_rule.key '%s' is not a rule VAWLUME implements (%s).", ...
         policy.rule_key, strjoin(implementedRules, ", "));
 end
+% The statuses each implemented rule can produce, beside the dispatch list so the
+% two cannot drift apart. A comparison reads this to mark a status another run's
+% rule cannot express as a structural empty (contract 07 D4), rather than
+% hard-coding which path can say what.
+switch policy.rule_key
+    case "threshold_with_separation_and_co_occurrence"
+        policy.producible_statuses = ["assigned", "ambiguous", "unassigned", ...
+            "excluded", "simultaneous"];
+    otherwise
+        policy.producible_statuses = ["assigned", "ambiguous", "unassigned", "excluded"];
+end
 policy.rule_version = requiredText(rule, "version");
 policy.reads = requiredText(rule, "reads");
 if ~ismember(policy.reads, ["score", "probability"])
