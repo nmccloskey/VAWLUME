@@ -1779,7 +1779,9 @@ value = vawlume.attribution.report(conn, ...
     struct(project_key="my-project", run_key="caller-import-1"));
 
 disp(value.candidates)            % every candidate, with its semantics
+disp(value.no_score_reasons)      % why each unscored candidate has no score
 disp(value.evidence)              % one row per dimension, units intact
+disp(value.windows)               % imported/backend windows, native times as stored
 disp(value.localization_estimates)% backend coordinates, each in its frame
 disp(value.native_attributes)     % producer fields, grouped by owner/namespace
 disp(value.declared_inputs)       % declared used/not-used upstream inputs
@@ -1794,7 +1796,9 @@ disp(value.qc)                    % facts about the run
 |---|---|
 | `targets` | attribution target |
 | `candidates` | (target, candidate entity) |
+| `no_score_reasons` | (unscored candidate, stated reason), in the producer's order |
 | `evidence` | stored evidence record |
+| `windows` | imported or backend window |
 | `imported_claims` | (imported window, claimed caller) |
 | `localization_estimates` | backend localization estimate |
 | `native_attributes` | (owner, native attribute name) |
@@ -1803,6 +1807,29 @@ disp(value.qc)                    % facts about the run
 | `claim_correspondences` | (claim, correspondence) — the joined story |
 | `decisions` | (target, policy version) |
 | `decision_selections` | candidate a decision selected |
+
+Every table is present for every path. A table a path never fills is empty: a
+native run has no `windows`, and an imported or backend run states no
+`no_score_reasons`. `windows` keeps each window's native times in the clock it
+was stored in. It reaches an event only through `correspondences`, and nothing
+in `report` converts it.
+
+**Reading part of a large run.** `Targets=` keeps only the named targets' rows
+in every target-grained table: targets, candidates, reasons, evidence,
+correspondences, claim correspondences, decisions and selections. `Tables=`
+returns only the named tables. QC always describes the whole run, so leave
+`"qc"` out of `Tables=` when paging:
+
+```matlab
+grained = ["targets", "candidates", "no_score_reasons", "evidence", ...
+    "correspondences", "claim_correspondences", "decisions", "decision_selections"];
+ids = vawlume.attribution.report(conn, ref, Tables="targets").targets.attribution_target_id;
+for first = 1:500:numel(ids)
+    page = vawlume.attribution.report(conn, ref, ...
+        Targets=ids(first:min(first + 499, end)), Tables=grained);
+    % ... each page's tables, concatenated, are the full tables
+end
+```
 
 `claim_correspondences` is the one to be careful with. A window carrying two
 claims appears **twice** there for one correspondence, and a claim whose window
@@ -2685,10 +2712,18 @@ exported tables, figures, an example index and a provenance record.
 - A target with no candidates is refused rather than decided, so a run whose
   every target must reach a decision needs candidates on all of them. Completion
   freezes candidates and evidence but deliberately not the decision set.
-- `vawlume.attribution.report` fetches every row of every table for a run, with
-  no paging, filtering or projection. It has been exercised at synthetic-fixture
-  scale only; whether it is usable over a session with thousands of
-  claim-correspondence rows is untested.
+- `vawlume.attribution.report` reads a whole run by default. `Targets=` and
+  `Tables=` read part of one (see "Reading a run back"). Measured once in
+  Phase 7.5 on one development workstation, using a synthetic imported run with
+  per target 2 candidates, 1 evidence row, 1 window with 2 claims and 1
+  correspondence:
+  - **2,000 targets** (4,000 claim-correspondence rows): a full read took about
+    25 s, QC alone 8 s, and a page of 250 targets without QC about 1.5 s;
+  - **5,000 targets** (10,000 claim-correspondence rows): a full read took about
+    28 s, QC alone 20 s, and a page of 250 targets about 1.9 s.
+
+  QC always reads the whole run. Larger runs, real sessions and other row mixes
+  are unmeasured.
 - **For an imported run, nothing records which evidence the exporting system
   used.** An imported score is a combination somebody else already performed,
   and the imported profile has no field saying which modalities went into it.
@@ -2769,8 +2804,8 @@ targets for the native path; marginalizing over tracks, or reading an identity
 association's value as a weight; gating or weighting on pose confidence or
 clock uncertainty; consuming imported claims or backend estimates in the native
 path; comparing native, backend and imported results, sensitivity analysis
-across paths, and comparing normalization profiles (Phase 7); paging or
-filtering in `report`; a standalone read-back table of backend windows.
+across paths, and comparing normalization profiles (Phase 7). (Paging and
+filtering in `report`, and its `windows` table, arrived in Phase 7.5.)
 
 ---
 

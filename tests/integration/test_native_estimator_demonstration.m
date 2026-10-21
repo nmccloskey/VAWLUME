@@ -66,8 +66,12 @@ value = testCase.TestData.value;
 candidates = value.candidates;
 verifyEqual(testCase, height(candidates), 12);
 unscored = isnan(candidates.score);
-verifyTrue(testCase, all(startsWith(candidates.notes(unscored), "no_score_reason=")));
-verifyTrue(testCase, all(candidates.notes(~unscored) == ""));
+% Every unscored candidate states a reason, counted under its first one from the
+% reason table; since 7.5 no reason rides in notes.
+byReason = value.report.qc.unscored_candidates_by_reason;
+verifyEqual(testCase, sum(byReason.count), nnz(unscored));
+verifyFalse(testCase, any(byReason.reason == "not_stated"));
+verifyTrue(testCase, all(candidates.notes == ""));
 verifyTrue(testCase, all(candidates.score(~unscored) <= 0), "The score is -|discrepancy|.");
 verifyEqual(testCase, numel(value.score_semantics), 1);
 verifySubstring(testCase, value.score_semantics, "not a probability");

@@ -120,10 +120,10 @@ verifyEqual(testCase, reasonsOf(r, targetOf(m, "out_of_bracket", ...
 end
 
 function testEveryNoScoreReasonIsStoredInTheMethodsOrder(testCase)
-% Contract 07 D10 (itinerary 7.4). Every unscored native candidate has its
-% reasons in attribution_candidate_no_score_reasons, ordinals 1..n, and reason 1
-% is still the notes token report reads until 7.5. No scored candidate and no
-% candidate of an external path states one.
+% Contract 07 D10 (itineraries 7.4, 7.5). Every unscored native candidate has
+% its reasons in attribution_candidate_no_score_reasons, ordinals 1..n, and no
+% notes token; report's no_score_reasons table shows exactly those rows. No
+% scored candidate and no candidate of an external path states one.
 f = testCase.TestData.fixture;
 m = f.manifest;
 rows = fetch(f.conn, "SELECT c.attribution_candidate_id, ar.attribution_path, " + ...
@@ -150,14 +150,146 @@ for id = ids'
     codes = string(mine.reason_code);
     verifyEqual(testCase, double(mine.reason_ordinal), (1:height(mine))', ...
         sprintf("candidate %d: ordinals 1..n, nothing unstated", id));
-    verifyEqual(testCase, string(mine.notes(1)), "no_score_reason=" + codes(1), ...
-        sprintf("candidate %d: reason 1 is where today's readers find it", id));
+    notes = string(mine.notes(1));
+    notes(ismissing(notes)) = "";   % SQLite's empty text arrives as <missing>
+    verifyEqual(testCase, notes, "", ...
+        sprintf("candidate %d: no notes token since 7.5", id));
+    verifyNotEmpty(testCase, codes(1));
 end
 for scene = ["coverage_gap", "identity_swap", "out_of_bracket"]
     target = targetOf(m, scene, "native_detection_target_id");
     mine = rows(double(rows.attribution_target_id) == target, :);
     log(testCase, 1, scene + ": " + strjoin(string(mine.reason_code), ", "));
 end
+% report shows every stored reason, in stored order, for every run.
+stored = rows(stated, :);
+read = table();
+for name = ["native_detections", "native_consensus", "imported", "backend"]
+    r = vawlume.attribution.report(f.conn, ...
+        struct(attribution_run_id=m.runs.(name).attribution_run_id));
+    read = [read; r.no_score_reasons(:, ["attribution_candidate_id", ...
+        "reason_ordinal", "reason_code"])]; %#ok<AGROW>
+end
+read = sortrows(read, ["attribution_candidate_id", "reason_ordinal"]);
+verifyEqual(testCase, read.attribution_candidate_id, double(stored.attribution_candidate_id));
+verifyEqual(testCase, read.reason_ordinal, double(stored.reason_ordinal));
+verifyEqual(testCase, read.reason_code, string(stored.reason_code));
+end
+
+% ============================================================ read-back ===
+
+function testEveryPathReadsBackThroughOneFieldSet(testCase)
+% Invariant 16 over the 7.3 fixture's four runs (7.5). Every table-valued field
+% is FOUND, not listed, so a table added later is compared without an edit. A
+% path-only key, column or QC field fails here.
+f = testCase.TestData.fixture;
+m = f.manifest;
+reports = struct();
+for name = ["native_detections", "native_consensus", "imported", "backend"]
+    reports.(name) = vawlume.attribution.report(f.conn, ...
+        struct(attribution_run_id=m.runs.(name).attribution_run_id));
+end
+names = @(s) sort(string(fieldnames(s)))';
+columns = @(t) sort(string(t.Properties.VariableNames));
+reference = reports.native_detections;
+tables = names(reference);
+tables = tables(arrayfun(@(n) istable(reference.(n)), tables));
+verifyTrue(testCase, all(ismember(["windows", "no_score_reasons"], tables)));
+for name = ["native_consensus", "imported", "backend"]
+    r = reports.(name);
+    verifyEqual(testCase, names(r), names(reference), name + " top-level fields");
+    verifyEqual(testCase, names(r.qc), names(reference.qc), name + " QC fields");
+    for table_ = tables(ismember(tables, names(r)))   % a missing key failed above
+        verifyEqual(testCase, columns(r.(table_)), columns(reference.(table_)), ...
+            name + " " + table_ + " columns");
+    end
+end
+% Present for every path; empty where the path writes none.
+verifyEqual(testCase, height(reports.native_detections.windows), 0);
+verifyGreaterThan(testCase, height(reports.imported.windows), 0);
+verifyGreaterThan(testCase, height(reports.backend.windows), 0);
+verifyGreaterThan(testCase, height(reports.native_detections.no_score_reasons), 0);
+verifyEqual(testCase, height(reports.imported.no_score_reasons), 0);
+end
+
+function testWindowsAreReadBackAsStored(testCase)
+% I-3: one row per stored window, native times verbatim, and every
+% correspondence's window is one of them.
+f = testCase.TestData.fixture;
+m = f.manifest;
+for name = ["imported", "backend"]
+    runId = m.runs.(name).attribution_run_id;
+    r = vawlume.attribution.report(f.conn, struct(attribution_run_id=runId));
+    stored = fetch(f.conn, "SELECT imported_attribution_window_id, start_time_native, " + ...
+        "end_time_native FROM imported_attribution_windows WHERE attribution_run_id=" + ...
+        string(runId) + " ORDER BY imported_attribution_window_id");
+    verifyEqual(testCase, r.windows.imported_attribution_window_id, ...
+        double(stored.imported_attribution_window_id), name);
+    verifyEqual(testCase, r.windows.start_time_native, double(stored.start_time_native), name);
+    verifyEqual(testCase, r.windows.end_time_native, double(stored.end_time_native), name);
+    verifyEqual(testCase, r.qc.imported_window_count, height(r.windows), name);
+    verifyTrue(testCase, all(ismember(r.correspondences.imported_attribution_window_id, ...
+        r.windows.imported_attribution_window_id)), name);
+    verifyTrue(testCase, all(ismember(r.imported_claims.imported_attribution_window_id, ...
+        r.windows.imported_attribution_window_id)), name);
+end
+end
+
+function testPagesConcatenateToTheFullRead(testCase)
+% I-6: Targets= slices, concatenated, give every target-grained table of the full
+% read with no row lost or duplicated; each page holds only its targets; QC is
+% the whole run's whatever the filter; Tables= projects.
+f = testCase.TestData.fixture;
+m = f.manifest;
+grained = ["targets", "candidates", "no_score_reasons", "evidence", ...
+    "correspondences", "claim_correspondences", "decisions", "decision_selections"];
+keys = struct(targets="attribution_target_id", ...
+    candidates="attribution_candidate_id", ...
+    no_score_reasons=["attribution_candidate_id", "reason_ordinal"], ...
+    evidence="attribution_evidence_id", ...
+    correspondences="attribution_window_correspondence_id", ...
+    claim_correspondences=["attribution_window_correspondence_id", ...
+        "imported_attribution_claim_id"], ...
+    decisions="attribution_decision_id", ...
+    decision_selections=["attribution_decision_id", "attribution_candidate_id"]);
+for name = ["native_detections", "imported", "backend"]
+    ref = struct(attribution_run_id=m.runs.(name).attribution_run_id);
+    full = vawlume.attribution.report(f.conn, ref);
+    ids = full.targets.attribution_target_id';
+    for pageSize = [1, 3]
+        pages = struct();
+        for table_ = grained
+            pages.(table_) = full.(table_)([], :);
+        end
+        for first = 1:pageSize:numel(ids)
+            slice = ids(first:min(first + pageSize - 1, end));
+            page = vawlume.attribution.report(f.conn, ref, Targets=slice, Tables=grained);
+            verifyFalse(testCase, isfield(page, "qc"), "Tables= projects qc away.");
+            verifyFalse(testCase, isfield(page, "windows"));
+            for table_ = grained
+                verifyTrue(testCase, all(ismember(page.(table_).attribution_target_id, slice)), ...
+                    sprintf("%s %s page holds only its targets", name, table_));
+                pages.(table_) = [pages.(table_); page.(table_)];
+            end
+        end
+        for table_ = grained
+            label = sprintf("%s %s, pages of %d", name, table_, pageSize);
+            verifyEqual(testCase, height(pages.(table_)), height(full.(table_)), label);
+            verifyEqual(testCase, sortrows(pages.(table_), keys.(table_)), ...
+                sortrows(full.(table_), keys.(table_)), label);
+        end
+    end
+    filtered = vawlume.attribution.report(f.conn, ref, Targets=ids(1));
+    verifyEqual(testCase, filtered.qc, full.qc, name + ": QC describes the whole run");
+    verifyEqual(testCase, filtered.windows, full.windows, name + ": windows are run-grained");
+end
+other = m.runs.imported.target_ids(1);
+verifyError(testCase, @() vawlume.attribution.report(f.conn, ...
+    struct(attribution_run_id=m.runs.native_detections.attribution_run_id), ...
+    Targets=other), "vawlume:attribution:TargetNotFound");
+verifyError(testCase, @() vawlume.attribution.report(f.conn, ...
+    struct(attribution_run_id=m.runs.native_detections.attribution_run_id), ...
+    Tables="candidate"), "MATLAB:validators:mustBeMember");
 end
 
 function testTheOutOfBracketCallReachesBracketExtrapolatedTrue(testCase)
@@ -348,8 +480,13 @@ value = arrayfun(@(e) c.score(c.entity_id == e), entities);
 end
 
 function value = reasonsOf(report, targetId)
+% Each candidate's first stated reason, in report's candidate order (7.5: from
+% the no_score_reasons table; "" where a candidate states none).
 c = report.candidates(report.candidates.attribution_target_id == targetId, :);
-value = extractAfter(string(c.notes), "no_score_reason=");
+first = report.no_score_reasons(report.no_score_reasons.reason_ordinal == 1, :);
+value = strings(height(c), 1);
+[found, at] = ismember(c.attribution_candidate_id, first.attribution_candidate_id);
+value(found) = first.reason_code(at(found));
 end
 
 function value = artifactHashes(root)

@@ -43,9 +43,8 @@ function result = attributeCallers(conn, recordingRef, runSpec, options)
 % inputs; one target per event; one candidate per participant per target, with
 % the method's score and score_semantics, or no score and every reason the
 % method gives (no_score_reasons, stored in its order in
-% attribution_candidate_no_score_reasons; the first is also
-% notes = "no_score_reason=<code>" until itinerary 7.5), and never a
-% probability; and every input the
+% attribution_candidate_no_score_reasons and read back through report's
+% no_score_reasons table), and never a probability; and every input the
 % method consumed as its own evidence row with its citation:
 %
 %   target     temporal_alignment  call_clock_placement        per alignment run used
@@ -393,12 +392,10 @@ end
 
 function rows = candidateRows(method)
 % Every reason the method gives, in its order, goes to no_score_reasons
-% (contract 07 D10). The first is also kept as the notes token until report
-% reads the reason table (itinerary 7.5 retires the token).
+% (contract 07 D10); that table is their only home. No notes token since 7.5.
 c = method.candidates;
 notes = strings(height(c), 1);
 unscored = c.status ~= "scored";
-notes(unscored) = "no_score_reason=" + c.no_score_reason(unscored);
 reasons = repmat({strings(0, 1)}, height(c), 1);
 reasons(unscored) = c.no_score_reasons(unscored);
 semantics = c.score_semantics;

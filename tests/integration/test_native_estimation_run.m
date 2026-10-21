@@ -144,10 +144,11 @@ targets = fetch(conn, "SELECT attribution_target_id FROM attribution_targets " +
     "WHERE attribution_run_id=" + string(double(run.attribution_run_id)));
 scoredSeen = 0;
 for t = double(targets.attribution_target_id)'
-    candidates = fetch(conn, "SELECT attribution_candidate_id, entity_id, " + ...
-        "IFNULL(score,-1e308) AS score, IFNULL(notes,'') AS notes " + ...
-        "FROM attribution_candidates WHERE attribution_target_id=" + string(t) + ...
-        " ORDER BY entity_id");
+    candidates = fetch(conn, "SELECT c.attribution_candidate_id, c.entity_id, " + ...
+        "IFNULL(c.score,-1e308) AS score, IFNULL(n.reason_code,'') AS reason " + ...
+        "FROM attribution_candidates c LEFT JOIN attribution_candidate_no_score_reasons n " + ...
+        "ON n.attribution_candidate_id=c.attribution_candidate_id AND n.reason_ordinal=1 " + ...
+        "WHERE c.attribution_target_id=" + string(t) + " ORDER BY c.entity_id");
     difference = storedDifference(conn, t, p);
     [entities, geometry] = storedGeometry(conn, candidates, p);
     recomputed = vawlume.estimator.levelDifferenceConsistency(entities, geometry, ...
@@ -159,8 +160,8 @@ for t = double(targets.attribution_target_id)'
             verifyEqual(testCase, recomputed.score(k), storedScore, ...
                 sprintf("target %d entity %d", t, candidates.entity_id(k)), AbsTol=1e-12);
         else
-            verifyEqual(testCase, "no_score_reason=" + recomputed.no_score_reason(k), ...
-                string(candidates.notes(k)), sprintf("target %d entity %d", t, ...
+            verifyEqual(testCase, recomputed.no_score_reason(k), ...
+                string(candidates.reason(k)), sprintf("target %d entity %d", t, ...
                 candidates.entity_id(k)));
         end
     end
@@ -192,11 +193,12 @@ for target = [swap, gap]
         sum(target.target_evidence.evidence_dimension == "temporal_alignment"));
     verifyGreaterThanOrEqual(testCase, sum(rows.evidence_kind == "call_clock_placement"), 1, ...
         "The audio clock placement exists even where tracking does not.");
-    candidates = fetch(f.conn, "SELECT IFNULL(score,-1e308) AS score, notes FROM " + ...
-        "attribution_candidates WHERE attribution_target_id=" + ...
+    candidates = fetch(f.conn, "SELECT IFNULL(score,-1e308) AS score, " + ...
+        "IFNULL(notes,'') AS notes FROM attribution_candidates WHERE attribution_target_id=" + ...
         string(target.attribution_target_id));
     verifyTrue(testCase, all(double(candidates.score) < -1e307));
-    verifyTrue(testCase, all(startsWith(string(candidates.notes), "no_score_reason=")));
+    verifyTrue(testCase, all(presentText(candidates.notes) == ""), ...
+        "Since 7.5 the reason table is the only home for reasons: no notes token.");
     verifyStoredReasons(testCase, f.conn, target);
 end
 % The swap still records the associations each candidate was resolved through,
@@ -405,11 +407,16 @@ for path = ["imported", "backend"]
 end
 names = @(s) sort(string(fieldnames(s)))';
 columns = @(t) sort(string(t.Properties.VariableNames));
+% Every table-valued field, found rather than listed, so a table added to report
+% later is compared without this test being edited (7.5).
+tables = names(reports.native);
+tables = tables(arrayfun(@(n) istable(reports.native.(n)), tables));
+verifyTrue(testCase, all(ismember(["windows", "no_score_reasons"], tables)));
 for path = ["imported", "backend"]
     r = reports.(path);
     verifyEqual(testCase, names(r), names(reports.native), path + " top-level fields");
     verifyEqual(testCase, names(r.qc), names(reports.native.qc), path + " QC fields");
-    for table_ = ["targets", "candidates", "evidence", "declared_inputs", "decisions"]
+    for table_ = tables(ismember(tables, names(r)))   % a missing key failed above
         verifyEqual(testCase, columns(r.(table_)), columns(reports.native.(table_)), ...
             path + " " + table_ + " columns");
     end
@@ -467,8 +474,12 @@ verifyEqual(testCase, statements.profile_key, "vawlume.estimator.native_level_di
 verifyEqual(testCase, height(value.evidence), applied.planned_counts.attribution_evidence);
 verifyTrue(testCase, all(strlength(value.evidence.value_units) > 0));
 verifyTrue(testCase, all(contains(value.evidence.value_semantics, "producer=")));
-verifyTrue(testCase, all(startsWith(value.candidates.notes(isnan(value.candidates.score)), ...
-    "no_score_reason=")));
+% Every unscored candidate states its reasons in the reason table, reason 1
+% first; no reason is carried in notes (7.5).
+unscored = value.candidates.attribution_candidate_id(isnan(value.candidates.score));
+first = value.no_score_reasons(value.no_score_reasons.reason_ordinal == 1, :);
+verifyEqual(testCase, sort(first.attribution_candidate_id), sort(unscored));
+verifyTrue(testCase, all(value.candidates.notes == ""));
 % No verdict: no QC field reads as one.
 forbidden = ["quality", "grade", "acceptab", "pass", "fail", "verdict", "reliab", ...
     "valid", "overall", "combined"];
@@ -635,10 +646,21 @@ for k = 1:numel(tables)
 end
 end
 
+function value = presentText(raw)
+% SQLite's empty text arrives as <missing>; empty is what was stored.
+value = string(raw);
+value(ismissing(value)) = "";
+end
+
 function verifyStoredReasons(testCase, conn, target)
-% Contract 07 D10 (itinerary 7.4): every reason the method gave is stored, in
-% its order, and the first is still the notes token readers find today.
+% Contract 07 D10 (itineraries 7.4, 7.5): every reason the method gave is stored,
+% in its order, and read back through report's no_score_reasons table.
 method = target.method.candidates;
+run = fetch(conn, "SELECT attribution_run_id FROM attribution_targets " + ...
+    "WHERE attribution_target_id=" + string(target.attribution_target_id));
+read = vawlume.attribution.report(conn, struct(attribution_run_id= ...
+    double(run.attribution_run_id(1))), Targets=target.attribution_target_id, ...
+    Tables="no_score_reasons").no_score_reasons;
 for k = 1:height(method)
     stored = fetch(conn, "SELECT n.reason_ordinal, n.reason_code, " + ...
         "IFNULL(c.notes,'') AS notes FROM attribution_candidate_no_score_reasons n " + ...
@@ -648,8 +670,11 @@ for k = 1:height(method)
     label = sprintf("target %d entity %d", target.attribution_target_id, method.entity_id(k));
     verifyEqual(testCase, string(stored.reason_code), method.no_score_reasons{k}, label);
     verifyEqual(testCase, double(stored.reason_ordinal), (1:height(stored))', label);
-    verifyEqual(testCase, string(stored.notes(1)), ...
-        "no_score_reason=" + string(stored.reason_code(1)), label);
+    verifyEqual(testCase, presentText(stored.notes(1)), "", label);
+    mine = read(read.entity_id == method.entity_id(k), :);
+    verifyEqual(testCase, mine.reason_code, method.no_score_reasons{k}, ...
+        label + ": report shows every reason, in order");
+    verifyEqual(testCase, mine.reason_ordinal, (1:height(mine))', label);
 end
 end
 
@@ -720,17 +745,17 @@ entities = table(double(candidates.entity_id), true(count, 1), strings(count, 1)
     VariableNames=["entity_id", "has_geometry", "reason"]);
 geometry = table();
 for k = 1:count
-    notes = string(candidates.notes(k));
+    reason = string(candidates.reason(k));
     rows = fetch(conn, "SELECT value_real, value_units, value_semantics, " + ...
         "recording_channel_id FROM attribution_evidence WHERE attribution_candidate_id=" + ...
         string(double(candidates.attribution_candidate_id(k))) + ...
         " AND evidence_kind='bodypoint_microphone_distance'");
     semantics = string(rows.value_semantics);
     primary = contains(semantics, "instant_basis=" + p.primary_instant_basis + ";");
-    if startsWith(notes, "no_score_reason=") && sum(primary) < 2
+    if strlength(reason) > 0 && sum(primary) < 2
         % No usable distance pair was stored, so the reason is the stored one.
         entities.has_geometry(k) = false;
-        entities.reason(k) = extractAfter(notes, "no_score_reason=");
+        entities.reason(k) = reason;
         continue
     end
     for r = find(primary)'

@@ -50,9 +50,8 @@ silently is the failure doc 28 designed against.
 - One target per event.
 - One candidate per participant per target. Each has the method's `score` and
   `score_semantics`, or `score` NULL with every reason the method gave in
-  `attribution_candidate_no_score_reasons` (and the first also in
-  `notes = "no_score_reason=<code>"`; see below). No candidate ever has a
-  probability.
+  `attribution_candidate_no_score_reasons`, its only home since 7.5 (see
+  below). No candidate ever has a probability.
 - Every input the method consumed, as its own evidence row (contract D10):
 
 | Grain | Dimension | Kind | Value | Citation |
@@ -83,12 +82,12 @@ silently is the failure doc 28 designed against.
   `addCandidates`, which writes one `attribution_candidate_no_score_reasons`
   row per reason (`reason_ordinal` 1 first, `reason_code` verbatim) in the
   run's transaction. A candidate both uncovered and clipped now states both.
-- **The first reason is also still the `notes` token.** `report` reads
-  `no_score_reason=<first>` from `candidates.notes`, and its
-  `unscored_candidates_by_reason` counts first reasons, until itinerary 7.5
-  moves both readers to the table. 7.5 then retires the token, so the table
-  becomes the only home for reasons. Until then the token and reason 1 are the
-  same fact written twice, by the same call.
+- **The table is the only home for reasons (7.5).** `report` returns them as
+  its `no_score_reasons` table, one row per (candidate, ordinal), and
+  `qc.unscored_candidates_by_reason` counts each unscored candidate once,
+  under its reason 1. Runs written at 7.4 also carried the first reason as a
+  `notes = "no_score_reason=<code>"` token; runs written since 7.5 do not, and
+  nothing reads it.
 - **Invariants 24 and 26 are enforced by the canonical layer (7.4), not only by
   this producer.** `attributeCallers` never writes a probability, and every
   distance and pose-confidence row it writes cites the association its track
@@ -121,7 +120,7 @@ the evidence for contract condition 4 and invariant 23. After `Apply`, it reads
 3. each candidate's stored `bodypoint_microphone_distance` rows on the primary
    instant basis, with their units and extrapolation flags parsed from the
    semantics;
-4. each candidate's stored score and notes.
+4. each candidate's stored score and its stored reason 1.
 
 It then calls `vawlume.estimator.levelDifferenceConsistency` on those values.
 Every stored score must be recomputed exactly (to 1e-12), and every unscored
@@ -226,8 +225,8 @@ decisions across all three paths.
   recording only, and not a probability, and that equal scores are not evidence
   of two callers.
 - `evidence.derived_measurement_id` shows the P4-3 citation.
-  `candidates.notes` shows each unscored candidate's
-  `no_score_reason=<code>`.
+  `no_score_reasons` shows every reason each unscored candidate states, in the
+  method's order (7.5).
 - `declared_inputs` holds four rows for a native run. An imported run holds
   none, because an undeclared dimension reads as *no row*.
 - QC adds three path-agnostic facts:
