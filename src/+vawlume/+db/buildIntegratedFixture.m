@@ -1155,7 +1155,8 @@ for k = 1:numel(extracted)
 end
 rmdir(staging, "s");
 [~, order] = sort(names);
-fileOut = java.io.FileOutputStream(char(path));
+% Java would read a relative path against user.dir; MATLAB wrote it against pwd.
+fileOut = java.io.FileOutputStream(char(vawlume.internal.resolvePath(path, Mode="absolute")));
 zipOut = java.util.zip.ZipOutputStream(fileOut);
 fixedTime = java.util.GregorianCalendar(2000, 0, 1, 0, 0, 0).getTimeInMillis();
 for k = order

@@ -9,7 +9,7 @@ function policy = acousticLoadNormalizationPolicy(policyPath, repoRoot)
 if strlength(policyPath) == 0
     policyPath = fullfile(repoRoot, "config", "09_acoustic_normalization_policies", ...
         "band_matched_noise_reference_v1.json");
-elseif ~java.io.File(char(policyPath)).isAbsolute()
+elseif ~vawlume.internal.resolvePath(policyPath, Mode="isAbsolute")
     policyPath = fullfile(repoRoot, policyPath);
 end
 policyPath = canonicalPath(policyPath);
@@ -160,7 +160,7 @@ end
 
 function value = canonicalPath(path)
 try
-    value = string(java.io.File(char(path)).getCanonicalPath());
+    value = vawlume.internal.resolvePath(path);
 catch
     value = string(path);
 end

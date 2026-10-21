@@ -1,6 +1,10 @@
 function path = exportResolvePath(value, what)
 %EXPORTRESOLVEPATH Make a caller-supplied path absolute and canonical.
 %
+% A thin wrapper over vawlume.internal.resolvePath, the one home for path
+% resolution, which was promoted from this function. It keeps the export's own
+% error identifier.
+%
 % A relative path is resolved against MATLAB's current folder (pwd), which is
 % what the caller sees. It must not be handed to java.io.File as it is: Java
 % resolves a relative path against the JVM's user.dir, which is fixed when Java
@@ -24,17 +28,12 @@ arguments
     what (1,1) string
 end
 
-if ispc && (~isempty(regexp(value, "^[A-Za-z]:(?![\\/])", "once")) || ...
-        ~isempty(regexp(value, "^[\\/](?![\\/])", "once")))
-    error("vawlume:export:AmbiguousPath", ...
-        "%s ""%s"" is drive-relative or rooted without a drive, so where it points " + ...
-        "depends on hidden per-drive state. Give a full path such as ""C:\\data\\x"", " + ...
-        "or a path relative to the current folder.", what, value);
+try
+    path = vawlume.internal.resolvePath(value, What=what);
+catch err
+    if err.identifier == "vawlume:internal:AmbiguousPath"
+        error("vawlume:export:AmbiguousPath", "%s", err.message);
+    end
+    rethrow(err);
 end
-
-if ~java.io.File(char(value)).isAbsolute()
-    value = fullfile(string(pwd), value);
-end
-% Absolute from here on, so user.dir cannot influence canonicalization.
-path = string(java.io.File(char(value)).getCanonicalPath());
 end

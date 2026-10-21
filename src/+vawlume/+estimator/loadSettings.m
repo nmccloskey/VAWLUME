@@ -58,7 +58,7 @@ repoRoot = canonicalPath(repoRoot);
 if strlength(profilePath) == 0
     profilePath = fullfile(repoRoot, "config", "10_estimator_settings", ...
         "native_level_difference_estimator_v1.json");
-elseif ~java.io.File(char(profilePath)).isAbsolute()
+elseif ~vawlume.internal.resolvePath(profilePath, Mode="isAbsolute")
     profilePath = fullfile(repoRoot, profilePath);
 end
 profilePath = canonicalPath(profilePath);
@@ -335,7 +335,7 @@ end
 
 function value = canonicalPath(path)
 try
-    value = string(java.io.File(char(path)).getCanonicalPath());
+    value = vawlume.internal.resolvePath(path);
 catch
     value = string(path);
 end

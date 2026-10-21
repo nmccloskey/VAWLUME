@@ -53,10 +53,10 @@ if strlength(path) == 0
     return
 end
 try
-    path = string(java.io.File(char(path)).getCanonicalPath());
+    path = vawlume.internal.resolvePath(path);
 catch
     try
-        path = string(java.io.File(char(path)).getAbsolutePath());
+        path = vawlume.internal.resolvePath(path, Mode="absolute");
     catch
         path = string(path);
     end

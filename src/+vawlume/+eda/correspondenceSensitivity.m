@@ -200,7 +200,7 @@ if ~isempty(missing)
 end
 pairs = nchoosek(1:numel(spec.extraction_runs), 2);
 policy = string(spec.reference.decision_policy);
-if ~java.io.File(char(policy)).isAbsolute()
+if ~vawlume.internal.resolvePath(policy, Mode="isAbsolute")
     policy = fullfile(repoRoot, policy);
 end
 context = struct(recording_id=double(recording.recording_id(1)), ...

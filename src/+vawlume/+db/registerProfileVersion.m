@@ -139,10 +139,7 @@ for field = required
 end
 
 contentPath = string(spec.content_path);
-if ~java.io.File(char(contentPath)).isAbsolute()
-    contentPath = fullfile(repoRoot, contentPath);
-end
-contentPath = string(java.io.File(char(contentPath)).getCanonicalPath());
+contentPath = vawlume.internal.resolvePath(contentPath, Base=repoRoot);
 if ~isfile(contentPath)
     error("vawlume:db:ProfileContentNotFound", ...
         "Profile content does not exist: %s", contentPath);
@@ -276,7 +273,7 @@ root = string(root);
 if strlength(root) == 0
     root = fileparts(fileparts(fileparts(mfilename("fullpath"))));
 end
-root = string(java.io.File(char(root)).getCanonicalPath());
+root = vawlume.internal.resolvePath(root);
 end
 
 function value = optionalTextOr(spec, field, fallback)

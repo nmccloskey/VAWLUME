@@ -204,7 +204,7 @@ root = resolveRepoRoot(repoRoot);
 if strlength(profilePath) == 0
     profilePath = fullfile(root, "config", "01_mapping_profiles", ...
         "attribution", "generic_imported_attribution_profile.json");
-elseif ~java.io.File(char(profilePath)).isAbsolute()
+elseif ~vawlume.internal.resolvePath(profilePath, Mode="isAbsolute")
     profilePath = fullfile(root, profilePath);
 end
 if ~isfile(profilePath)
@@ -351,7 +351,7 @@ if strlength(root) == 0
     root = fileparts(fileparts(fileparts(fileparts(fileparts( ...
         mfilename("fullpath"))))));
 end
-root = string(java.io.File(char(root)).getCanonicalPath());
+root = vawlume.internal.resolvePath(root);
 end
 
 function value = emptyCorrespondences()

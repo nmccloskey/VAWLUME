@@ -14,7 +14,7 @@ arguments
 end
 
 [profileEntry, profileLocation] = selectProjectInputProfile(profileInput, options.ProfileId);
-sourceRoot = string(java.io.File(char(sourceRoot)).getCanonicalPath());
+sourceRoot = vawlume.internal.resolvePath(sourceRoot);
 if ~isfolder(sourceRoot)
     error("vawlume:source_mapping:SourceRootNotFound", ...
         "Source root does not exist: %s", sourceRoot);

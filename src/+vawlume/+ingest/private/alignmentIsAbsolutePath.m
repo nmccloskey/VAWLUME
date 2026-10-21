@@ -2,7 +2,7 @@ function value = alignmentIsAbsolutePath(path)
 %ALIGNMENTISABSOLUTEPATH True when the supplied path is already absolute.
 
 try
-    value = java.io.File(char(string(path))).isAbsolute();
+    value = vawlume.internal.resolvePath(path, Mode="isAbsolute");
 catch
     value = false;
 end

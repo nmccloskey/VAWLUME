@@ -180,7 +180,7 @@ if r.attribution_path ~= "native_estimate" || ~isfield(runSpec, "run_key") || ..
         r.attribution_run_id, r.run_key);
 end
 policyPath = string(ref.decision_policy);
-if ~java.io.File(char(policyPath)).isAbsolute()
+if ~vawlume.internal.resolvePath(policyPath, Mode="isAbsolute")
     policyPath = fullfile(repoRoot, policyPath);
 end
 policy = jsondecode(fileread(policyPath));
@@ -194,7 +194,7 @@ end
 settings = fetch(conn, "SELECT content_uri FROM config_profile_versions WHERE " + ...
     "profile_version_id=" + string(r.settings_profile_version_id));
 settingsPath = string(settings.content_uri(1));
-if ~java.io.File(char(settingsPath)).isAbsolute()
+if ~vawlume.internal.resolvePath(settingsPath, Mode="isAbsolute")
     settingsPath = fullfile(repoRoot, settingsPath);
 end
 project = fetch(conn, "SELECT project_id FROM projects WHERE project_key='" + ...
@@ -374,7 +374,7 @@ function value = normalizationVariant(conn, reference, factors, outDir, row, rep
 % re-normalized under it, one run per target.
 settings = jsondecode(fileread(reference.settings_path));
 source = string(settings.parameters.normalization_policy.path);
-if ~java.io.File(char(source)).isAbsolute()
+if ~vawlume.internal.resolvePath(source, Mode="isAbsolute")
     source = fullfile(repoRoot, source);
 end
 path = fullfile(outDir, "normalization_policy_" + row.configuration_id + ".json");

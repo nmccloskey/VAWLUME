@@ -8,7 +8,7 @@ arguments
     errorToken (1,1) string
 end
 
-runtimePath = string(java.io.File(char(path)).getAbsolutePath());
+runtimePath = vawlume.internal.resolvePath(path, Mode="absolute");
 [~, stem, extension] = fileparts(runtimePath);
 location = struct(runtime_path=runtimePath, ...
     filename=string(stem) + string(extension), ...

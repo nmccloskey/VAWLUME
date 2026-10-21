@@ -574,5 +574,5 @@ root = string(root);
 if strlength(root) == 0
     root = fileparts(fileparts(fileparts(fileparts(mfilename("fullpath")))));
 end
-root = string(java.io.File(char(root)).getCanonicalPath());
+root = vawlume.internal.resolvePath(root);
 end

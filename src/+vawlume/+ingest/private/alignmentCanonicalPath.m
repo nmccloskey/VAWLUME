@@ -3,7 +3,7 @@ function value = alignmentCanonicalPath(path)
 
 value = string(path);
 try
-    value = string(java.io.File(char(value)).getCanonicalPath());
+    value = vawlume.internal.resolvePath(value);
 catch
 end
 end

@@ -264,7 +264,7 @@ end
 
 function value = isAbsolutePath(path)
 try
-    value = java.io.File(char(path)).isAbsolute();
+    value = vawlume.internal.resolvePath(path, Mode="isAbsolute");
 catch
     value = false;
 end

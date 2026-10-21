@@ -224,7 +224,7 @@ end
 
 function path = canonicalPath(path)
 try
-    path = string(java.io.File(char(path)).getCanonicalPath());
+    path = vawlume.internal.resolvePath(path);
 catch
     path = string(path);
 end

@@ -1001,7 +1001,7 @@ value.profile_key = presentText(rows.profile_key(1));
 value.version_label = presentText(rows.version_label(1));
 value.content_uri = presentText(rows.content_uri(1));
 path = value.content_uri;
-if ~java.io.File(char(path)).isAbsolute()
+if ~vawlume.internal.resolvePath(path, Mode="isAbsolute")
     repoRoot = fileparts(fileparts(fileparts(fileparts(mfilename("fullpath")))));
     path = fullfile(repoRoot, path);
 end

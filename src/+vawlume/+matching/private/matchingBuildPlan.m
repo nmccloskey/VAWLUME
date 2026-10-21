@@ -429,7 +429,7 @@ end
 
 function value = canonicalPath(value)
 try
-    value = string(java.io.File(char(value)).getCanonicalPath());
+    value = vawlume.internal.resolvePath(value);
 catch
     value = string(value);
 end

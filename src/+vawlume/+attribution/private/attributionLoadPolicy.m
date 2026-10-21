@@ -8,7 +8,7 @@ function policy = attributionLoadPolicy(profilePath, repoRoot)
 if strlength(profilePath) == 0
     profilePath = fullfile(repoRoot, "config", "08_attribution_policies", ...
         "prototype_attribution_decision_policy.json");
-elseif ~java.io.File(char(profilePath)).isAbsolute()
+elseif ~vawlume.internal.resolvePath(profilePath, Mode="isAbsolute")
     profilePath = fullfile(repoRoot, profilePath);
 end
 profilePath = canonicalPath(profilePath);
@@ -187,6 +187,5 @@ value = logical(document.(field));
 end
 
 function value = canonicalPath(path)
-resolved = java.io.File(char(path)).getCanonicalPath();
-value = string(resolved);
+value = vawlume.internal.resolvePath(path);
 end

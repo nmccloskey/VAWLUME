@@ -347,7 +347,7 @@ if isempty(rows) || height(rows) == 0
     return
 end
 path = string(rows.content_uri(1));
-if ~java.io.File(char(path)).isAbsolute()
+if ~vawlume.internal.resolvePath(path, Mode="isAbsolute")
     path = fullfile(repoRoot, path);
 end
 if ~isfile(path)

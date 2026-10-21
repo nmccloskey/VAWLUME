@@ -10,7 +10,7 @@ function specification = agreementLoadSpec(profilePath, repoRoot)
 if strlength(profilePath) == 0
     profilePath = fullfile(repoRoot, "config", "07_agreement_profiles", ...
         "prototype_multi_extractor_agreement_spec.json");
-elseif ~java.io.File(char(profilePath)).isAbsolute()
+elseif ~vawlume.internal.resolvePath(profilePath, Mode="isAbsolute")
     profilePath = fullfile(repoRoot, profilePath);
 end
 profilePath = canonicalPath(profilePath);
@@ -209,7 +209,7 @@ end
 
 function value = canonicalPath(value)
 try
-    value = string(java.io.File(char(value)).getCanonicalPath());
+    value = vawlume.internal.resolvePath(value);
 catch
     value = string(value);
 end

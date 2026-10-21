@@ -137,7 +137,7 @@ end
 function path = canonical(path)
 % Only for paths already known to be absolute (home, this repository). A
 % caller-supplied path goes through exportResolvePath instead.
-path = string(java.io.File(char(path)).getCanonicalPath());
+path = vawlume.internal.resolvePath(path);
 end
 
 function yes = isRoot(path)
