@@ -207,7 +207,7 @@ end
 % guard (test_combination_package_boundary) both see it: acoustic evidence
 % minus the level difference pose/location evidence predicts.
 ratio = row.distance_b / row.distance_a;
-distancePredictedDb = 20 * log10(ratio);
+distancePredictedDb = estimatorPredictedDifferenceDb(row.distance_a, row.distance_b);
 acousticObservedDb = observed.value;
 row.distance_ratio_b_over_a = ratio;
 row.predicted_difference_db = distancePredictedDb;
