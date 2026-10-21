@@ -426,7 +426,11 @@ verifyEqual(testCase, databaseCounts(fixture.conn), before);
 % scan package-wide with one named exemption is what makes it still catch an
 % accidental write introduced anywhere else, including in a function added
 % later.
-writers = "runScreen.m";
+%
+% Since 7.8 the sensitivity family record is the second named writer: contract
+% 07 D2 has a family write one analysis_runs row and its sources, through
+% edaRecordSensitivityFamily (docs/development/47).
+writers = ["runScreen.m", "edaRecordSensitivityFamily.m"];
 matchingRoot = fullfile(fixture.repo_root, "src", "+vawlume", "+eda");
 files = dir(fullfile(matchingRoot, "**", "*.m"));
 source = "";
