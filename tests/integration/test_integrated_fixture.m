@@ -119,6 +119,47 @@ verifyEqual(testCase, reasonsOf(r, targetOf(m, "out_of_bracket", ...
     ["alignment_extrapolated"; "alignment_extrapolated"]);
 end
 
+function testEveryNoScoreReasonIsStoredInTheMethodsOrder(testCase)
+% Contract 07 D10 (itinerary 7.4). Every unscored native candidate has its
+% reasons in attribution_candidate_no_score_reasons, ordinals 1..n, and reason 1
+% is still the notes token report reads until 7.5. No scored candidate and no
+% candidate of an external path states one.
+f = testCase.TestData.fixture;
+m = f.manifest;
+rows = fetch(f.conn, "SELECT c.attribution_candidate_id, ar.attribution_path, " + ...
+    "CASE WHEN c.score IS NULL THEN 1 ELSE 0 END AS unscored, " + ...
+    "IFNULL(c.notes,'') AS notes, IFNULL(n.reason_ordinal,-1) AS reason_ordinal, " + ...
+    "IFNULL(n.reason_code,'') AS reason_code, t.attribution_target_id " + ...
+    "FROM attribution_candidates c " + ...
+    "JOIN attribution_targets t ON t.attribution_target_id=c.attribution_target_id " + ...
+    "JOIN attribution_runs ar ON ar.attribution_run_id=t.attribution_run_id " + ...
+    "LEFT JOIN attribution_candidate_no_score_reasons n " + ...
+    "ON n.attribution_candidate_id=c.attribution_candidate_id " + ...
+    "ORDER BY c.attribution_candidate_id, n.reason_ordinal");
+path = string(rows.attribution_path);
+stated = double(rows.reason_ordinal) > 0;
+verifyFalse(testCase, any(stated & path ~= "native_estimate"), ...
+    "Imported and backend candidates state no reason.");
+verifyFalse(testCase, any(stated & double(rows.unscored) == 0), ...
+    "A scored candidate states no reason.");
+native = path == "native_estimate" & double(rows.unscored) == 1;
+ids = unique(double(rows.attribution_candidate_id(native)));
+verifyGreaterThan(testCase, numel(ids), 0);
+for id = ids'
+    mine = rows(double(rows.attribution_candidate_id) == id, :);
+    codes = string(mine.reason_code);
+    verifyEqual(testCase, double(mine.reason_ordinal), (1:height(mine))', ...
+        sprintf("candidate %d: ordinals 1..n, nothing unstated", id));
+    verifyEqual(testCase, string(mine.notes(1)), "no_score_reason=" + codes(1), ...
+        sprintf("candidate %d: reason 1 is where today's readers find it", id));
+end
+for scene = ["coverage_gap", "identity_swap", "out_of_bracket"]
+    target = targetOf(m, scene, "native_detection_target_id");
+    mine = rows(double(rows.attribution_target_id) == target, :);
+    log(testCase, 1, scene + ": " + strjoin(string(mine.reason_code), ", "));
+end
+end
+
 function testTheOutOfBracketCallReachesBracketExtrapolatedTrue(testCase)
 % Closes the Phase 6 ledger item: the flag had only ever been exercised as false.
 f = testCase.TestData.fixture;

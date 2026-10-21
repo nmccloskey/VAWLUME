@@ -51,7 +51,8 @@ function result = createRun(conn, recordingRef, runSpec, options)
 % transaction, with declared_by_profile_version_id set to the run's settings
 % profile version, and the result carries them as declared_inputs. Only a
 % native run accepts declared_inputs here: a backend run's declarations are
-% written by backend intake from its own profile.
+% written by backend intake from its own profile. Both go through the one
+% writer, VAWLUME.ATTRIBUTION.DECLAREINPUTS.
 %
 % A target_set contains exactly one of detection_ids, consensus_event_ids, or
 % agreement_group_ids. Agreement groups additionally require

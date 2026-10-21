@@ -602,6 +602,10 @@ every reason is stored, in the method's order, in
 `attribution_candidate_no_score_reasons`, and native runs written after 7.4 no
 longer carry the `notes` token. Contract 07 D10.)*
 
+*(Corrected at 7.4: 7.4 stores every reason and still writes the first as the
+`notes` token. Native runs written after **7.5**, which moves `report` to the
+table, no longer carry it. Contract 07 D10.)*
+
 **Evidence rows written per target** (6.9 implements; 6.11 prints):
 
 | Dimension | Kind | Grain | Value | Units | Citations |

@@ -41,8 +41,11 @@ function result = attributeCallers(conn, recordingRef, runSpec, options)
 %
 % WHAT IS WRITTEN (contract 06 D10). One native run with its four declared
 % inputs; one target per event; one candidate per participant per target, with
-% the method's score and score_semantics, or no score and
-% notes = "no_score_reason=<code>", and never a probability; and every input the
+% the method's score and score_semantics, or no score and every reason the
+% method gives (no_score_reasons, stored in its order in
+% attribution_candidate_no_score_reasons; the first is also
+% notes = "no_score_reason=<code>" until itinerary 7.5), and never a
+% probability; and every input the
 % method consumed as its own evidence row with its citation:
 %
 %   target     temporal_alignment  call_clock_placement        per alignment run used
@@ -389,14 +392,20 @@ end
 % ------------------------------------------------------------------ rows ---
 
 function rows = candidateRows(method)
+% Every reason the method gives, in its order, goes to no_score_reasons
+% (contract 07 D10). The first is also kept as the notes token until report
+% reads the reason table (itinerary 7.5 retires the token).
 c = method.candidates;
 notes = strings(height(c), 1);
 unscored = c.status ~= "scored";
 notes(unscored) = "no_score_reason=" + c.no_score_reason(unscored);
+reasons = repmat({strings(0, 1)}, height(c), 1);
+reasons(unscored) = c.no_score_reasons(unscored);
 semantics = c.score_semantics;
 semantics(unscored) = "";
-rows = table(c.entity_id, c.score, semantics, notes, ...
-    VariableNames=["entity_id", "score", "score_semantics", "notes"]);
+rows = table(c.entity_id, c.score, semantics, notes, reasons, ...
+    VariableNames=["entity_id", "score", "score_semantics", "notes", ...
+    "no_score_reasons"]);
 end
 
 function rows = targetEvidence(geometry, normalization, difference, parameters)

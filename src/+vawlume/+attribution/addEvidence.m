@@ -67,6 +67,13 @@ function result = addEvidence(conn, ref, evidence, options)
 % tracking_identity_association_id. The cited statement must identify the same
 % candidate in the same recording.
 %
+% On a native_estimate run, every pose_localization and visual_identity row must
+% cite a tracking_identity_association_id: a track reaches an entity only
+% through a cited association, never through a label, a locator or a declared
+% entity link (invariant 26, contract 07 D9). Such a row is refused before any
+% write with vawlume:attribution:NativeIdentityCitationRequired. Imported and
+% backend rows are unaffected.
+%
 % Evidence rows have no schema identity key. Each successful Apply deliberately
 % appends new observations; callers should not repeat an apply accidentally.
 %

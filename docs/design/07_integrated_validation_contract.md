@@ -687,6 +687,12 @@ NULL. A scored candidate has no reason not to be scored.
   the table (7.5). No persistent native database exists to need the old
   convention (D12's rebuild policy). Contract 06 D10 carries the correction.
 
+  *(Corrected at 7.4, with the user's agreement: 7.4 writes every reason to the
+  table and keeps the first-reason `notes` token, so `report`, which 7.4 may not
+  change, reads what it read before. 7.5 retires the token in the same pass
+  that moves `report` to the table. Between 7.4 and 7.5 the token and reason 1
+  are one fact, written twice by the same call.)*
+
 **What moves with the version** (contract 05 D12's list, the CSV contract §A.1,
 and `30_repository_self_description.md` §3):
 

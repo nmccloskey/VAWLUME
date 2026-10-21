@@ -49,8 +49,10 @@ silently is the failure doc 28 designed against.
 - One native run with its four declared inputs (doc 43).
 - One target per event.
 - One candidate per participant per target. Each has the method's `score` and
-  `score_semantics`, or `score` NULL with `notes = "no_score_reason=<code>"`. No
-  candidate ever has a probability.
+  `score_semantics`, or `score` NULL with every reason the method gave in
+  `attribution_candidate_no_score_reasons` (and the first also in
+  `notes = "no_score_reason=<code>"`; see below). No candidate ever has a
+  probability.
 - Every input the method consumed, as its own evidence row (contract D10):
 
 | Grain | Dimension | Kind | Value | Citation |
@@ -74,20 +76,36 @@ silently is the failure doc 28 designed against.
 - **`addEvidence` requires `identity_statement_kind = identity_association` on
   every row that cites an association.** So the pose rows carry it too: the
   distance rests on that association.
-- **Only the first no-score reason is stored.** The method returns every
-  applicable reason (`no_score_reasons`) and the primitive's own word for a
-  missing position (`geometry_reason_detail`). The candidate row keeps
-  `no_score_reason=<first>` only, in D10's order, and `report`'s
-  `unscored_candidates_by_reason` counts first reasons. A candidate both
-  uncovered and clipped is stored as uncovered.
-- **Invariants 24 and 26 are properties of this producer, not of the canonical
-  layer.** `attributeCallers` never writes a probability, and every distance
-  and pose-confidence row it writes cites the association its track was
-  resolved through. `addCandidates` and `addEvidence` are path-agnostic. A
-  hand-written call on a native run can still add a probability, or a
-  `pose_localization` row citing only a track label in `source_locator`; the
-  6.12 sweep showed the second is accepted. A path-aware rule there is
-  deferred to Phase 7.
+- **Every no-score reason is stored (itinerary 7.4, contract 07 D10).** The
+  method returns every applicable reason (`no_score_reasons`), in D10's order,
+  and the primitive's own word for a missing position
+  (`geometry_reason_detail`). `attributeCallers` passes the whole list to
+  `addCandidates`, which writes one `attribution_candidate_no_score_reasons`
+  row per reason (`reason_ordinal` 1 first, `reason_code` verbatim) in the
+  run's transaction. A candidate both uncovered and clipped now states both.
+- **The first reason is also still the `notes` token.** `report` reads
+  `no_score_reason=<first>` from `candidates.notes`, and its
+  `unscored_candidates_by_reason` counts first reasons, until itinerary 7.5
+  moves both readers to the table. 7.5 then retires the token, so the table
+  becomes the only home for reasons. Until then the token and reason 1 are the
+  same fact written twice, by the same call.
+- **Invariants 24 and 26 are enforced by the canonical layer (7.4), not only by
+  this producer.** `attributeCallers` never writes a probability, and every
+  distance and pose-confidence row it writes cites the association its track
+  was resolved through. Since 7.4 any writer is held to the same rules:
+  `addCandidates` refuses a probability or probability semantics on a native
+  run (`vawlume:attribution:NativeProbabilityRefused`), and `addEvidence`
+  refuses a native `pose_localization` or `visual_identity` row that cites no
+  `tracking_identity_association_id`, for example one naming a track only in
+  `source_locator` (`vawlume:attribution:NativeIdentityCitationRequired`). Both
+  refuse before any write. The 0.14 schema triggers
+  (`trg_attribution_candidate_native_no_probability`,
+  `trg_attribution_evidence_native_identity_cited`, each with an update twin)
+  refuse the same rows when the API is bypassed. Imported and backend rows are
+  unaffected. `test_canonical_write_enforcement` is the probe.
+- **Declared inputs have one writer.** `createRun` writes a native run's four
+  declarations, and backend intake a backend run's, both through
+  `vawlume.attribution.declareInputs` (P6-1).
 
 ## Reconstruction (condition 4)
 
@@ -115,7 +133,9 @@ reconstruction. For an unscored candidate with fewer than two stored
 primary-basis distances, the test seeds the method's input with the stored
 reason and then compares the output with that same stored reason, so the check
 only confirms the method echoes it. Only the first reason is compared, because
-only the first is stored.
+the echo recovers one. Since 7.4 every reason is stored, and
+`testASwapAndATrackingGapAreUnscoredWithTheirEvidence` compares the stored list
+with the method's own, in order.
 
 ## Apply writes one transaction
 
@@ -164,6 +184,8 @@ that mitigation with the transaction itself.
 | another recording's target | `vawlume:attribution:TargetSetCrossesRecording`, from `createRun`'s planner |
 | a participant not linked to the recording | `vawlume:attribution:EntityNotInRecording`, from `createRun`'s planner |
 | unconnected clocks | `vawlume:tracking:ClockDeclarationInvalid` (or the alignment layer's own refusal) |
+| a probability on a native candidate, from any writer (7.4) | `vawlume:attribution:NativeProbabilityRefused`, from `addCandidates` |
+| a native pose or identity row citing no association, from any writer (7.4) | `vawlume:attribution:NativeIdentityCitationRequired`, from `addEvidence` |
 
 ## Deciding (6.10)
 

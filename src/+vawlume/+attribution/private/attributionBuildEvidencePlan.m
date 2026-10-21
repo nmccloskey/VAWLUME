@@ -7,6 +7,7 @@ assertWritableRun(plan.run);
 plan.evidence = normalizeEvidence(inputEvidence, ...
     plan.target.attribution_target_id, ...
     plan.candidate.attribution_candidate_id);
+assertNativeIdentityCited(plan);
 plan = validateSources(conn, plan);
 plan.has_conflicts = false;
 plan.conflicts = strings(0, 1);
@@ -16,6 +17,27 @@ function assertWritableRun(run)
 if run.status ~= "planned" || run.analysis_status ~= "started"
     error("vawlume:attribution:RunNotWritable", ...
         "Evidence may only be appended while attribution status is planned and analysis status is started.");
+end
+end
+
+function assertNativeIdentityCited(plan)
+% Invariant 26 (contract 07 D9). On a native run a track reaches an entity only
+% through a cited tracking_identity_associations row, so a pose or identity row
+% that names a track by label, a locator or a declared entity link alone is
+% refused, whoever writes it. Imported and backend rows are the producers'
+% statements and keep their own rules. The schema's
+% trg_attribution_evidence_native_identity_cited is the last line of defence.
+if plan.run.attribution_path ~= "native_estimate"
+    return
+end
+uncited = ismember(plan.evidence.evidence_dimension, ...
+    ["pose_localization", "visual_identity"]) & ...
+    isnan(plan.evidence.tracking_identity_association_id);
+if any(uncited)
+    error("vawlume:attribution:NativeIdentityCitationRequired", ...
+        "A native_estimate pose or identity evidence row must cite a tracking " + ...
+        "identity association (rows %s): an upstream label is not a canonical entity.", ...
+        strjoin(string(find(uncited))', ", "));
 end
 end
 

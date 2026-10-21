@@ -54,5 +54,13 @@ for index = find(create)'
         source_label=row.source_label, notes=row.notes), ...
         "attribution_candidate_id");
     plan.candidates.attribution_candidate_id(index) = candidateId;
+    % After its candidate, in the same transaction: the schema refuses a reason
+    % on a candidate that has a score, so the NULL score must already be stored.
+    reasons = row.no_score_reasons{1};
+    for ordinal = 1:numel(reasons)
+        attributionInsertRow(conn, "attribution_candidate_no_score_reasons", ...
+            struct(attribution_candidate_id=candidateId, ...
+            reason_ordinal=ordinal, reason_code=reasons(ordinal)));
+    end
 end
 end

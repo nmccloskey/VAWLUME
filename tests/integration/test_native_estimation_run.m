@@ -126,8 +126,9 @@ function testEveryStoredScoreIsReconstructedFromStorage(testCase)
 % Only the scored branch is a reconstruction. An unscored candidate with fewer
 % than two stored primary-basis distances is fed its stored reason
 % (storedGeometry), so the comparison below only shows the method echoes it.
-% Only the first reason is stored, so only the first is compared (6.12 sweep,
-% F6.12-7; doc 44).
+% Only the first reason is compared here (6.12 sweep, F6.12-7; doc 44): the echo
+% recovers one. Every reason is stored since 7.4, and verifyStoredReasons checks
+% them against the method's own list.
 f = testCase.TestData.fixture;
 apply(f, "native-reconstruct");
 conn = f.conn;
@@ -196,6 +197,7 @@ for target = [swap, gap]
         string(target.attribution_target_id));
     verifyTrue(testCase, all(double(candidates.score) < -1e307));
     verifyTrue(testCase, all(startsWith(string(candidates.notes), "no_score_reason=")));
+    verifyStoredReasons(testCase, f.conn, target);
 end
 % The swap still records the associations each candidate was resolved through,
 % and no distance: there is no single track to measure from.
@@ -630,6 +632,24 @@ value = zeros(1, numel(tables));
 for k = 1:numel(tables)
     rows = fetch(conn, "SELECT COUNT(*) AS n FROM " + tables(k));
     value(k) = double(rows.n(1));
+end
+end
+
+function verifyStoredReasons(testCase, conn, target)
+% Contract 07 D10 (itinerary 7.4): every reason the method gave is stored, in
+% its order, and the first is still the notes token readers find today.
+method = target.method.candidates;
+for k = 1:height(method)
+    stored = fetch(conn, "SELECT n.reason_ordinal, n.reason_code, " + ...
+        "IFNULL(c.notes,'') AS notes FROM attribution_candidate_no_score_reasons n " + ...
+        "JOIN attribution_candidates c ON c.attribution_candidate_id=n.attribution_candidate_id " + ...
+        "WHERE c.attribution_target_id=" + string(target.attribution_target_id) + ...
+        " AND c.entity_id=" + string(method.entity_id(k)) + " ORDER BY n.reason_ordinal");
+    label = sprintf("target %d entity %d", target.attribution_target_id, method.entity_id(k));
+    verifyEqual(testCase, string(stored.reason_code), method.no_score_reasons{k}, label);
+    verifyEqual(testCase, double(stored.reason_ordinal), (1:height(stored))', label);
+    verifyEqual(testCase, string(stored.notes(1)), ...
+        "no_score_reason=" + string(stored.reason_code(1)), label);
 end
 end
 

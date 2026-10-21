@@ -505,6 +505,12 @@ value = [
     % Periodic Hann window coefficients for a spectrogram: signal processing,
     % not an angle. Invisible to the Phase 5 pattern, which had no cos term.
     "src/+vawlume/+eda/spectrogramMatrix.m | value = 0.5 * (1 - cos(2 * pi * n / length));"
+    % Synthetic audio samples (a noise floor's hum, the call tone) written by the
+    % integrated fixture's generator (7.3): waveforms over time, not angles. The
+    % tone line occurs twice: the session WAV and the second microphone's WAV.
+    "src/+vawlume/+db/buildIntegratedFixture.m | noise = noise + 0.05 * sin(2 * pi * frequency * time);"
+    "src/+vawlume/+db/buildIntegratedFixture.m | tone = sin(2 * pi * g.call_hz * time);"
+    "src/+vawlume/+db/buildIntegratedFixture.m | tone = sin(2 * pi * g.call_hz * time);"
     ];
 end
 function row = localizationRow(estimateId, frameKey)

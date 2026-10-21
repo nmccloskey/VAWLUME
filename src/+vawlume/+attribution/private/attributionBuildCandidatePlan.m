@@ -4,7 +4,7 @@ function plan = attributionBuildCandidatePlan(conn, targetRef, inputCandidates)
 [plan.target, plan.run] = attributionResolveTarget(conn, targetRef);
 assertWritableRun(plan.run);
 plan.candidates = normalizeCandidates(inputCandidates, ...
-    plan.target.attribution_target_id);
+    plan.target.attribution_target_id, plan.run.attribution_path);
 if ~all(ismember(plan.candidates.entity_id, ...
         plan.run.participating_entity_ids))
     rejected = plan.candidates.entity_id(~ismember( ...
@@ -15,6 +15,8 @@ if ~all(ismember(plan.candidates.entity_id, ...
 end
 
 stored = attributionReadCandidates(conn, plan.target.attribution_target_id);
+stored.no_score_reasons = storedReasons(conn, stored.attribution_candidate_id);
+stored = movevars(stored, "no_score_reasons", "Before", "action");
 plan.conflicts = strings(0, 1);
 for index = 1:height(plan.candidates)
     existingIndex = find(stored.entity_id == plan.candidates.entity_id(index));
@@ -48,7 +50,27 @@ if run.status ~= "planned" || run.analysis_status ~= "started"
 end
 end
 
-function candidates = normalizeCandidates(raw, targetId)
+function reasons = storedReasons(conn, candidateIds)
+% Every stated reason per stored candidate, in the producer's order. Read here
+% rather than in attributionReadCandidates, whose table the decision layer uses.
+reasons = repmat({strings(0, 1)}, numel(candidateIds), 1);
+if isempty(candidateIds)
+    return
+end
+rows = fetch(conn, "SELECT attribution_candidate_id, reason_code " + ...
+    "FROM attribution_candidate_no_score_reasons WHERE attribution_candidate_id IN (" + ...
+    strjoin(string(candidateIds(:)'), ",") + ") ORDER BY attribution_candidate_id, reason_ordinal");
+if isempty(rows) || height(rows) == 0
+    return
+end
+owners = double(rows.attribution_candidate_id);
+codes = string(rows.reason_code);
+for index = 1:numel(candidateIds)
+    reasons{index} = codes(owners == candidateIds(index));
+end
+end
+
+function candidates = normalizeCandidates(raw, targetId, path)
 rows = rowTable(raw, "candidates");
 if height(rows) == 0
     error("vawlume:attribution:CandidateSetEmpty", ...
@@ -56,7 +78,7 @@ if height(rows) == 0
 end
 allowed = ["entity_id", "candidate_status", "candidate_rank", "score", ...
     "score_semantics", "probability", "probability_semantics", ...
-    "source_label", "notes"];
+    "source_label", "notes", "no_score_reasons"];
 unknown = setdiff(string(rows.Properties.VariableNames), allowed);
 if ~isempty(unknown)
     error("vawlume:attribution:CandidateSpecInvalid", ...
@@ -86,6 +108,19 @@ scores = numericColumn(rows, "score", NaN(count, 1));
 scoreSemantics = textColumn(rows, "score_semantics", strings(count, 1));
 probabilities = numericColumn(rows, "probability", NaN(count, 1));
 probabilitySemantics = textColumn(rows, "probability_semantics", strings(count, 1));
+
+% Invariant 24 (contract 07 D9). A native score is a dB discrepancy, not a
+% probability, and nothing converts between them; so a native candidate carries
+% no probability and no probability semantics, whoever writes it. Checked before
+% the probability's own rules, so the refusal names the path rule. The schema's
+% trg_attribution_candidate_native_no_probability is the last line of defence.
+if path == "native_estimate" && ...
+        any(~isnan(probabilities) | strlength(probabilitySemantics) > 0)
+    error("vawlume:attribution:NativeProbabilityRefused", ...
+        "A native_estimate candidate carries no probability: its score is not " + ...
+        "one. Store the method's score with its score_semantics only.");
+end
+reasons = reasonColumn(rows, count);
 
 if any(~isnan(scores) & ~isfinite(scores))
     error("vawlume:attribution:CandidateSpecInvalid", ...
@@ -120,18 +155,58 @@ if any(~isnan(ranks) & isnan(scores))
     error("vawlume:attribution:CandidateRankInvalid", ...
         "candidate_rank is a presentation of score and requires a score.");
 end
+if any(~isnan(scores) & cellfun(@(r) ~isempty(r), reasons))
+    error("vawlume:attribution:CandidateSpecInvalid", ...
+        "no_score_reasons cannot accompany a score: a scored candidate had no " + ...
+        "reason not to be scored.");
+end
 
 candidates = table(NaN(count, 1), repmat(targetId, count, 1), ...
     (1:count)', entityIds, statuses, ranks, scores, scoreSemantics, ...
     probabilities, probabilitySemantics, ...
     rawTextColumn(rows, "source_label", strings(count, 1)), ...
-    rawTextColumn(rows, "notes", strings(count, 1)), ...
+    rawTextColumn(rows, "notes", strings(count, 1)), reasons, ...
     repmat("create", count, 1), ...
     VariableNames=["attribution_candidate_id", "attribution_target_id", ...
     "candidate_ordinal", "entity_id", "candidate_status", ...
     "candidate_rank", "score", "score_semantics", "probability", ...
-    "probability_semantics", "source_label", "notes", "action"]);
+    "probability_semantics", "source_label", "notes", "no_score_reasons", ...
+    "action"]);
 validateRankAgreement(candidates);
+end
+
+function reasons = reasonColumn(rows, count)
+%REASONCOLUMN Every no-score reason per candidate, in the producer's order.
+%
+% Contract 07 D10. Each row's value is a list of codes (string array, cellstr,
+% or one text value; "" and an empty list both mean none). The order given is
+% stored as reason_ordinal 1, 2, ...; nothing here sorts, deduplicates or
+% interprets a code, because the closed set belongs to the producing method.
+reasons = repmat({strings(0, 1)}, count, 1);
+if ~ismember("no_score_reasons", string(rows.Properties.VariableNames))
+    return
+end
+raw = rows.no_score_reasons;
+for index = 1:count
+    if iscell(raw)
+        value = raw{index};
+    else
+        value = raw(index, :);
+    end
+    try
+        value = strtrim(string(value));
+    catch
+        error("vawlume:attribution:CandidateSpecInvalid", ...
+            "no_score_reasons must hold a list of text codes per candidate.");
+    end
+    value = value(:);
+    value = value(~ismissing(value) & strlength(value) > 0);
+    if numel(unique(value)) ~= numel(value)
+        error("vawlume:attribution:CandidateSpecInvalid", ...
+            "A no-score reason may be stated once per candidate.");
+    end
+    reasons{index} = value;
+end
 end
 
 function rows = rowTable(raw, label)
@@ -228,7 +303,8 @@ okay = stored.entity_id == planned.entity_id && ...
     stored.score_semantics == planned.score_semantics && ...
     sameNumber(stored.probability, planned.probability) && ...
     stored.probability_semantics == planned.probability_semantics && ...
-    stored.source_label == planned.source_label && stored.notes == planned.notes;
+    stored.source_label == planned.source_label && stored.notes == planned.notes && ...
+    isequal(stored.no_score_reasons{1}, planned.no_score_reasons{1});
 end
 
 function okay = sameNumber(left, right)
