@@ -12,6 +12,13 @@
 %     events                         analysis that produced those consensus events
 %   detections against agreement     agreement_group_members of that agreement
 %     groups                         analysis
+%   consensus events of two          their SHARED MEMBER DETECTIONS, through both
+%     analyses (configurations P, Q)  analyses' consensus_event_members (itinerary
+%                                    7.9). REF is struct(shared_member_detections=true):
+%                                    the two analyses are the runs' own target
+%                                    sources, so no third analysis is named. Both
+%                                    must be complete cross_extractor_matching
+%                                    analyses over the same extraction runs
 %
 % A UNIT is one connected component of that membership graph restricted to the
 % two runs' targets. Nothing is matched here: no interval, overlap or score is
@@ -22,9 +29,14 @@
 % does not exist, is of another project, is not complete, is of another kind,
 % does not take both runs' event sets as its inputs or outputs, or stores no
 % row on the runs' recording. Never "the latest analysis".
-analysis = resolveAnalysis(conn, leftReport, ref);
 left = sideEvents(leftReport);
 right = sideEvents(rightReport);
+if isstruct(ref) && isscalar(ref) && isfield(ref, "shared_member_detections")
+    [analysis, edges] = sharedMembers(conn, left, right, leftReport.recording_id);
+    units = components(edges, left, right);
+    return
+end
+analysis = resolveAnalysis(conn, leftReport, ref);
 if left.set == right.set
     invalid("Runs %d and %d target one event set; compare them without Correspondence.", ...
         leftReport.attribution_run_id, rightReport.attribution_run_id);
@@ -154,6 +166,59 @@ function requireRows(rows, analysis, recordingId)
 if isempty(rows) || height(rows) == 0
     invalid("Analysis %s stores no membership row on recording %d.", analysis.run_key, recordingId);
 end
+end
+
+function [analysis, edges] = sharedMembers(conn, left, right, recordingId)
+% Consensus events of two matching analyses join where they share a member
+% detection (contract 07 D3, third join). Each stored member row is one edge
+% between a consensus-event target and a detection node.
+if left.kind ~= "consensus_event" || right.kind ~= "consensus_event" || ...
+        left.source_kind ~= "analysis_run" || right.source_kind ~= "analysis_run"
+    invalid("shared_member_detections joins consensus events of two matching " + ...
+        "analyses; the runs target %s and %s.", left.set, right.set);
+end
+if left.source_id == right.source_id
+    invalid("Both runs target consensus events of analysis %d: one event set; " + ...
+        "compare them without Correspondence.", left.source_id);
+end
+ids = [left.source_id, right.source_id];
+rows = fetch(conn, "SELECT analysis_run_id, run_key, run_type, status FROM analysis_runs " + ...
+    "WHERE analysis_run_id IN (" + strjoin(string(ids), ",") + ")");
+inputs = cell(1, 2);
+keys = strings(1, 2);
+for k = 1:2
+    row = rows(double(rows.analysis_run_id) == ids(k), :);
+    if height(row) == 0 || string(row.run_type(1)) ~= "cross_extractor_matching" || ...
+            ~ismember(string(row.status(1)), ["completed", "completed_with_warnings"])
+        invalid("Consensus source %d is not a complete cross_extractor_matching analysis.", ids(k));
+    end
+    keys(k) = string(row.run_key(1));
+    found = fetch(conn, "SELECT extraction_run_id FROM analysis_run_extraction_inputs " + ...
+        "WHERE analysis_run_id=" + string(ids(k)) + " ORDER BY extraction_run_id");
+    inputs{k} = double(found.extraction_run_id);
+end
+if ~isequal(inputs{1}, inputs{2})
+    invalid("Analyses %s and %s are over different extraction runs; their consensus " + ...
+        "events share no stored member detection to join on.", keys(1), keys(2));
+end
+edges = table(zeros(0, 1), zeros(0, 1), strings(0, 1), ...
+    VariableNames=["container", "event", "side"]);
+sides = {left, right};
+labels = ["left", "right"];
+for k = 1:2
+    members = fetch(conn, "SELECT m.consensus_event_id AS event, m.detection_id AS container " + ...
+        "FROM consensus_event_members m JOIN consensus_events c " + ...
+        "ON c.consensus_event_id=m.consensus_event_id WHERE c.analysis_run_id=" + ...
+        string(ids(k)) + " AND c.recording_id=" + string(recordingId));
+    requireRows(members, struct(run_key=keys(k)), recordingId);
+    event = double(members.event);
+    keep = ismember(event, sides{k}.events);
+    edges = [edges; table(double(members.container(keep)), event(keep), ...
+        repmat(labels(k), nnz(keep), 1), VariableNames=["container", "event", "side"])]; %#ok<AGROW>
+end
+analysis = struct(analysis_run_id=NaN, run_key=keys(1) + " | " + keys(2), ...
+    run_type="cross_extractor_matching", kind="shared_member_detections", ...
+    extraction_inputs=inputs{1});
 end
 
 function requireInput(analysis, side)

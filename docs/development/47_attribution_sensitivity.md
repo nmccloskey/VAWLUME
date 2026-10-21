@@ -135,10 +135,13 @@ reference against the variant:
 | `score_comparability` | As `compare` states it |
 | `one_to_one_units` | The denominator |
 | `top_same`, `top_different`, `top_tie`, `top_unscored`, `top_orientation_unknown` | Top-entity agreement, counted |
-| `sets_equal`, `sets_not_equal` | Selected-set relation, counted |
+| `sets_equal`, `sets_both_empty`, `sets_differ` | Selected-set relation, counted. Equal non-empty sets and "neither selected anyone" are kept apart, as `compare` keeps them |
 | `status_agree`, `status_disagree`, `status_structural_empty`, `status_excluded`, `status_undecided` | `compare`'s status cross-tab by cell kind |
 | `reasons_changed` | (target, entity) pairs whose stored no-score reasons, in order, differ from the reference's |
 | `scores_changed` | Differing score pairs, only where values compare; NaN otherwise |
+| `units_one_to_one`, `units_one_to_many`, `units_many_to_one`, `units_many_to_many`, `units_unmatched_left`, `units_unmatched_right` | Correspondence units by category (7.9). On one event set, all are `one_to_one` |
+| `targets_lost`, `targets_gained` | Reference targets with no counterpart in the variant, and the reverse |
+| `pairs`, `pairs_top_same`, `pairs_top_different` | Within-unit target pairs and their top-entity agreement |
 
 The per-unit detail is `comparisons(k).comparison`, which is `compare`'s own
 result. `Export=` writes the rows with `writeTableExport`. Its provenance block
@@ -149,6 +152,91 @@ carries:
 - every variant's policy and settings versions;
 - the design SHA-256;
 - the schema version and the MATLAB version.
+
+## Matching-side families (`correspondenceSensitivity`, 7.9)
+
+```matlab
+plan    = vawlume.eda.correspondenceSensitivity(conn, familySpec);   % prints cost, writes nothing
+applied = vawlume.eda.correspondenceSensitivity(conn, familySpec, Apply=true);
+summary = vawlume.eda.sensitivitySummary(conn, struct(analysis_run_id=applied.family_analysis_run_id));
+```
+
+**Where the matching side reaches attribution.** A matching configuration
+changes the consensus events. Those events are attributed, and two
+configurations' runs are compared through `compare`'s
+`Correspondence=struct(shared_member_detections=true)`. That joins consensus
+events where their stored members share a detection (contract 07 D3's third
+join).
+
+**The specification fields:**
+
+- `family_key`, `output_root`, `recording_id`;
+- `extraction_runs` (every pair is matched);
+- `consensus_pair` (the pair whose analysis supplies the attributed consensus
+  events);
+- `reference`:
+  - an optional `specification_path` (the tracked specification by default,
+    through `vawlume.eda.referenceConfiguration`);
+  - `run_spec`: the native fields every configuration shares (settings,
+    participants, clock, tracking);
+  - `decision_policy`;
+  - `measurement`: channels, band, audio source root and response run;
+- `variants`.
+
+**Handles:**
+
+| Handle | Factor | A configuration is |
+|---|---|---|
+| `matching_temporal` | `min_temporal_iou` | A generated specification whose `plausibility_rule.min_temporal_iou` differs |
+| `matching_spectral` | `relative_tolerance` | A generated specification whose every `feature_support.discrepancy_tolerance` entry differs |
+| `matching_duration` | — | Reported `not_variable`: the tracked plausibility rule has no duration bound. Were one added, CAL-001 applies: the duration difference is in absolute seconds, so its axis is not scale-free |
+
+Generated specifications follow the same byte-copy rule (`+sens.<id>`). The
+tracked specification is never edited.
+`vawlume.eda.materializeConfigurations` is not used. It overrides only
+`plausibility_rule` fields, so it cannot make a spectral variant, and it expects
+a full screening design.
+
+**Per configuration, the reference included:**
+
+1. `matching.compare` for every pair, and `agreement.compose`. An applied
+   analysis over the same runs and recording, with an identical specification
+   checksum, is reused (contract 07 D7). On the fixture the reference
+   configuration reuses the fixture's own analyses.
+2. For each consensus event of the consensus pair's analysis:
+   `measureCallWindow`, which **reads audio**, and `normalizeCallLevels`.
+3. `attributeCallers` over those consensus events, then `decide`.
+
+**Cost.**
+
+- The plan prints the analyses (the consilience formula: N(N−1)/2 matching plus
+  one agreement per configuration, minus reuse), the runs, and the consensus
+  events to measure. That last count is estimated from the reference analysis:
+  a configuration's own count exists only after its matching.
+- Apply measures the wall time per configuration. On the 7.3 fixture this was
+  roughly 8–18 s per configuration.
+- EXP-050 is the warning: analysis counts do not predict wall time on real
+  data. No real-data run of this orchestrator happens in Phase 7.
+
+**The summary** reads a matching-side family with the same columns. The unit
+categories and the targets lost or gained carry the correspondence movement.
+The reference configuration has no row.
+
+**What the fixture shows:**
+
+- **`min_temporal_iou` 0.9.** The DeepSqueak–MUPET consensus events go from 9
+  to 7. Two reference consensus events have no counterpart and become
+  `unmatched_left` (2 targets lost). One of them is the merge: two DeepSqueak
+  detections against one MUPET call. The other 7 units stay `one_to_one`.
+- **`relative_tolerance` 0.001.** The reach is demonstrated, not assumed:
+  - every match-group, agreement-group and consensus-event member set is
+    identical to the reference's;
+  - every unit is `one_to_one` with no set or status disagreement and no score
+    change;
+  - the consilience classification (`vawlume.consilience.summarize`) moves 7
+    groups from `matched_feature_supported` to `matched_feature_discrepant`.
+
+  The tolerance governs classification only, as the consilience contract says.
 
 ## What the 7.3 fixture shows
 

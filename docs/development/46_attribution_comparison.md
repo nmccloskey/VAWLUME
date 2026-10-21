@@ -147,6 +147,7 @@ result = vawlume.attribution.compare(conn, dsRunRef, mupetRunRef, ...
 | detections / detections | `multi_extractor_agreement` | `agreement_group_members` (restricted to the two runs' targets) |
 | detections / consensus events | the `cross_extractor_matching` analysis that produced the consensus events | `consensus_event_members` |
 | detections / agreement groups | that `multi_extractor_agreement` analysis | `agreement_group_members` |
+| consensus events of matching analysis P / of matching analysis Q (7.9) | none named: `Correspondence=struct(shared_member_detections=true)`. The two analyses are the runs' own target sources, and must be complete and over the same extraction runs | both analyses' `consensus_event_members`, joined on shared member detections |
 
 **A unit** is one connected component of those rows, restricted to the two
 runs' targets. Its type is decided by counting its targets on each side:
@@ -184,8 +185,8 @@ two targets are different measured windows of the same call.
     outputs;
   - an analysis with no rows on the recording;
   - an analysis named for one event set;
-  - two derived event sets, such as consensus events of two configurations.
-    Those join through shared member detections, which is 7.9's.
+  - shared member detections asked of sides that are not both consensus events,
+    or of analyses over different extraction runs.
 
 **Proof that the join is stored.** On the 7.3 fixture:
 

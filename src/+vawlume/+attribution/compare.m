@@ -39,6 +39,11 @@ function result = compare(conn, leftRunRef, rightRunRef, options)
 %                   detections vs consensus events  consensus_event_members of
 %                     the matching analysis that produced those events
 %                   detections vs agreement groups  agreement_group_members
+%                   consensus events of two matching analyses (configurations
+%                     P and Q)  their shared member detections, through both
+%                     analyses' consensus_event_members:
+%                     struct(shared_member_detections=true), since the two
+%                     analyses are the runs' own target sources (itinerary 7.9)
 %                 A unit is one connected component of those rows restricted to
 %                 the two runs' targets. Nothing is re-matched and nothing is
 %                 forced 1:1; no "latest analysis" is ever assumed
@@ -51,10 +56,9 @@ function result = compare(conn, leftRunRef, rightRunRef, options)
 %     configurations) with no Correspondence named
 %   a named analysis that is missing, of another project, not complete, of
 %     another kind, not built over both runs' event sets, without rows on
-%     the recording, or named for one event set
+%     the recording, or named for one event set; shared member detections
+%     between analyses over different extraction runs
 %                                         vawlume:attribution:CorrespondenceAnalysisInvalid
-%     Two derived event sets (consensus events of two configurations) join
-%     through shared member detections: itinerary 7.9, refused here by name
 %   decisions under several policy versions, none named
 %                                         vawlume:attribution:DecisionPolicyRequired
 %   a named policy that decided nothing on that run
@@ -73,7 +77,8 @@ function result = compare(conn, leftRunRef, rightRunRef, options)
 %                  rank basis
 %   correspondence what joined the targets: kind (same_event_set,
 %                  matching_membership, agreement_membership,
-%                  consensus_membership), the analysis id, key and type, and a
+%                  consensus_membership, shared_member_detections), the analysis
+%                  id (NaN for shared members; the key names both), key and type, and a
 %                  value note
 %   units          one row per unit; unit_id numbers them in order. On one
 %                  event set: ordered by event kind, event id and extent basis;

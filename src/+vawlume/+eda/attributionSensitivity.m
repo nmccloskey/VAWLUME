@@ -1,4 +1,4 @@
-﻿function result = attributionSensitivity(conn, familySpec, options)
+function result = attributionSensitivity(conn, familySpec, options)
 %ATTRIBUTIONSENSITIVITY Plan or apply one attribution-side sensitivity family.
 %
 % RESULT = VAWLUME.EDA.ATTRIBUTIONSENSITIVITY(CONN, FAMILYSPEC) plans a family
@@ -91,7 +91,7 @@ repoRoot = options.RepoRoot;
 if strlength(repoRoot) == 0
     repoRoot = string(fileparts(fileparts(fileparts(fileparts(mfilename("fullpath"))))));
 end
-catalog = edaSensitivityHandles();
+catalog = edaSensitivityHandles("attribution");
 spec = validateSpec(familySpec);
 reference = resolveReference(conn, spec, repoRoot);
 variants = planVariants(spec, reference, catalog);
@@ -103,7 +103,7 @@ design = struct(family_key=spec.family_key, ...
     variants=variants(:, ["handle", "configuration_id", "identity_payload", ...
         "handle_value", "variant_kind", "run_key"]));
 designSha = edaSha256OfText(string(jsonencode(design)));
-existing = existingFamily(conn, reference.project_id, spec.family_key, designSha);
+existing = edaExistingSensitivityFamily(conn, reference.project_id, spec.family_key, designSha);
 
 result = struct(status="planned", committed=false, family_key=spec.family_key, ...
     design_sha256=designSha, reference=reference, variants=variants, ...
@@ -126,8 +126,16 @@ for k = 1:height(variants)
     variants(k, :) = applyVariant(conn, variants(k, :), reference, outDir, repoRoot);
 end
 result.variants = variants;
-result.family_analysis_run_id = recordFamily(conn, spec, reference, variants, design, ...
-    designSha, outDir, repoRoot);
+record = design;
+record.family_kind = "attribution";
+record.variants = variants(:, ["handle", "configuration_id", "identity_payload", ...
+    "handle_value", "variant_kind", "run_key", "attribution_run_id", ...
+    "policy_profile_version_id", "settings_profile_version_id"]);
+record.reported = catalog.reported;
+record.design_sha256 = designSha;
+result.family_analysis_run_id = edaRecordSensitivityFamily(conn, reference.project_id, ...
+    spec.family_key, reference.attribution_run_id, ...
+    variants.attribution_run_id(variants.variant_kind == "run"), record, outDir, repoRoot);
 result.executed = executedCounts(before, counts(conn));
 result.status = "applied";
 result.committed = true;
@@ -309,7 +317,7 @@ switch row.handle
         for name = string(fieldnames(factors))'
             edits.(name) = numberJson(factors.(name));
         end
-        writeVariant(reference.policy_path, path, edits, row.configuration_id, ...
+        edaWriteProfileVariant(reference.policy_path, path, edits, row.configuration_id, ...
             Scope="thresholds");
         decided = vawlume.attribution.decide(conn, ...
             struct(attribution_run_id=reference.attribution_run_id), path, ...
@@ -350,7 +358,7 @@ end
 
 function id = registerSettings(conn, reference, edits, outDir, configurationId, repoRoot)
 path = fullfile(outDir, "estimator_settings_" + configurationId + ".json");
-document = writeVariant(reference.settings_path, path, edits, configurationId, ...
+document = edaWriteProfileVariant(reference.settings_path, path, edits, configurationId, ...
     Scope="parameters");
 registered = vawlume.db.registerProfileVersion(conn, struct(project_id=reference.project_id), ...
     struct(profile_key=string(document.profile.id), profile_name=string(document.profile.name), ...
@@ -370,7 +378,7 @@ if ~java.io.File(char(source)).isAbsolute()
     source = fullfile(repoRoot, source);
 end
 path = fullfile(outDir, "normalization_policy_" + row.configuration_id + ".json");
-document = writeVariant(source, path, struct(reference_type=valueJson(factors.reference_type)), ...
+document = edaWriteProfileVariant(source, path, struct(reference_type=valueJson(factors.reference_type)), ...
     row.configuration_id, Scope="pairs", AllMatches=true);
 runs = reference.run_spec.normalization_runs;
 if isstruct(runs)
@@ -394,95 +402,6 @@ value = struct(runs=created, settings_json=jsonencode(struct( ...
     path=string(path))));
 end
 
-function document = writeVariant(source, target, edits, configurationId, options)
-% Copy SOURCE to TARGET changing only the edited values and the version label.
-% Every other byte is the reference's, so the variant differs from the reference
-% exactly by its declared factors. Each edit applies inside the top-level member
-% SCOPE (parameters, thresholds, pairs) and must match exactly once there (or,
-% with AllMatches, at least once); the version label inside "profile".
-arguments
-    source (1,1) string
-    target (1,1) string
-    edits (1,1) struct
-    configurationId (1,1) string
-    options.Scope (1,1) string
-    options.AllMatches (1,1) logical = false
-end
-text = string(fileread(source));
-original = jsondecode(text);
-label = string(original.profile.profile_version) + "+sens." + configurationId;
-text = withinMember(text, "profile", @(part) replaceValue(part, "profile_version", ...
-    jsonencode(label), false));
-for name = string(fieldnames(edits))'
-    text = withinMember(text, options.Scope, @(part) replaceValue(part, name, ...
-        edits.(name), options.AllMatches));
-end
-if isfile(target)
-    if string(fileread(target)) ~= text
-        error("vawlume:eda:SensitivityFamilyConflict", ...
-            "%s exists with different content.", target);
-    end
-else
-    fid = fopen(target, "w");
-    fwrite(fid, char(text));
-    fclose(fid);
-end
-document = jsondecode(text);
-end
-
-function text = withinMember(text, member, edit)
-% Apply EDIT to the value of the top-level JSON member MEMBER only: an object or
-% an array, located by matching its brackets outside string literals.
-start = regexp(text, '"' + member + '"\s*:\s*[\{\[]', "end", "once");
-if isempty(start)
-    error("vawlume:eda:SensitivitySpecInvalid", ...
-        "The reference file has no %s member.", member);
-end
-chars = char(text);
-depth = 0;
-inString = false;
-for k = start:numel(chars)
-    ch = chars(k);
-    if inString
-        if ch == '\'
-            chars(k + 1) = ' '; % skip the escaped character when scanning
-        elseif ch == '"'
-            inString = false;
-        end
-        continue
-    end
-    if ch == '"'
-        inString = true;
-    elseif ch == '{' || ch == '['
-        depth = depth + 1;
-    elseif ch == '}' || ch == ']'
-        depth = depth - 1;
-        if depth == 0
-            stop = k;
-            break
-        end
-    end
-end
-original = char(text);
-part = string(original(start:stop));
-text = string(original(1:start - 1)) + edit(part) + string(original(stop + 1:end));
-end
-
-function text = replaceValue(text, key, valueJson, allMatches)
-scalar = '"(?:[^"\\]|\\.)*"|\[[^\]]*\]|\{[^{}]*\}|-?[0-9.eE+-]+|true|false|null';
-pattern = '("' + key + '"\s*:\s*)(' + scalar + ')';
-hits = regexp(text, pattern, "match");
-if (allMatches && isempty(hits)) || (~allMatches && numel(hits) ~= 1)
-    error("vawlume:eda:SensitivitySpecInvalid", ...
-        "Expected %s one value of %s in the reference file; found %d.", ...
-        string(ternary(allMatches, "at least", "exactly")), key, numel(hits));
-end
-text = regexprep(text, pattern, "$1" + replace(replace(valueJson, "\", "\\"), "$", "\$"));
-end
-
-function value = ternary(condition, a, b)
-if condition, value = a; else, value = b; end
-end
 
 function text = numberJson(value)
 if ~isnumeric(value) || ~isscalar(value) || ~isfinite(value)
@@ -499,83 +418,6 @@ elseif isnumeric(value)
 else
     text = string(jsonencode(string(value)));
 end
-end
-
-% --------------------------------------------------------------- family ---
-
-function value = existingFamily(conn, projectId, key, designSha)
-rows = fetch(conn, "SELECT analysis_run_id, run_type, IFNULL(notes,'') AS notes " + ...
-    "FROM analysis_runs WHERE project_id=" + string(projectId) + " AND run_key='" + ...
-    replace(key, "'", "''") + "'");
-value = struct(found=false, analysis_run_id=NaN);
-if isempty(rows) || height(rows) == 0
-    return
-end
-if string(rows.run_type(1)) ~= "attribution_sensitivity" || ...
-        ~contains(string(rows.notes(1)), "design_sha256=" + designSha)
-    error("vawlume:eda:SensitivityFamilyConflict", ...
-        "family_key %s already names a %s record with another design.", key, ...
-        string(rows.run_type(1)));
-end
-value = struct(found=true, analysis_run_id=double(rows.analysis_run_id(1)));
-end
-
-function familyId = recordFamily(conn, spec, reference, variants, design, designSha, ...
-        outDir, repoRoot)
-% The family record (contract 07 D2): one analysis run, its sources, and its
-% design record. Written in one transaction; it holds no result.
-record = design;
-record.variants = variants(:, ["handle", "configuration_id", "identity_payload", ...
-    "handle_value", "variant_kind", "run_key", "attribution_run_id", ...
-    "policy_profile_version_id", "settings_profile_version_id"]);
-record.reported = edaSensitivityHandles().reported;
-record.design_sha256 = designSha;
-path = fullfile(outDir, spec.family_key + "_design_record.json");
-fid = fopen(path, "w");
-fwrite(fid, char(jsonencode(record, PrettyPrint=true)));
-fclose(fid);
-registered = vawlume.db.registerProfileVersion(conn, struct(project_id=reference.project_id), ...
-    struct(profile_key="vawlume.eda.sensitivity_design." + spec.family_key, ...
-    profile_name="Sensitivity design " + spec.family_key, version_label="1", ...
-    content_path=path, profile_kind="analysis_settings"), RepoRoot=repoRoot);
-% sqlwrite opens the transaction when AutoCommit is off (execute would not).
-previous = string(conn.AutoCommit);
-conn.AutoCommit = "off";
-try
-    sqlwrite(conn, "analysis_runs", table(reference.project_id, ...
-        {'attribution_sensitivity'}, {char(spec.family_key)}, {'completed'}, ...
-        {char(string(datetime("now", TimeZone="UTC", Format="yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")))}, ...
-        {char("design_sha256=" + designSha)}, VariableNames=["project_id", "run_type", ...
-        "run_key", "status", "completed_at_utc", "notes"]));
-    id = fetch(conn, "SELECT last_insert_rowid() AS id");
-    familyId = double(id.id(1));
-    sources = [analysisRunOf(conn, reference.attribution_run_id), "sensitivity_reference"];
-    runs = unique(variants.attribution_run_id(variants.variant_kind == "run"));
-    for k = 1:numel(runs)
-        sources(end + 1, :) = [analysisRunOf(conn, runs(k)), "sensitivity_variant"]; %#ok<AGROW>
-    end
-    sqlwrite(conn, "analysis_run_sources", table(repmat(familyId, size(sources, 1), 1), ...
-        double(sources(:, 1)), cellstr(sources(:, 2)), VariableNames=["analysis_run_id", ...
-        "source_analysis_run_id", "dependency_role"]));
-    sqlwrite(conn, "analysis_run_profiles", table(familyId, ...
-        double(registered.profile_version_id), {'sensitivity_design'}, ...
-        VariableNames=["analysis_run_id", "profile_version_id", "assignment_role"]));
-    commit(conn);
-catch failure
-    try
-        rollback(conn);
-    catch
-    end
-    conn.AutoCommit = previous;
-    rethrow(failure);
-end
-conn.AutoCommit = previous;
-end
-
-function id = analysisRunOf(conn, attributionRunId)
-row = fetch(conn, "SELECT analysis_run_id FROM attribution_runs WHERE attribution_run_id=" + ...
-    string(attributionRunId));
-id = string(double(row.analysis_run_id(1)));
 end
 
 function value = counts(conn)

@@ -24,7 +24,9 @@ function result = sensitivitySummary(conn, familyRef, options)
 %   score_comparability   as compare states it for the pair
 %   one_to_one_units
 %   top_same, top_different, top_tie, top_unscored, top_orientation_unknown
-%   sets_equal, sets_not_equal
+%   sets_equal, sets_both_empty, sets_differ   selected-set relation: equal
+%                 non-empty sets; neither run selected anyone (kept apart from
+%                 equal, as compare keeps them, contract 07 D4); any other relation
 %   status_agree, status_disagree, status_structural_empty, status_excluded,
 %     status_undecided    compare's status cross-tab, by cell kind
 %   reasons_changed   (target, entity) pairs whose stored no-score reasons,
@@ -32,6 +34,18 @@ function result = sensitivitySummary(conn, familyRef, options)
 %   scores_changed    score pairs that differ, counted only where compare
 %                 allows a value comparison (score_comparability comparable);
 %                 NaN otherwise
+%   units_one_to_one, units_one_to_many, units_many_to_one, units_many_to_many,
+%   units_unmatched_left, units_unmatched_right   correspondence units by
+%                 category (on one event set, all one_to_one)
+%   targets_lost, targets_gained   reference targets with no counterpart in the
+%                 variant, and variant targets with none in the reference
+%   pairs, pairs_top_same, pairs_top_different   within-unit target pairs
+%
+% A MATCHING-SIDE FAMILY (vawlume.eda.correspondenceSensitivity, family_kind
+% "correspondence") compares each configuration's consensus-event run with the
+% reference configuration's, joined by their stored shared member detections
+% (compare's Correspondence=struct(shared_member_detections=true)). Its counts
+% are the same columns; the reference configuration itself has no row.
 %
 % Every count is over the reference's one_to_one units; the per-unit detail is
 % in COMPARISONS(k).comparison, compare's own result.
@@ -55,32 +69,45 @@ record = family.record;
 reference = struct(attribution_run_id=double(record.reference_attribution_run_id));
 referencePolicy = double(record.reference_policy_profile_version_id);
 variants = record.variants;
+% A matching-side family (correspondenceSensitivity, 7.9) compares consensus
+% events of two configurations, joined by their stored shared member detections.
+correspondence = isfield(record, "family_kind") && ...
+    string(record.family_kind) == "correspondence";
+extra = {};
+if correspondence
+    extra = {"Correspondence", struct(shared_member_detections=true)};
+    reported = edaSensitivityHandles("correspondence").reported;
+else
+    reported = edaSensitivityHandles("attribution").reported;
+end
 rows = emptyRows();
 comparisons = struct(configuration_id={}, comparison={});
 for k = 1:numel(variants)
     v = variants(k);
+    if string(v.handle) == "reference"
+        continue
+    end
     if string(v.variant_kind) == "decision_set"
         right = reference;
     else
         right = struct(attribution_run_id=double(v.attribution_run_id));
     end
-    c = vawlume.attribution.compare(conn, reference, right, LeftPolicy=referencePolicy, ...
-        RightPolicy=double(v.policy_profile_version_id));
-    comparable = height(c.units) > 0 && all(c.units.score_comparability == "comparable");
+    policies = {"LeftPolicy", referencePolicy, "RightPolicy", ...
+        double(v.policy_profile_version_id)};
+    c = vawlume.attribution.compare(conn, reference, right, policies{:}, extra{:});
+    oneToOne = c.units.correspondence_unit == "one_to_one";
+    comparable = any(oneToOne) && all(c.units.score_comparability == "comparable");
     if comparable
-        c = vawlume.attribution.compare(conn, reference, right, ...
-            LeftPolicy=referencePolicy, RightPolicy=double(v.policy_profile_version_id), ...
-            CompareScores=true);
+        c = vawlume.attribution.compare(conn, reference, right, policies{:}, ...
+            "CompareScores", true, extra{:});
     end
-    rows(end + 1, :) = variantRow(record.family_key, v, c, comparable); %#ok<AGROW>
+    rows(end + 1, :) = [variantRow(record.family_key, v, c, comparable), unitColumns(c)]; %#ok<AGROW>
     comparisons(end + 1) = struct(configuration_id=string(v.configuration_id), ...
         comparison=c); %#ok<AGROW>
 end
-reported = edaSensitivityHandles().reported;
 for k = 1:height(reported)
-    rows(end + 1, :) = {string(record.family_key), reported.handle(k), "", "", "", ...
-        reported.status(k), reported.reason(k), "", NaN, NaN, NaN, NaN, NaN, NaN, ...
-        NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN, NaN}; %#ok<AGROW>
+    rows(end + 1, :) = [{string(record.family_key), reported.handle(k), "", "", "", ...
+        reported.status(k), reported.reason(k), ""}, num2cell(NaN(1, 27))]; %#ok<AGROW>
 end
 rows = sortrows(rows, ["handle", "handle_value"]);
 
@@ -130,14 +157,35 @@ if comparable
     differs = ~(s.left_score == s.right_score | (isnan(s.left_score) & isnan(s.right_score)));
     scoresChanged = nnz(differs);
 end
+comparability = "";
+if height(u) > 0
+    comparability = string(u.score_comparability(1));
+end
 row = {string(familyKey), string(v.handle), string(v.configuration_id), ...
     string(v.handle_value), string(v.variant_kind), "variant", "", ...
-    string(u.score_comparability(1)), height(u), nnz(top == "same"), ...
+    comparability, height(u), nnz(top == "same"), ...
     nnz(top == "different"), nnz(ismember(top, ["tie_left", "tie_right"])), ...
     nnz(ismember(top, ["left_unscored", "right_unscored", "both_unscored"])), ...
-    nnz(top == "orientation_unknown"), nnz(sets == "equal"), nnz(sets ~= "equal"), ...
+    nnz(top == "orientation_unknown"), nnz(sets == "equal"), nnz(sets == "both_empty"), ...
+    nnz(~ismember(sets, ["equal", "both_empty"])), ...
     kind("agree"), kind("disagree"), kind("structural_empty"), kind("excluded"), ...
     kind("undecided"), reasonsChanged(c, u), scoresChanged};
+end
+
+function values = unitColumns(c)
+% Correspondence units by category, the targets a configuration lost or gained
+% (reference targets with no counterpart; variant targets with none), and the
+% within-unit pairs with their top-entity agreement. On one event set every
+% unit is one_to_one and the rest are zero.
+category = c.units.correspondence_unit;
+counts = arrayfun(@(name) nnz(category == name), ["one_to_one", "one_to_many", ...
+    "many_to_one", "many_to_many", "unmatched_left", "unmatched_right"]);
+lost = sum(cellfun(@numel, c.units.left_target_ids(category == "unmatched_left")));
+gained = sum(cellfun(@numel, c.units.right_target_ids(category == "unmatched_right")));
+paired = c.pairs(~isnan(c.pairs.left_target_id) & ~isnan(c.pairs.right_target_id), :);
+values = [num2cell(counts), {lost, gained, height(paired), ...
+    nnz(paired.top_entity_agreement == "same"), ...
+    nnz(paired.top_entity_agreement == "different")}];
 end
 
 function value = reasonsChanged(c, units)
@@ -160,9 +208,12 @@ function rows = emptyRows()
 names = ["family_key", "handle", "configuration_id", "handle_value", "variant_kind", ...
     "status", "reason", "score_comparability", "one_to_one_units", "top_same", ...
     "top_different", "top_tie", "top_unscored", "top_orientation_unknown", ...
-    "sets_equal", "sets_not_equal", "status_agree", "status_disagree", ...
+    "sets_equal", "sets_both_empty", "sets_differ", "status_agree", "status_disagree", ...
     "status_structural_empty", "status_excluded", "status_undecided", ...
-    "reasons_changed", "scores_changed"];
+    "reasons_changed", "scores_changed", "units_one_to_one", "units_one_to_many", ...
+    "units_many_to_one", "units_many_to_many", "units_unmatched_left", ...
+    "units_unmatched_right", "targets_lost", "targets_gained", "pairs", ...
+    "pairs_top_same", "pairs_top_different"];
 rows = table();
 for name = names
     if ismember(name, names(1:8))
@@ -178,13 +229,31 @@ versions = fetch(conn, "SELECT schema_version AS version FROM schema_info");
 v = record.variants;
 value = struct(family_analysis_run_id=family.analysis_run_id, ...
     family_key=string(record.family_key), ...
+    family_kind=fieldOr(record, "family_kind", "attribution"), ...
     reference_attribution_run_id=double(record.reference_attribution_run_id), ...
-    reference_settings_profile_version_id=double(record.reference_settings_profile_version_id), ...
+    reference_settings_profile_version_id=double(fieldOr(record, ...
+        "reference_settings_profile_version_id", NaN)), ...
     reference_policy_profile_version_id=double(record.reference_policy_profile_version_id), ...
     variant_policy_profile_version_ids=[v.policy_profile_version_id], ...
-    variant_settings_profile_version_ids=[v.settings_profile_version_id], ...
+    variant_settings_profile_version_ids=collect(v, "settings_profile_version_id"), ...
+    variant_consensus_analysis_run_ids=collect(v, "consensus_analysis_run_id"), ...
+    reference_specification=fieldOr(record, "reference_specification", struct()), ...
     design_sha256=string(record.design_sha256), ...
     schema_version=string(versions.version(1)), matlab_version=string(version));
+end
+
+function value = fieldOr(s, name, fallback)
+value = fallback;
+if isfield(s, name)
+    value = s.(name);
+end
+end
+
+function value = collect(v, name)
+value = [];
+if isfield(v, name)
+    value = [v.(name)];
+end
 end
 
 function value = summaryNote()
