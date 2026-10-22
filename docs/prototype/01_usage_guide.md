@@ -527,13 +527,14 @@ caller_attribution_demo        % + imported caller attribution, correspondence, 
 backend_localization_demo      % + localization backend: frames, estimates, five dimensions
 native_estimator_demo          % + VAWLUME's own caller score: six scenes, one failure
 consilience_exploration_demo   % + diagnostics, threshold screen, subset probe, gallery
+integrated_validation_demo     % + three paths compared, varied, diagnosed, exported
 ```
 
 Each returns a struct and prints a compact report; pass `Print=false` to
 suppress the printing. Every one is covered by an integration test, so the
 numbers they print are asserted rather than merely observed.
 
-Seven are worth reading first. `matching_consensus_demo` is the complete
+Eight are worth reading first. `matching_consensus_demo` is the complete
 **pairwise** path, including consilience and threshold sensitivity.
 `multi_extractor_agreement_demo` is the complete **three-extractor** path:
 it imports all three extractors onto one recording, runs all three pairwise
@@ -608,6 +609,25 @@ deliberately shows thin data: a fractional screen that makes no leverage claim
 about any factor, three support patterns with no members at all, and six that
 cannot supply the number of examples requested. See §6.5 and
 [`../development/35_consilience_exploration_workflow.md`](../development/35_consilience_exploration_workflow.md).
+
+`integrated_validation_demo` is the complete **integrated-validation** path
+(§7.10), and the one to read before trusting a comparison. On one synthetic
+recording it compares the imported, backend and native runs target by target:
+
+- a disagreement about who called, reported in the unit row while the status
+  cross-tab agrees;
+- an imported `simultaneous` against a native status, shown as a structural
+  empty;
+- the imported run's declared inputs, shown as `unknown`.
+
+It then compares runs over different extractors' detections and consensus
+events through named stored analyses, printing a split, a merge and a miss as
+their own units. It varies each declared input of the native run once, and the
+matching configuration twice, against references declared up front, and lists
+the handles that cannot vary as rows. It reads the native QC facts, exports the
+database, and demonstrates five named refusals. Everything is circular, and the
+demonstration says so. Its status is experimental. See
+[`../development/51_integrated_validation_demonstration.md`](../development/51_integrated_validation_demonstration.md).
 
 To explore the relational model without running a workflow at all, build the
 deterministic Phase 1 synthetic fixture — one study, several subjects, a dyadic
@@ -3366,6 +3386,7 @@ sample rate and channel count; schema migration machinery.
 - [`../development/48_native_qc_facts.md`](../development/48_native_qc_facts.md) — the native method's per-call margins, and the failure they cannot detect
 - [`../development/49_path_resolution.md`](../development/49_path_resolution.md) — the one home of path resolution, and the Windows forms it refuses
 - [`../development/50_integrated_fixture.md`](../development/50_integrated_fixture.md) — the shared synthetic Phase 7 scene, and why agreement on it is circular
+- [`../development/51_integrated_validation_demonstration.md`](../development/51_integrated_validation_demonstration.md) — the integrated-validation example, its refusals, and what it could not show
 - [`../development/30_repository_self_description.md`](../development/30_repository_self_description.md) — what the repository checks about its own documentation
 - [`../development/35_consilience_exploration_workflow.md`](../development/35_consilience_exploration_workflow.md) — the exploratory workflow: its stages, the analysis-cost arithmetic, the diagnostic battery and what an undefined partial correlation means, fractional-factorial aliasing, subset sampling, the two support-pattern vocabularies, the thin shared feature space, the USVSEG frequency-extent limitation, and its explicit non-goals
 
