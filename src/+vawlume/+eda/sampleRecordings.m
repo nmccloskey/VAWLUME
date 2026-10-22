@@ -1,6 +1,8 @@
 function result = sampleRecordings(strata, options)
 %SAMPLERECORDINGS Draw a reproducible recording subset, stratified when it can be.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % RESULT = vawlume.eda.SAMPLERECORDINGS(STRATA, Seed=s) takes a
 % vawlume.eda.resolveStrata result and returns the selected recording ids
 % together with the serializable record of how they were selected: the seed, the

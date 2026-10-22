@@ -1,6 +1,8 @@
 function settings = loadSettings(profilePath, options)
 %LOADSETTINGS Read and validate a native-estimator settings profile.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 %   settings = VAWLUME.ESTIMATOR.LOADSETTINGS()
 %   settings = VAWLUME.ESTIMATOR.LOADSETTINGS(profilePath, RepoRoot=root)
 %

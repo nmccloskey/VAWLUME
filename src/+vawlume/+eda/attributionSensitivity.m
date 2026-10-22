@@ -1,6 +1,8 @@
 function result = attributionSensitivity(conn, familySpec, options)
 %ATTRIBUTIONSENSITIVITY Plan or apply one attribution-side sensitivity family.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % RESULT = VAWLUME.EDA.ATTRIBUTIONSENSITIVITY(CONN, FAMILYSPEC) plans a family
 % of variants of one native attribution run and writes nothing. It prints every
 % variant, its handle value, its deterministic configuration id and its

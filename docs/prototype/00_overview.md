@@ -23,7 +23,7 @@ The project is currently organized around six linked goals.
 | **1. Relational ingestion of USV and other data** | Implemented for project metadata, DeepSqueak, MUPET, USVSEG, external events/alignment anchors, spatial/tracking inputs, acoustic-reference evidence, imported caller-attribution outputs, and localization-backend outputs. |
 | **2. Extractor consilience exploration / data-validation support** | Implemented for pairwise correspondence, ambiguity-preserving match groups, arbitrary-N agreement, feature comparison where semantics support it, independent manual-reference evaluation, and threshold sensitivity. |
 | **3. Multimodal temporal alignment** | Implemented as user-anchored source-to-reference clock alignment with native timestamps retained, fit/QC evidence preserved, and common-time projection exposed downstream. |
-| **4. Caller-attribution support** | Partially implemented. VAWLUME can represent spatial, tracking, identity, acoustic, source-localization, correspondence, and imported attribution evidence, import a localization backend's claims and estimates, and apply declared decision policies. A narrow native estimator scores two animals against two microphones from VAWLUME's own evidence. Its score is uncalibrated, comparable within one recording only, and not a probability. |
+| **4. Caller-attribution support** | Partially implemented. VAWLUME can represent spatial, tracking, identity, acoustic, source-localization, correspondence, and imported attribution evidence, import a localization backend's claims and estimates, and apply declared decision policies. A narrow native estimator scores two animals against two microphones from VAWLUME's own evidence. Its score is uncalibrated, comparable within one recording only, and not a probability. Stored runs from any path can be compared target by target, and a native run's declared inputs varied one at a time, without merging runs or selecting a setting (experimental). |
 | **5. Incorporating sequence / bout analysis** | Planned. Storage concepts exist, but no current workflow populates sequence or bout analyses. Future grouping rules must be explicit and provenance-bearing. |
 | **6. Niche EDA for the above** | Early implementation exists for consilience-oriented exploration, support-pattern characterization, feature disagreement, threshold screening, metadata-aware sampling, and spectrogram examples. This area is expected to grow with the other goals. |
 
@@ -200,6 +200,8 @@ A third path, the **native estimator**, scores candidate callers from VAWLUME's 
 
 All three paths write the same run, target, candidate, evidence, and decision tables and read back through one function, so external and native results stay comparable in form without being merged.
 
+That comparison is now a function. Two stored runs are compared target by target — across event sets only through a named, stored matching or agreement analysis — reporting where they agree and where they differ, with splits, merges and unmatched targets kept apart and scores compared only where they share a scale. Sensitivity families vary one declared input of a native run, or the matching configuration, at a time against a reference declared in advance, and report how each conclusion moves. Per-call QC facts state the native method's margin. None of these combines runs, chooses a setting, or validates anything, and on the shipped synthetic data agreement between paths is circular. They are labelled experimental.
+
 See [`docs/design/03_multimodal_input_contract.md`](../design/03_multimodal_input_contract.md), [`docs/design/06_native_estimator_contract.md`](../design/06_native_estimator_contract.md), and the caller-attribution development documents under [`docs/development/`](../development/).
 
 ## 9. Sequence and bout analysis
@@ -256,9 +258,9 @@ Tracking and other dense data may remain external by design even as their identi
 
 ## 13. Validation status
 
-The prototype has extensive synthetic demonstrations and regression/integration testing. The extractor-consilience exploration workflow has also completed an operational run on one real Pilot 3 recording containing DeepSqueak, MUPET, and USVSEG outputs.
+The prototype has extensive synthetic demonstrations and regression/integration testing. The extractor-consilience exploration workflow has also completed an operational run on one real Pilot 3 recording containing DeepSqueak, MUPET, and USVSEG outputs. Four real right-microphone Pilot 3 recordings have since been ingested, reconciled, aligned to an acquisition clock, placed in protocol epochs, exported and rebuilt identically from their sources, and the consilience exploration has run over all four. Lacking recording-level metadata to stratify on, its subset was the whole frame, so the comparison between its two probes says nothing about subset representativeness.
 
-That real-data run establishes that the software path can execute on real imported data. It does **not** establish scientific validity, calibrated correspondence thresholds, calibrated feature tolerances, or generalization across recordings, experiments, laboratories, or extractor configurations.
+Those real-data runs establish that the software path executes on real imported data, consistently across sessions. It does **not** establish scientific validity, calibrated correspondence thresholds, calibrated feature tolerances, or generalization across recordings, experiments, laboratories, or extractor configurations.
 
 Caller-attribution validation is entirely synthetic: no real external attribution table or localization-backend export has been imported.
 
@@ -288,12 +290,14 @@ The ERD is generated from VAWLUME's exported schema representation rather than m
 
 Use the documentation by purpose:
 
-- **[Prototype usage guide](01_usage_guide.md)** — practical setup, configuration, running examples, importing data, testing, and troubleshooting.
+- **[Prototype usage guide](01_usage_guide.md)** — practical setup, configuration, running examples, importing data, testing, and troubleshooting. Which functions are usable, experimental or internal is recorded once, in its [Status of public functions](01_usage_guide.md#status-of-public-functions).
 - [`../design/01_prototype_development_outline.md`](../design/01_prototype_development_outline.md) — prototype development plan.
 - [`../design/02_temporal_alignment_contract.md`](../design/02_temporal_alignment_contract.md) — temporal-alignment contract.
 - [`../design/03_multimodal_input_contract.md`](../design/03_multimodal_input_contract.md) — multimodal-input contract.
 - [`../design/04_caller_attribution_contract.md`](../design/04_caller_attribution_contract.md) — caller-attribution contract.
 - [`../design/05_backend_localization_contract.md`](../design/05_backend_localization_contract.md) — backend/localization attribution contract.
+- [`../design/06_native_estimator_contract.md`](../design/06_native_estimator_contract.md) — native-estimator contract.
+- [`../design/07_integrated_validation_contract.md`](../design/07_integrated_validation_contract.md) — integrated-validation contract: comparison, sensitivity, QC facts, real-data scope.
 - [`../development/22_phase1_correspondence_boundaries.md`](../development/22_phase1_correspondence_boundaries.md) — orientation to native detections, pairwise correspondence, arbitrary-N agreement, and attribution boundaries.
 - [`../development/35_consilience_exploration_workflow.md`](../development/35_consilience_exploration_workflow.md) — consilience-oriented exploratory workflow.
 - [`../development/`](../development/) — implementation contracts and completed development work.

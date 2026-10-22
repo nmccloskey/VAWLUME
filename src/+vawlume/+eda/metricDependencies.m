@@ -1,6 +1,8 @@
 function result = metricDependencies(surface, options)
 %METRICDEPENDENCIES How the candidate-matching metrics relate to one another.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % RESULT = vawlume.eda.METRICDEPENDENCIES(SURFACE) computes Pearson correlation,
 % Spearman rank correlation, and partial correlation among the metrics of a
 % vawlume.eda.candidateMetrics surface, each only where it is genuinely defined

@@ -1,6 +1,8 @@
 function result = exportExampleGallery(conn, sample, galleryDirectory, options)
 %EXPORTEXAMPLEGALLERY Render a sampled gallery and its fixed example index.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % A failure preparing or rendering one example is recorded in that example's
 % index row and does not abandon the batch. A non-empty destination is refused
 % unless Overwrite=true; explicit overwrite replaces colliding generated files

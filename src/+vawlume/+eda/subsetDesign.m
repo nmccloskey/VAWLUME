@@ -1,6 +1,8 @@
 function design = subsetDesign(resolution, screenDesign, subsetDataset, options)
 %SUBSETDESIGN The richer design the recording subset buys, over the same factors.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % DESIGN = vawlume.eda.SUBSETDESIGN(RESOLUTION, SCREENDESIGN, SUBSETDATASET)
 % builds the second sensitivity view's design: Part 6's construction over the
 % SAME factors as the whole-dataset screen, under the subset probe's larger

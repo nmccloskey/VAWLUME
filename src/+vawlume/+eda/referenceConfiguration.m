@@ -1,6 +1,8 @@
 function reference = referenceConfiguration(options)
 %REFERENCECONFIGURATION Identify the configuration characterization is computed at.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % REFERENCE = vawlume.eda.REFERENCECONFIGURATION() resolves contract §J's
 % reference configuration - the tracked default matching specification - and
 % returns its identity and its calibration status, which every Part 11, 12 and 13

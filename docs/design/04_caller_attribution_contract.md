@@ -574,7 +574,7 @@ still stands across devices and sessions. Condition 5 is `uncalibrated`. See
 - a UniversalMatcher, or merging detector-to-detector matching with
   caller-estimate-to-call matching;
 - spectral correspondence, which no Phase 4 consumer needs;
-- cross-path comparison or sensitivity analysis over attribution results (Phase 7);
+- cross-path comparison or sensitivity analysis over attribution results (Phase 7); *(Built at 7.6–7.9: `vawlume.attribution.compare` and the sensitivity families, contract 07.)*
 - raw-video ingestion, pose estimation, or image-based re-identification;
 - dense tracking-sample or dense identity materialization;
 - overwriting native timestamps or native scores with canonical values;

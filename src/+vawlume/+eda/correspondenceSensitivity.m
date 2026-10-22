@@ -1,6 +1,8 @@
 function result = correspondenceSensitivity(conn, familySpec, options)
 %CORRESPONDENCESENSITIVITY Plan or apply one matching-side sensitivity family.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % RESULT = VAWLUME.EDA.CORRESPONDENCESENSITIVITY(CONN, FAMILYSPEC) plans how
 % attribution moves when the correspondence layer beneath it changes, and writes
 % nothing. It prints every configuration, its factor values, its deterministic

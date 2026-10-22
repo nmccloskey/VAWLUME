@@ -111,7 +111,10 @@ What the demonstration prints:
   between the two candidates' predictions, here 5.63 dB. A bias larger than
   that moves the observation nearer the other animal's prediction. The other
   animal then fits **well**. Its score looks like any good fit, no QC fact flags
-  it, and nothing in the run says it is wrong.
+  it, and nothing in the run says it is wrong. *(Still true at 7.15.
+  `vawlume.estimator.qcFacts`, added at 7.10, now states that 5.63 dB tolerance
+  and how near the observation sits to reversing the ranking. It still cannot
+  flag a wrong animal that fits within it; doc 48.)*
 
 The example prints this and explains it. It does not assert that the result is
 correct. The test pins only that the demonstration says what happened: the
@@ -175,7 +178,9 @@ a copy of the session's, with its own references and response estimate.
 - No probability.
 - No calibrated threshold.
 - No imported claim or backend estimate as an input.
-- No comparison with an imported or backend run (Phase 7).
+- No comparison with an imported or backend run. *(Corrected at 7.15: that
+  comparison now exists, `vawlume.attribution.compare`, doc 46; this
+  demonstration does not call it.)*
 
 ## What the demonstration could not show
 

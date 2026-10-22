@@ -1,6 +1,8 @@
 function result = levelDifferenceConsistency(entities, geometry, difference, settings)
 %LEVELDIFFERENCECONSISTENCY Score each candidate by how well its position explains the level difference.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 %   result = VAWLUME.ESTIMATOR.LEVELDIFFERENCECONSISTENCY(entities, geometry, ...
 %       difference, settings)
 %

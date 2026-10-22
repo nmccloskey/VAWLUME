@@ -1,6 +1,8 @@
 function result = eventReferenceInstants(conn, eventRef, clock)
 %EVENTREFERENCEINSTANTS The instants of one vocal event, placed on a reference clock.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 %   result = VAWLUME.ESTIMATOR.EVENTREFERENCEINSTANTS(conn, eventRef, clock)
 %
 % EVENTREF names one event, with exactly one of:

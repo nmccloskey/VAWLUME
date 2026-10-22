@@ -106,7 +106,7 @@ if pair.run_a.extraction_run_id == pair.run_b.extraction_run_id
 end
 if pair.run_a.extractor_id == pair.run_b.extractor_id
     error("vawlume:matching:SameExtractor", ...
-        "run_a and run_b must come from different extractors for Phase 6.");
+        "run_a and run_b must come from different extractors: matching compares extractors.");
 end
 end
 

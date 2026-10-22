@@ -1,6 +1,8 @@
 function cost = probeCost(dataset, configurationCount, options)
 %PROBECOST What a screening probe will actually cost, in analyses.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % COST = vawlume.eda.PROBECOST(DATASET, CONFIGURATIONCOUNT) reports the number of
 % analyses a probe will execute against a resolved dataset, and enforces the
 % governing contract's ceiling against that number.

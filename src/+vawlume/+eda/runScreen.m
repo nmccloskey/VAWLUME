@@ -1,6 +1,8 @@
 function result = runScreen(conn, dataset, materialized, options)
 %RUNSCREEN Execute a screening design against a resolved dataset.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % RESULT = vawlume.eda.RUNSCREEN(CONN, DATASET, MATERIALIZED) plans every unit of
 % a probe and writes nothing. Planning is the default, deliberately: it is how a
 % caller checks a twenty-recording probe before committing to it.

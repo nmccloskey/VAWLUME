@@ -1,6 +1,8 @@
 function result = screenResponses(conn, runResult, design, options)
 %SCREENRESPONSES The response variables an executed screening probe produced.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % RESULT = vawlume.eda.SCREENRESPONSES(CONN, RUNRESULT, DESIGN) reads the
 % analyses a probe applied and returns, per configuration and recording, the
 % responses the screen is about: detections considered, pairwise match counts,

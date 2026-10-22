@@ -1,6 +1,8 @@
 function result = leverageCategories(effects, design, options)
 %LEVERAGECATEGORIES Contract §H's category for every factor on every response.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % RESULT = vawlume.eda.LEVERAGECATEGORIES(EFFECTS, DESIGN) categorises each
 % factor's effect on each response relative to THAT RESPONSE'S OWN SPREAD across
 % the design, so categories are comparable across responses measured in different

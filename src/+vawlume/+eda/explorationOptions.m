@@ -1,6 +1,8 @@
 function options = explorationOptions(supplied)
 %EXPLORATIONOPTIONS Validate the exploration workflow's light configuration surface.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % OPTIONS = vawlume.eda.EXPLORATIONOPTIONS() returns the defaults.
 % OPTIONS = vawlume.eda.EXPLORATIONOPTIONS(SUPPLIED) validates a scalar struct of
 % user settings against them and returns the completed configuration.

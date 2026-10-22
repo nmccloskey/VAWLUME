@@ -2,7 +2,7 @@
 
 ## Scope
 
-VAWLUME's Phase 6 prototype compares two explicitly selected extractor runs on
+VAWLUME's matching prototype (built in prototype v1's Phase 6) compares two explicitly selected extractor runs on
 one recording without treating either as truth. It retains transparent temporal
 candidate evidence, preserves split/merge ambiguity in connected-component
 groups, derives bounded consensus lineage, reports detection and eligible
@@ -261,8 +261,8 @@ extraction runs, but not to its analysis run's declared inputs; that narrower
 scope is enforced by the implementation and asserted by tests rather than by the
 schema. `match_group_members` is trigger-constrained to the declared inputs.
 
-The Phase 6 integration and exit review has passed. Goal 3 has a functioning
-prototype, and the next implementation target is one compact sequence/alignment
+The v1 Phase 6 integration and exit review passed. Goal 3 has a functioning
+prototype, and the next target that review named was one compact sequence/alignment
 analysis.
 
 More detailed stage contracts remain in

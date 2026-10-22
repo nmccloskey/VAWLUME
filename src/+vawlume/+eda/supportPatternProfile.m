@@ -1,6 +1,8 @@
 function result = supportPatternProfile(conn, analysisRef, reference, options)
 %SUPPORTPATTERNPROFILE What kinds of detections occupy each exact support pattern.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % RESULT = vawlume.eda.SUPPORTPATTERNPROFILE(CONN, ANALYSISREF, REFERENCE) takes
 % one completed agreement analysis - computed at the reference configuration
 % REFERENCE identifies - and reports, for every EXACT extractor-set pattern, how

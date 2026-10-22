@@ -10,6 +10,20 @@ timeline are implemented. **The Phase 7 integration and exit gate has passed** �
 see [Phase 7 exit state](#phase-7-exit-state) below for the result and the
 fifteen known limitations recorded at exit.
 
+**Status at prototype v2 itinerary 7.15.** "Phase 6" and "Phase 7" throughout
+this document mean **prototype v1's** matching and alignment phases, not v2's
+native-estimator and integrated-validation phases. The live schema is
+`0.14-draft` (`PRAGMA user_version = 14`); the alignment tables this contract
+governs are unchanged since v1 apart from the additions contracts 04–07 record.
+Two later facts bear on its clauses, and neither changes one:
+
+- **One alignment set holds one method.** A manifest's `method` applies to its
+  whole set. Comparing models of the same clocks is two identities over the same
+  anchors (contract 07 D11; the usage guide §7.4).
+- **The real Pilot 3 sessions** have three anchors per clock pair, so a
+  piecewise fit is not supportable on them (contract 07 D12). The fitting and QC
+  contract here ran unchanged on four real sessions at v2 7.14a.
+
 This document is the governing contract for VAWLUME's first external-stream
 temporal-alignment implementation. It defines vocabulary, invariants, schema
 direction, the input/output boundary, and exit criteria, and it records an audit

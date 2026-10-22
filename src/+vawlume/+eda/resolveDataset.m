@@ -1,6 +1,8 @@
 function dataset = resolveDataset(conn, selector, options)
 %RESOLVEDATASET Fix and validate the recordings and runs a probe will execute over.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % DATASET = vawlume.eda.RESOLVEDATASET(CONN, SELECTOR) resolves the project, the
 % participating recordings, and for each recording the extraction runs - one per
 % extractor - that a screening probe will compare, and validates all of it before

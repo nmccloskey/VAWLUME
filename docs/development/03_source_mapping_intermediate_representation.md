@@ -277,7 +277,7 @@ row, locator, and status. Only explicitly declared fields become attributes.
 
 `result.coverage` contains explicit observed segments in both native time and
 seconds. The implemented prototype path is `coverage.mode = constant_segments`;
-`manifest_later` explicitly defers coverage to Phase 7 intake. Event bounds never
+`manifest_later` explicitly defers coverage to (v1) Phase 7 intake. Event bounds never
 imply continuous observation, so a gap between segments remains unavailable.
 
 ### Alignment-anchor tables
@@ -324,7 +324,7 @@ including `COLUMN_MISSING`, `COLUMN_AMBIGUOUS`, `SOURCE_COLUMN_UNMAPPED`,
 `VALUE_CORROBORATED`, and `VALUE_CONFLICT`. Profile validation codes remain
 visible when they already express a stable profile-level contract.
 
-Phase 7 adds stable table-mapping diagnostics including
+Prototype v1's Phase 7 added stable table-mapping diagnostics including
 `TIMESTAMP_COLUMN_MISSING`, `TIMESTAMP_INVALID`, `EVENT_INTERVAL_INVALID`,
 `TIME_UNIT_UNSUPPORTED`, `NATIVE_EVENT_ID_DUPLICATE`,
 `NORMALIZED_EVENT_TARGET_UNKNOWN`, `COVERAGE_INTERVAL_INVALID`,
@@ -407,7 +407,7 @@ source-mapping layer still does not open SQLite, execute SQL, or mutate a
 database. See [`04_project_intake.md`](04_project_intake.md) for the stable
 Phase 3 identity, transaction, linkage, and read-back contract.
 
-The Phase 7 tables deliberately stop at logical identity. They carry the stream,
+The (v1) Phase 7 tables deliberately stop at logical identity. They carry the stream,
 timebase, source, event, anchor, observation, mapping rule, and source locator
 needed by the later registration boundary, but no `timebase_id`,
 `external_stream_id`, `external_event_id`, or alignment surrogate. The external

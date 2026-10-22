@@ -1,6 +1,8 @@
 function design = screeningDesign(resolution, options)
 %SCREENINGDESIGN Turn resolved factors and probe values into a bounded design.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % DESIGN = vawlume.eda.SCREENINGDESIGN(RESOLUTION) builds an explicit,
 % interaction-aware set of configurations from a vawlume.eda.probeParameters
 % record: a full two-level factorial when it fits the configuration budget,

@@ -1,6 +1,8 @@
 function result = normalizeCallLevels(conn, callRunRef, responseRunRef, options)
 %NORMALIZECALLLEVELS Divide call-window levels by their channel's own response.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 %   result = VAWLUME.ACOUSTIC.NORMALIZECALLLEVELS(conn, ...
 %       struct(analysis_run_id=callRun), struct(analysis_run_id=responseRun))
 %   result = VAWLUME.ACOUSTIC.NORMALIZECALLLEVELS(..., ...

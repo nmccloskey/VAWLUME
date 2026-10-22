@@ -108,7 +108,7 @@ piece of evidence is never counted twice.
 
 `manual_reviews` adjudicates something that already exists: a detection, a match
 group, or a consensus event. It therefore could not represent an event that no
-extractor found, which made recall and false negatives unrepresentable. Phase 6
+extractor found, which made recall and false negatives unrepresentable. v1 Phase 6
 Pass 1 recorded that as schema pain and specified the smallest correction.
 
 This pass adds one table:

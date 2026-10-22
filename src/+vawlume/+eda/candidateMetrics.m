@@ -1,6 +1,8 @@
 function surface = candidateMetrics(conn, analysisRefs, options)
 %CANDIDATEMETRICS Assemble the candidate-level matching metrics of a dataset.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % SURFACE = vawlume.eda.CANDIDATEMETRICS(CONN, ANALYSISREFS) returns one tidy
 % table of every candidate-level metric VAWLUME already computed, pooled across
 % the selected cross-extractor matching analyses, together with honest coverage

@@ -1,6 +1,8 @@
 function record = probeParameters(surface, options, extras)
 %PROBEPARAMETERS Resolve which threshold dimensions to screen, and at what values.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % RECORD = vawlume.eda.PROBEPARAMETERS(SURFACE) decides on its own which of the
 % contract's threshold dimensions participate in a screen and what low and high
 % values to probe each at, from the observed candidate-metric distributions in

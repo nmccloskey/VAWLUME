@@ -1,6 +1,8 @@
 function result = materializeConfigurations(design, options)
 %MATERIALIZECONFIGURATIONS Write one matching specification per design configuration.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % RESULT = vawlume.eda.MATERIALIZECONFIGURATIONS(DESIGN) derives one
 % matching-specification JSON file from the base specification for every
 % configuration in a vawlume.eda.screeningDesign, and returns an index a runner

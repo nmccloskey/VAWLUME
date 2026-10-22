@@ -10,6 +10,16 @@ channel-response/QC estimates are all built and tested.
 exercises them as one synthetic workflow; see
 [`../development/29_integrated_multimodal_demonstration.md`](../development/29_integrated_multimodal_demonstration.md).
 
+**Status at 7.15.** The live schema is `0.14-draft` (`PRAGMA user_version =
+14`). One later change bears on a clause here: `vawlume.tracking.readWindow`
+no longer chooses the newest fitted transform when asked for reference times.
+With several usable transforms and none named, it reports
+`transform_ambiguous` and returns native times only, and it accepts
+`AlignmentRun=<id>` (contract 07 D17, itinerary 7.12; doc 24). The Phase 7
+handoffs report no other clause here made false. The one real dataset VAWLUME has
+seen has no tracking or microphone geometry, so every clause here remains
+exercised on synthetic data only.
+
 Where this document and the tracked source disagree, the source is the authority
 for implemented behaviour and this document states the architectural intent.
 

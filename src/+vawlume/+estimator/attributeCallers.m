@@ -1,6 +1,8 @@
 function result = attributeCallers(conn, recordingRef, runSpec, options)
 %ATTRIBUTECALLERS Plan or apply one native caller-attribution run.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 %   result = VAWLUME.ESTIMATOR.ATTRIBUTECALLERS(conn, recordingRef, runSpec)
 %   result = VAWLUME.ESTIMATOR.ATTRIBUTECALLERS(..., Apply=true)
 %

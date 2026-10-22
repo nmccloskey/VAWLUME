@@ -840,6 +840,31 @@ paper-grade scientific validation. Those remain deliberate later acceptance
 tasks for the available four-recording Pilot 3 dataset rather than poster-MVP
 implementation blockers.
 
+**Four recordings (v2 itinerary 7.14a).** The workflow then ran in one call
+over the four right-microphone Pilot 3 recordings (15,231 detections), and
+appended only analyses:
+
+- every stage completed. All four factors were active, so the screen was a
+  complete 16-configuration factorial (256 analyses);
+- **the subset was the whole frame.** The recordings carry no recording-level
+  field, so no stratum field resolved (`fallback_reason`: "no recording-level
+  stratum field was resolved"), and a requested size of four drew all four. The
+  probes ran one design on one dataset, so their concordance agrees by
+  construction and says nothing about representativeness;
+- **EXP-050 held:** `subset_probe_reuse` records all 256 subset units taken
+  from the screen and reference manifests, with no matcher or composer call;
+- **runtime was 8.7 h** against a matching-only estimate of about 4.5 h. The
+  screen took 5.9 h (3.7 predicted), and the fully reused subset still took
+  2.6 h, so response computation over stored analyses, not matching, dominates
+  the excess;
+- the exported support-pattern tables carry the primary recording's full
+  profile (2,946 groups, 4,270 detections, all seven sets occupied) and a group
+  count for each other recording.
+
+Multi-recording **stratified** sampling, concordance across different recording
+sets, and gallery adjudication therefore remain open. Runtime scaling now has
+one real measurement.
+
 ## 13. Explicit non-goals
 
 The following were described in the conceptual specification as deferred and

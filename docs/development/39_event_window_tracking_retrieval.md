@@ -105,6 +105,11 @@ stream's clock to the reference), `SameClock=true`, or neither, but only when th
 stream's own clock is the reference. Contract D5 step 4 named `readWindow(...,
 ReferenceTimebaseKey=)`. This departs from that wording to keep the transform
 explicit, and every conversion still goes through the alignment layer.
+*(Corrected at 7.15: since 7.12, `readWindow` no longer picks the newest run.
+With several usable transforms and none named it returns
+`reference_time_status = "transform_ambiguous"`, and it accepts
+`AlignmentRun=<id>` (contract 07 D17; doc 24). This function still names its
+transform itself, as above.)*
 
 ### States that stay distinct
 

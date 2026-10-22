@@ -359,14 +359,14 @@ assignment/consensus complete
 detection/feature agreement complete
 consilience + manual QC + sensitivity complete
 matching/consensus demonstration complete
-Phase 6 integration/exit review complete
+v1 Phase 6 integration/exit review complete
 temporal alignment contract complete
 alignment schema and timebase ontology complete
 external stream and anchor source mapping complete
 alignment intake and registration complete
 transform fitting and alignment QC complete
 common-time views and regularized timeline complete
-Phase 7 integration/exit review complete
+v1 Phase 7 integration/exit review complete
 USVSEG export adapter complete
 USVSEG import complete
 arbitrary-N agreement schema complete
@@ -389,7 +389,7 @@ and
 [`examples/multi_extractor_agreement_demo.m`](../../examples/multi_extractor_agreement_demo.m)
 crosses all of them in one runnable script.
 
-Phase 7 splits Step 10 so that temporal alignment is built before sequence
+Prototype v1's Phase 7 split Step 10 so that temporal alignment is built before sequence
 analytics. Its contract, exit criteria, and inherited-schema audit are in
 [`../design/02_temporal_alignment_contract.md`](../design/02_temporal_alignment_contract.md).
 The schema is documented in
@@ -407,11 +407,15 @@ regularization are documented in
 and exercised by
 [`examples/temporal_alignment_demo.m`](../../examples/temporal_alignment_demo.m).
 
-The Phase 7 integration and exit gate has passed, so Step 11 — sequence, bout,
-and hierarchy-aware analyses — is the next implementation target. Two invariants
-carry into it: Phase 6's ambiguous match groups must not be flattened to make an
-ordering well defined, and a regularized zero means observed-and-empty while an
-unobserved bin is not a zero.
+The v1 Phase 7 integration and exit gate passed, and at the time Step 11 — sequence,
+bout, and hierarchy-aware analyses — was named the next implementation target. Two
+invariants carry into it: v1 Phase 6's ambiguous match groups must not be flattened
+to make an ordering well defined, and a regularized zero means observed-and-empty
+while an unobserved bin is not a zero. *(Corrected at v2 7.15: prototype v2 took
+the multimodal and caller-attribution path instead, and sequence analyses remain
+deferred beyond v2; see the usage guide §10. "Phase 6" and "Phase 7" in this
+section mean prototype v1's phases, not v2's native-estimator and
+integrated-validation phases.)*
 
 The dense regularized timeline is a **derived MATLAB working table**, not
 canonical database storage. Empty bins are never persisted, and
@@ -437,9 +441,9 @@ them optimal. The complete disposable workflow is executable as
 [`examples/matching_consensus_demo.m`](../../examples/matching_consensus_demo.m),
 and its consolidated contract is documented in
 [`07_matching_and_consensus.md`](07_matching_and_consensus.md). Its synthetic
-thresholds are illustrative, not recommended. The Phase 6 integration and exit
-review has passed, so the next implementation target is one compact
-sequence/alignment analysis. See also
+thresholds are illustrative, not recommended. The v1 Phase 6 integration and exit
+review passed, and the next target it named was one compact sequence/alignment
+analysis (built as v1's alignment phase, above). See also
 [`07_matching_candidate_generation.md`](07_matching_candidate_generation.md),
 [`08_matching_assignment_and_consensus.md`](08_matching_assignment_and_consensus.md),
 [`09_detection_and_feature_agreement.md`](09_detection_and_feature_agreement.md),

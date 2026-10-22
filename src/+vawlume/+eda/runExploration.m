@@ -1,6 +1,8 @@
 function result = runExploration(conn, selector, options)
 %RUNEXPLORATION Run the extractor-consilience exploration workflow end to end.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % RESULT = vawlume.eda.RUNEXPLORATION(CONN, SELECTOR) carries one dataset from
 % the reference configuration through full-dataset diagnostics, a bounded
 % whole-dataset screen, a richer seeded-subset probe, probe concordance, exact

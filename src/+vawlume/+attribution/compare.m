@@ -1,6 +1,8 @@
 function result = compare(conn, leftRunRef, rightRunRef, options)
 %COMPARE Report where two attribution runs agree and where they differ, per target.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % RESULT = VAWLUME.ATTRIBUTION.COMPARE(CONN, LEFTRUNREF, RIGHTRUNREF) compares
 % two stored runs over the same recording and the same event set, target by
 % target, and returns deterministic tidy tables (contract 07 D1, D3-D5). Each

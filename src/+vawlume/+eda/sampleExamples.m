@@ -1,6 +1,8 @@
 function result = sampleExamples(conn, analysisRef, reference, options)
 %SAMPLEEXAMPLES Draw a small seeded gallery from each exact support pattern.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % RESULT = vawlume.eda.SAMPLEEXAMPLES(CONN, ANALYSISREF, REFERENCE, Seed=s) picks
 % up to TargetPerPattern agreement groups from each exact extractor-set pattern
 % at the reference configuration, and reports every pattern that could not supply

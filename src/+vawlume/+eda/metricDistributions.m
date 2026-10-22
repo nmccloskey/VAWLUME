@@ -1,6 +1,8 @@
 function result = metricDistributions(surface, options)
 %METRICDISTRIBUTIONS Shape and coverage of every candidate metric in a surface.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % RESULT = vawlume.eda.METRICDISTRIBUTIONS(SURFACE) summarizes each metric of a
 % vawlume.eda.candidateMetrics surface with its coverage counts, extremes,
 % median, interquartile range, and the robust quantiles the governing contract

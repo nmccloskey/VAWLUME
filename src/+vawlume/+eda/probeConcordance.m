@@ -1,5 +1,7 @@
 function result = probeConcordance(screenLeverage, subsetLeverage, options)
 %PROBECONCORDANCE Compare the two sensitivity probes, factor by factor, response
+%
+% Status: experimental (usage guide, "Status of public functions").
 %by response.
 %
 % RESULT = vawlume.eda.PROBECONCORDANCE(SCREENLEVERAGE, SUBSETLEVERAGE) takes two

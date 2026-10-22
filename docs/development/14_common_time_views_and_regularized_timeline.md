@@ -109,7 +109,7 @@ unavailable bin into a scientific zero.
 ## Storage and phase boundary
 
 The timeline is a derived MATLAB table. No dense empty bins are written to
-SQLite, and `sequences` / `sequence_members` remain untouched. Phase 7 provides
+SQLite, and `sequences` / `sequence_members` remain untouched. Prototype v1's Phase 7 provides
 the aligned, regularized foundation only. Transition matrices, entropy, n-grams,
 motifs, edit distance, bouts, hierarchy analysis, continuous neural samples, and
 automatic interpretation remain out of scope for the later sequence phase.

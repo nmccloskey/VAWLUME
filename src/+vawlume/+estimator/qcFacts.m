@@ -1,6 +1,8 @@
 function result = qcFacts(conn, runRef, options)
 %QCFACTS Facts in a native run's stored evidence about the method's own fit. Read-only.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 %   result = VAWLUME.ESTIMATOR.QCFACTS(conn, runRef)
 %
 % For a native_estimate run, reports per target how the observed level

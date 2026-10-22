@@ -1,6 +1,8 @@
 function result = measureCallWindow(conn, eventRef, channelIndices, options)
 %MEASURECALLWINDOW Measure one vocal event's window on each requested channel.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 %   result = VAWLUME.ACOUSTIC.MEASURECALLWINDOW(conn, ...
 %       struct(detection_id=ID), [1 2], SourceRoot=root, BandHz=[f1 f2])
 %   result = VAWLUME.ACOUSTIC.MEASURECALLWINDOW(conn, ...

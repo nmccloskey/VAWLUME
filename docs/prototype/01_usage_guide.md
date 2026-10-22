@@ -85,10 +85,21 @@ Concretely, the prototype can today:
   well each animal's position explains the level difference the microphones
   heard. The score is an uncalibrated dB consistency score, comparable within
   that recording only, and never a probability. Every input it used is stored as
-  its own evidence row, and the score can be recomputed from them; and
+  its own evidence row, and the score can be recomputed from them;
 - **read back** a whole attribution run through one function, with QC that is
   counts, memberships and observed ranges and contains no quality score,
-  threshold or verdict.
+  threshold or verdict;
+- **compare** two stored attribution runs target by target, including runs over
+  different event sets joined only through a named stored matching or agreement
+  analysis, reporting where they agree and where they differ without merging
+  them (§7.10);
+- **vary** one declared input of a native run or of the matching configuration
+  at a time, as a recorded family of ordinary runs, and report how each
+  conclusion moves against a reference declared in advance — selecting nothing
+  (§7.10); and
+- **state the margin** of each native score: how large an unmodelled level bias
+  would have to be to reverse its ranking, and when an observation fits neither
+  candidate (§7.10).
 
 [`../../examples/multimodal_integration_demo.m`](../../examples/multimodal_integration_demo.m)
 runs the whole multimodal layer as one synthetic workflow, including an
@@ -126,12 +137,16 @@ animal.
 - **Sequence, bout, motif, and hierarchy-aware analyses are not implemented.**
   The `sequences`, `sequence_members`, `bouts`, and `bout_members` tables exist
   in the schema as modeled storage, but no current workflow writes rows to them.
-- **Real-data acceptance is operational, not scientific validation.** The
-  extractor-consilience exploration workflow has run end to end on one real
-  Pilot 3 recording with DeepSqueak, MUPET, and USVSEG outputs. No comprehensive
-  manually reviewed ground-truth reference or threshold calibration has been
-  completed, and the multi-recording sampling path remains untested on real
-  data.
+- **Real-data acceptance is functional and consistency acceptance, not
+  scientific validation.** Four real right-microphone Pilot 3 recordings, with
+  DeepSqueak, MUPET and USVSEG output for each, have been ingested, reconciled,
+  aligned to an acquisition clock, placed in protocol epochs, exported, and
+  rebuilt identically from their sources (§6.5, "Real-data acceptance
+  boundary"). No ground truth for who called, no manually reviewed reference,
+  and no threshold calibration exists. The consilience exploration has run over
+  all four, but with no recording-level metadata to stratify on its subset was
+  the whole frame, so the multi-recording sampling path remains untested on a
+  subset that differs from it.
 - **Channel-response estimates are not caller evidence.** VAWLUME now reads
   bounded audio windows and measures declared references on explicit channels,
   but the result is uncalibrated response/QC evidence about the channels. It is
@@ -150,7 +165,10 @@ animal.
   recording only. It is not a probability, it cannot detect simultaneous
   calling, and when a call's level difference does not follow spherical
   spreading (a head turned away from one microphone, say) it can fit the wrong
-  animal well. Nothing in the run flags that. See
+  animal well. `vawlume.estimator.qcFacts` states each call's margin before its
+  ranking would reverse, and flags an observation that fits neither animal, but
+  a wrong animal that fits within that margin is not detectable from any stored
+  fact (§7.10). See
   [`../development/45_integrated_native_estimator_demonstration.md`](../development/45_integrated_native_estimator_demonstration.md).
 - **A decision is not a combination of the evidence.** A decision policy reads
   one candidate column and no evidence row. Pose, visual-identity, alignment,
@@ -192,6 +210,39 @@ values, units, hierarchy, labels, missing tokens, and extractor/run provenance
 remain queryable even where VAWLUME also exposes a canonical concept. Structural
 equivalence — a DeepSqueak *call* and a MUPET *syllable* are both vocalization
 events — is never a claim of metric identity.
+
+### Status of public functions
+
+Every `vawlume.*` function is in one of three states. **This table is the one
+place the state is recorded** (contract 07 D16). Other documents link here,
+and each experimental entry point's help text points here.
+
+| Label | Meaning |
+|---|---|
+| **usable** | Documented, contract-governed and tested within the prototype. Still a prototype: uncalibrated where it says so |
+| **experimental** | Works and is tested, but its method or output shape may change without a contract change, and its numbers carry no calibrated meaning |
+| **internal** | Public only so that packages, tests or demonstrations can call it. Not user API, and not documented in this guide beyond this table |
+
+| Package | usable | experimental | internal |
+|---|---|---|---|
+| `vawlume.source_mapping` | all: `loadProfile`, `validateProfile`, `parse`, `parsePath`, `discoverSources`, `mapTableToIR`, `mapTableFields`, `applyTransform`, `normalizeRelativePath`, `preview` | — | — |
+| `vawlume.ingest` | all: `project`; `deepsqueak`, `deepsqueakExport`, `mupet`, `mupetExport`, `usvseg`, `usvsegExport`; `alignment`, `alignmentManifest`; `attribution`, `backendAttribution` | — | — |
+| `vawlume.matching`, `vawlume.consilience`, `vawlume.agreement` | `matching.compare`; `consilience.summarize`, `consilience.sensitivity`; `agreement.compose`, `agreement.selectPopulation` | — | `agreement.internal.connectedComponents` |
+| `vawlume.interval`, `vawlume.sequence` | `interval.relation`; `sequence.regularizeTimeline` | — | — |
+| `vawlume.alignment` | `fit`, `solveTransform`, `report`, `setAnchorInclusion`, `linkAnchorIdentityEvidence`, `applyTransform`, `applyTransformInterval`, `applyInverseTransform`, `commonTime` | — | `alignment.internal.assertSegmentsTile`, `alignment.internal.evaluateSegments` |
+| `vawlume.geometry` | all: `registerCoordinateSystem`, `registerRecordingChannel`, `registerChannelPlacement`, `readCoordinateSystems`, `readChannelPlacements`, `assertCompatible`, `distance`, `positionAtInstants`, `summarizeDistances` | — | — |
+| `vawlume.tracking` | all: `register`, `readWindow`, `assertGeometryCompatible`, `registerIdentityAssociation`, `identityCandidates`, `resolveIdentity`, `identityOverWindow`, `positionsAtInstants` | — | — |
+| `vawlume.acoustic` | `registerReference`, `readReferences`, `readAudioWindow`, `measureReferenceResponse`, `estimateChannelResponse`, `readChannelResponse` | `measureCallWindow`, `normalizeCallLevels`, `levelDifference` | — |
+| `vawlume.attribution` | `createRun`, `resolveTargets`, `addCandidates`, `addEvidence`, `correspondWindows`, `decide`, `report` | `compare` | `declareInputs` (the one writer `createRun` and backend intake call) |
+| `vawlume.estimator` | — | all: `attributeCallers`, `loadSettings`, `levelDifferenceConsistency`, `eventReferenceInstants`, `candidateGeometry`, `qcFacts` | — |
+| `vawlume.eda` | — | the runner and its public stages: `runExploration`, `explorationOptions`, `resolveDataset`, `referenceConfiguration`, `referenceDesign`, `materializeConfigurations`, `runScreen`, `candidateMetrics`, `metricDistributions`, `metricDependencies`, `probeParameters`, `probeCost`, `screeningDesign`, `screenResponses`, `mainEffects`, `leverageCategories`, `resolveStrata`, `sampleRecordings`, `subsetDesign`, `probeConcordance`, `supportPatternProfile`, `crossPatternComparison`, `sampleExamples`, `exportExampleGallery`; the sensitivity entry points: `attributionSensitivity`, `correspondenceSensitivity`, `sensitivitySummary` | building blocks of the runner's composition: `plot*` (eight), `renderMetricCoverageTable`, `renderExample`, `prepareExample`, `exampleDisplayPlan`, `exampleStyles`, `exampleFilename`, `exportFigure`, `writeExampleIndex`, `writeTableExport`, `spectrogramMatrix`, `groupChanges`, `midRank`, `sampleQuantile` |
+| `vawlume.db` | `applySchema`, `registerBuiltinSemantics`, `registerProfileVersion`, `createPhase1FixtureDatabase` | — | fixture builders: `buildPhase1Fixture`, `buildAlignmentSessionFixture`, `buildIntegratedFixture` |
+| `vawlume.export`, `vawlume.schema` | `export.database`; all of `schema`: `validateMetadata`, `loadMetadata`, `loadStructure`, `repositoryVersion` | — | `export.internal.*` |
+| `vawlume.internal` | — | — | `resolvePath` |
+
+**Usable is not validated.** A usable function does what its contract says on
+the inputs its tests cover. It makes no claim that any number it stores is
+calibrated, and no function in any column does.
 
 ---
 
@@ -824,8 +875,16 @@ not nested under the run-key specification directory.
 
 Each stage can be run on its own. `Stages="diagnostics"` gives you the cheap
 first look without building a design or executing a probe, and `Apply=false`
-prices every probe without writing anything — worth doing before you commit to a
-long run.
+prices what it can without writing any analysis — worth doing before you commit
+to a long run. **On a database nothing has matched yet, a dry run prices only
+the reference configuration and stops**, because the probe values are anchored
+on observed candidate pairs and there are none. Apply the reference
+configuration once (`Stages="reference"`), then dry-run again with
+`DiagnosticAnalyses=struct(project_key="my_project")` to price the screen and
+the subset probe. *(Corrected at 7.15: this paragraph said a dry run prices
+every probe. 7.14a observed the stop on real data;
+[doc 35 §2.2](../development/35_consilience_exploration_workflow.md) already
+described it.)*
 
 #### Know the cost before you start it
 
@@ -923,7 +982,10 @@ after real audio/channel metadata were registered. The full run took roughly
 5.8 hours: about 3.62 hours for the 16-configuration whole-data screen and 2.09
 hours for a 16-configuration subset probe over the same recording. Treat that as
 a scaling warning before running the four-recording pilot dataset, not as a
-default-runtime promise.
+default-runtime promise. *(Since 7.12 the subset probe takes units the
+reference run or the screen already applied from their manifests instead of
+re-planning them (EXP-050), so an identical-frame run like that one now takes
+about 3.7 hours.)*
 
 The run also established two interpretation boundaries. First, the partial-
 correlation matrix was intentionally undefined with reason `ill_conditioned`:
@@ -934,10 +996,60 @@ literal zero-height extent. Native GUI geometry may differ from exported summary
 features; VAWLUME renders the exported measurements and does not infer a taller
 box.
 
-Still open are real multi-recording stratified-subset acceptance, a meaningful
-whole-versus-subset comparison on different recording sets, broader manual
-gallery adjudication, runtime scaling, and paper-grade threshold or ground-truth
-validation.
+**Four recordings (7.14a).** The four right-microphone Pilot 3 recordings were
+then built into one fresh database from untouched sources: 15,231 detections
+from 12 extractor files, every one reconciled against its source, every MUPET
+`_` and USVSEG `NaN` kept as its raw token with no numeric payload, and every
+DeepSqueak zero-height box stored literally. A second build from the same
+sources was identical in every table outside timestamps and run ids.
+
+The complete workflow then ran over all four recordings in one call and
+appended only analyses: no ingested, aligned or measured row changed. What it
+showed:
+
+- **Every stage completed.** All four screening factors were active, so the
+  screen was a complete 16-configuration factorial (no aliasing): 256 analyses
+  over the four recordings. Sixteen figures, every exact extractor set and a
+  21-image gallery were produced. The gallery has not yet been reviewed by hand.
+- **The subset was the whole frame, so the probe comparison is uninformative.**
+  The recordings carry no recording-level metadata field (intake left
+  `native_recording_id` empty), so no stratum field resolved, and a requested
+  subset of four from four recordings is all of them. The two probes therefore
+  ran the same design on the same data, and their concordance table agrees
+  everywhere by construction. That agreement is not evidence about subset
+  representativeness. A meaningful comparison needs more recordings than the
+  subset size, and a recording-level field to stratify on.
+- **It took 8.7 hours**, against an estimate of about 4.5. The screen took 5.9
+  hours where 3.7 were predicted from the per-configuration matching time, and
+  the subset probe took 2.6 hours **although all 256 of its units were taken
+  from the screen's manifest without calling the matcher** (EXP-050). Most of
+  the subset's time is therefore spent reading responses back from stored
+  analyses, not matching, and analysis-count estimates understate it. Budget
+  roughly twice the matching-only estimate for a run at this scale.
+- **The support-pattern profile is per recording** (§10). The exported tables
+  carry the full profile for the primary recording only — 2,946 groups over
+  4,270 detections, with all seven extractor sets occupied — and a group count
+  for each of the others (2,535, 2,470 and 2,081).
+
+Two runtime facts from that run:
+
+- **A resumed run re-plans, but re-planning is cheap here.** `runExploration`
+  takes reused units from the reference and screen manifests **within one
+  call** only, so a run started again re-plans every analysis an earlier attempt
+  committed, and the matcher reports each one `reused`. 7.14a applied the
+  reference configuration one recording at a time first; the dataset call then
+  re-planned those 16 units in 174 s in all, about 11 s each, against about 52 s
+  to compute one. *(Part 17a had measured about 117 s per re-planned unit on one
+  recording.)*
+- **The matching cost scales with detections.** The per-configuration time on
+  one recording, scaled by each recording's detection count, predicted the
+  reference configuration's matching to within 3%. It does not predict the
+  response stages (above).
+
+Still open are a multi-recording **stratified** subset and a whole-versus-subset
+comparison on different recording sets (both need recording-level metadata and
+more recordings than the subset), broader manual gallery adjudication, and
+paper-grade threshold or ground-truth validation.
 
 [`../development/35_consilience_exploration_workflow.md`](../development/35_consilience_exploration_workflow.md)
 documents the stages, the designs, the coverage vocabulary, the provenance
@@ -1000,6 +1112,18 @@ required, and **settings evidence is required to apply**: supply either
 `vawlume:ingest:MupetSettingsRequired`, because MUPET reprocesses a recording
 when its configuration changes and a run without its exact settings is not
 reproducible.
+
+Every column the MUPET profile maps is read as text, then parsed once. A
+declared missing token (`NA`, `_`) is kept as its raw token with no number. An
+**unexpected** token in a numeric column — `oops` where a duration belongs — is
+not silently read as `NaN`: it is stored as its raw text and reported as
+`TYPE_COERCION_FAILED`, and its neighbours are unaffected.
+
+The settings file is an identity as well as evidence. VAWLUME records its
+checksum and a portable path. When the `config.csv` lives outside the
+`ArtifactRoot` you pass, declare that portable path yourself with
+`settings = struct(config_path=..., relative_path=...)`; an import that cannot
+form one is refused rather than storing an absolute path silently.
 
 **USVSEG** — one `<stem>_dat.csv` per segmentation pass. `run_key` and
 `extractor_version` are required, and `extractor_version` **raises** rather than
@@ -1086,6 +1210,31 @@ is a claim about one source clock, so `SourceTimebase` is required whenever
 reuse it, while a different breakpoint set is a different alignment identity.
 VAWLUME does not search residuals for change points and never falls back to an
 affine fit.
+
+**One alignment set, one method.** A manifest's `method` applies to every
+transform in its set, so one set cannot hold an affine audio transform beside a
+piecewise video one. Write one manifest, and so one set, per method. To compare
+two models of the same clocks — offset against affine, say — register them as two
+identities over the same anchors: two manifests with different `alignment_key`
+values, or one manifest registered twice with `RunSpec=struct(run_key=...)`. A
+fitted transform is never rewritten in place, which is also how
+leave-one-anchor-out works: give each held-out anchor its own identity, withhold
+it with `setAnchorInclusion`, fit, and read the withheld anchor's residual as
+its **prediction error**, not as a residual of the fit.
+
+**A clock you declare rather than fit.** VAWLUME has no primitive saying two
+clocks share an origin. When one does — a camera started by the acquisition
+system, say — register that clock's streams **on the other clock's timebase**,
+and say so in the timebase's `origin_description` and the manifest's `notes`.
+No transform is fitted for it, and none can be checked. The 7.14a real-data
+acceptance registered video-coded behaviour this way, on the neural-acquisition
+clock.
+
+**Intake does not record a recording's duration, sample rate or channel
+count.** `recordings.duration_s`, `sample_rate_hz` and `channel_count` stay
+NULL after `vawlume.ingest.project`, so `commonTime` has no recording-level
+coverage interval to report, and `readAudioWindow` cannot check the file
+against declared values. Declare what you know (§7.5 shows `channel_count`).
 
 Use `vawlume.alignment.setAnchorInclusion` to withhold or restore a specific
 observation, always with a `Reason`. A withheld anchor still receives a residual
@@ -1199,6 +1348,15 @@ uncovered one. Zero rows in an uncovered window means nothing established that
 anyone was observing — not that the tracker saw nothing.
 `window.samples.pose_confidence` is the upstream localization quality and is
 missing, never `1.0`, when the tracker emits none.
+
+To read a window on a reference clock as well, pass `ReferenceTimebaseKey=`.
+`readWindow` uses **exactly one** stored transform for that. When the tracking
+clock has one usable fitted transform onto the reference, it is used. When it
+has several and you name none, `window.reference_time_status` is
+`transform_ambiguous`, the candidates' ids are listed, and only native times are
+returned; name one with `AlignmentRun=<id>`. Nothing picks the newest fit for
+you. *(Changed at 7.12, contract 07 D17: `readWindow` used to take the newest
+fit silently.)*
 
 A native track label is a trajectory label, never an animal. Record the
 relationship as interval-scoped evidence, which is what makes a crossing
@@ -2004,8 +2162,10 @@ calibration status.
   evidence that both called, and the method cannot detect simultaneous calling.
 - A good fit is not evidence that the assumption held. If a call is louder
   toward one microphone for a reason the method does not model, such as head
-  direction or a reflection, the wrong animal can fit well. Nothing in the run
-  flags that.
+  direction or a reflection, the wrong animal can fit well. `qcFacts` states how
+  large such a bias would have to be to reverse the ranking, and flags an
+  observation that fits neither animal. A wrong animal that fits within that
+  margin is still not detectable (§7.10).
 
 **Scope of v1:** exactly two participating animals and one ordered pair of
 placed microphones, in a frame whose unit is `cm`, `mm` or `m`, with detection
@@ -2058,9 +2218,12 @@ The path, in order:
    (`vawlume:attribution:PolicyRuleNotApplicable`), because a level-difference
    score cannot evidence two animals calling at once.
 7. Read the run back with `vawlume.attribution.report`. It uses the same fields
-   as an imported or backend run, plus each unscored candidate's
-   `no_score_reason` in `candidates.notes` and the cited measurement in
-   `evidence.derived_measurement_id`.
+   as an imported or backend run. An unscored candidate's reasons are in
+   `no_score_reasons`, one row per reason in the order the method gave them, and
+   each evidence row's cited measurement is in `evidence.derived_measurement_id`.
+   *(Corrected at 7.15: reasons were once a single entry in `candidates.notes`;
+   since schema `0.14-draft` they are rows of their own, contract 07 D10.)*
+8. Read the method's margins with `vawlume.estimator.qcFacts` (§7.10).
 
 **Absence stays absence.** A call with no tracking sample, an identity that
 changes mid-call, an extrapolated clock placement, a clipped channel, an
@@ -2083,6 +2246,191 @@ for the run, its evidence and its refusals, and
 [`../design/06_native_estimator_contract.md`](../design/06_native_estimator_contract.md)
 for the decisions behind it.
 
+### 7.10 Compare runs, vary their inputs, and read the native margins
+
+**Status: experimental** (see "Status of public functions", §1). Everything in
+this section reads or extends stored runs. None of it combines them, chooses
+between them, or validates any of them.
+
+Five cautions govern every result here. They are the reason the section exists
+as one piece:
+
+- **Comparison is not combination.** A comparison says where two runs agree and
+  where they differ. It never produces a merged caller, a consensus decision, a
+  combined score, a preferred run, or an agreement percentage.
+- **Values never cross paths.** An imported or backend score is on its
+  producer's scale. A native score is a dB discrepancy, comparable only within
+  one recording under one settings version. Across that boundary, compare ranks,
+  selected sets and statuses; a request to compare the values is refused by name.
+- **A structural empty is not a disagreement.** A status one side's decision rule
+  cannot produce (`simultaneous`, for a native run) is a structural empty. An
+  input a run never declared is **unknown**, not "not used". Neither is counted
+  as disagreement.
+- **Sensitivity selects nothing.** It says how a conclusion moves when one
+  declared input changes. It never says which setting is right, and no setting,
+  threshold or path is called best, optimal, recommended, validated or
+  calibrated.
+- **Agreement on synthetic data is circular.** Every Phase 7 example and test
+  runs on data this repository generated, so two paths agreeing there shows that
+  the machinery joins correctly. On any data, agreement says nothing about who
+  called without independent ground truth.
+
+#### Comparing two runs
+
+```matlab
+left  = struct(project_key="my-project", run_key="caller-native-1");
+right = struct(project_key="my-project", run_key="caller-import-1");
+
+result = vawlume.attribution.compare(conn, left, right);
+result.units           % one row per shared event: who each side ranks top,
+                       % how the selected sets relate, each side's status
+result.status_crosstab % (left status, right status) cells, each with its kind
+result.status_counts   % agree, disagree, structural_empty, excluded, undecided
+result.reasons         % each unscored candidate's and excluded decision's reasons
+result.windows         % every imported or backend window, corresponded or not
+result.claims          % every claim, promoted to a candidate or not
+```
+
+`compare` reads each run through `vawlume.attribution.report` and writes
+nothing. Two runs compare directly when they are on one recording and target
+one event set. Name `LeftPolicy=` or `RightPolicy=` when a side carries decisions
+under several policy versions. `CompareScores=true` puts the two sides' scores
+next to each other, with no difference column, and is refused
+(`vawlume:attribution:ScoreNotComparable`) unless the path, the method and the
+settings version all match.
+
+Read the unit table and the status cross-tab together. **The cross-tab compares
+statuses, not callers.** Two `assigned` decisions that selected different
+animals agree in the cross-tab and disagree in the unit row
+(`top_entity_agreement = different`, `selected_set_relation = disjoint`). Both
+are reported, and neither is a percentage.
+
+#### Comparing runs over different event sets
+
+A native run over DeepSqueak detections and one over MUPET detections, or over
+consensus events, target different events. Nothing re-matches them on the fly.
+Name the stored analysis whose rows say which targets are the same call:
+
+```matlab
+result = vawlume.attribution.compare(conn, dsRun, mupetRun, ...
+    Correspondence=struct(run_key="m-ds-mupet"));        % a matching analysis
+% detections against agreement groups: the agreement analysis
+% consensus events of two matching analyses:
+%   Correspondence=struct(shared_member_detections=true)
+```
+
+A **unit** is then one connected component of those stored rows: `one_to_one`,
+`one_to_many` (a split), `many_to_one` (a merge), `many_to_many`, or
+`unmatched_left` / `unmatched_right`. Within a unit with several targets on a
+side, nothing is picked: every pair is reported in `result.pairs`, and the unit
+row says `not_applicable_unit`. Only `one_to_one` units enter the status
+cross-tab.
+
+Without `Correspondence=`, different event sets are refused
+(`vawlume:attribution:CorrespondenceAnalysisRequired`). An analysis that does not
+take both runs' event sets is refused too (`CorrespondenceAnalysisInvalid`).
+
+#### Varying one input at a time
+
+A **sensitivity family** is a set of ordinary runs, each changing one declared
+input of a reference run, recorded together. The reference is declared before
+any result exists.
+
+```matlab
+familySpec = struct( ...
+    family_key="session01-sensitivity", ...
+    output_root=fullfile(tempdir, "session01_sensitivity"), ...
+    reference=struct(attribution_run_id=nativeRunId, ...
+        run_spec=nativeRunSpec, decision_policy=policyPath), ...
+    variants=[struct(handle="decision_policy", ...
+                     value=struct(selection_threshold=-6)), ...
+              struct(handle="estimator_settings", ...
+                     value=struct(primary_instant_basis="onset"))]);
+
+plan    = vawlume.eda.attributionSensitivity(conn, familySpec);   % prints the cost, writes nothing
+applied = vawlume.eda.attributionSensitivity(conn, familySpec, Apply=true);
+summary = vawlume.eda.sensitivitySummary(conn, ...
+    struct(analysis_run_id=applied.family_analysis_run_id));
+summary.rows   % one row per variant: what moved, counted
+```
+
+**The attribution-side handles** of a native run:
+
+| Handle | Factors |
+|---|---|
+| `decision_policy` | `selection_threshold`, `separation_margin`, `co_occurrence_threshold` — a second decision set on the same run |
+| `estimator_settings` | `primary_instant_basis`, `max_interpolation_gap_s`, `min_distance`, `channel_pair` — a new run under a generated settings version |
+| `normalization_policy` | `reference_type` — a new normalization, settings version and run |
+| `alignment_run` | `audio_alignment_run_id`, `tracking_alignment_run_id` — a new run naming another fitted alignment |
+
+Six further handles are **rows in every summary, not variants**, each with its
+reason; asking to vary one raises `vawlume:eda:SensitivityHandleNotVariable`:
+
+| Handle | Status | Why |
+|---|---|---|
+| `pose_confidence_gate`, `temporal_uncertainty_gate_s` | `not_variable` | Method 1.0.0 implements no gate |
+| `dimension_declarations` | `not_variable` | Method 1.0.0 uses all four dimensions |
+| `positional_error` | `reported_elsewhere` | A margin `qcFacts` reports, below |
+| `identity_uncertainty` | `not_measurable` | Identity enters only as resolved or unscored, so there is no continuous handle |
+| `call_band` | `not_exercised` | It would re-measure audio, which attribution-side sensitivity does not do |
+
+**The matching side** reaches attribution through consensus events.
+`vawlume.eda.correspondenceSensitivity` re-matches under a varied
+`min_temporal_iou` (`matching_temporal`) or spectral tolerance
+(`matching_spectral`), re-measures and re-attributes the consensus events, and
+`sensitivitySummary` reports how the units split, merge, appear and disappear.
+`matching_duration` is reported `not_variable`: the tracked specification has no
+duration bound to vary.
+
+Plan before you apply. Every generated profile goes under `output_root`, never
+under `config/`, and the tracked files are never edited. Re-applying the same
+design reuses it. Producers own their own transactions, so a failure part-way
+leaves the variants already applied with no family record; re-applying then
+meets `RunAlreadyApplied` on them. Variant run keys are deterministic
+(`<family_key>.<configuration id>`), so you can find and inspect them.
+
+**Scale.** Both orchestrators have run only on the synthetic integrated fixture,
+at roughly 8–18 s per matching-side configuration. No real-data run of either
+was made in v2.
+
+#### The native margins
+
+```matlab
+facts = vawlume.estimator.qcFacts(conn, struct(attribution_run_id=nativeRunId));
+facts.targets      % per call: the observation, both predictions' gap, the margin
+facts.candidates   % per animal: its prediction, discrepancy, positional margins
+```
+
+Per call, `tolerance_db` is half the gap between the two animals' predictions:
+the largest unmodelled level bias that leaves the ranking unchanged.
+`acoustic_margin_db` is how far the observation sits from reversing the ranking.
+`observed_outside_predictions` and `no_candidate_within_tolerance` flag an
+observation neither animal explains. Per animal, `positional_margin_a` and `_b`
+say how far it would have to be from each microphone for its prediction to
+reach the boundary.
+
+`qcFacts` recomputes the predictions from the stored evidence through the
+method itself, reads no audio, tracking or alignment, and writes nothing. It is
+a separate call, not part of `report`, and is refused for a run that is not
+native (`vawlume:estimator:QcFactsNotNative`). Every target row carries this
+statement:
+
+> A wrong animal that fits well is not detectable from these facts. When an
+> unmodelled bias moves the observed difference toward the wrong candidate's
+> prediction by more than `acoustic_margin_db` and less than the gap, the wrong
+> animal scores best and every fact here looks ordinary.
+
+The facts make the margin visible. They do not flag the failure, change a
+score, or decide anything.
+
+See [`../development/46_attribution_comparison.md`](../development/46_attribution_comparison.md),
+[`../development/47_attribution_sensitivity.md`](../development/47_attribution_sensitivity.md),
+[`../development/48_native_qc_facts.md`](../development/48_native_qc_facts.md),
+the shared synthetic scene in
+[`../development/50_integrated_fixture.md`](../development/50_integrated_fixture.md),
+and [`../design/07_integrated_validation_contract.md`](../design/07_integrated_validation_contract.md)
+for the decisions behind all four.
+
 ---
 
 ## 8. Outputs and data model
@@ -2104,7 +2452,8 @@ to MATLAB.
 | Arbitrary-N agreement | `analysis_runs` (a `multi_extractor_agreement` run with many-parent lineage), `agreement_groups`, `agreement_group_members`, `agreement_supporting_edges` |
 | Alignment | `timebases`, `external_streams`, `external_stream_sources`, `external_stream_coverage`, `external_events`, `external_event_attributes`, `alignment_sets`, `alignment_anchors`, `alignment_anchor_observations`, `time_alignment_runs`, `alignment_segments`, `alignment_anchor_residuals` |
 | Multimodal intake and response | `coordinate_systems`, `channel_placements`, `tracking_streams`, `tracking_series`, `tracking_identity_associations`, `acoustic_references`; response applies add `analysis_runs`, `analysis_run_sources`, `derived_measurements`, `channel_response_estimates`, and `channel_response_estimate_sources` |
-| Attribution run and evidence | setup writes `analysis_runs`, `analysis_run_profiles`, `analysis_run_extraction_inputs` or `analysis_run_sources`, `attribution_runs`, and `attribution_targets`; candidate/evidence batches add `attribution_candidates` and `attribution_evidence`; `vawlume.ingest.attribution` adds `imported_attribution_windows` and `imported_attribution_claims`; `vawlume.ingest.backendAttribution` adds those plus `attribution_localization_estimates`, `attribution_native_attributes` and `attribution_run_declared_inputs`; `vawlume.attribution.correspondWindows` adds `attribution_window_correspondences`; `vawlume.attribution.decide` adds `attribution_decisions` and `attribution_decision_candidates` |
+| Attribution run and evidence | setup writes `analysis_runs`, `analysis_run_profiles`, `analysis_run_extraction_inputs` or `analysis_run_sources`, `attribution_runs`, and `attribution_targets`; candidate/evidence batches add `attribution_candidates` and `attribution_evidence`; `vawlume.ingest.attribution` adds `imported_attribution_windows` and `imported_attribution_claims`; `vawlume.ingest.backendAttribution` adds those plus `attribution_localization_estimates`, `attribution_native_attributes` and `attribution_run_declared_inputs`; `vawlume.attribution.correspondWindows` adds `attribution_window_correspondences`; `vawlume.attribution.decide` adds `attribution_decisions` and `attribution_decision_candidates`; a native run (`vawlume.estimator.attributeCallers`) also adds `attribution_candidate_no_score_reasons`, one row per reason an unscored candidate states |
+| Sensitivity families | Each variant is an ordinary run or decision set, written by its own producer. The family itself is one `analysis_runs` row (`run_type = attribution_sensitivity`, for both the attribution-side and the matching-side orchestrator) with `analysis_run_sources` naming the reference and every variant, and its design registered as a profile version. **`compare`, `sensitivitySummary` and `qcFacts` write nothing**: comparison results are recomputed from storage on demand |
 
 Note that `agreement_statistics` belongs to *pairwise* consilience despite its
 name; the arbitrary-N layer stores no summary at all. Its counts, fractions,
@@ -2319,6 +2668,48 @@ metadata. A source filename literally equal to an option name, such as `Output`,
 can be parsed by MATLAB as a name-value argument; pass a normal path string with
 an extension.
 
+An override on an **older** database still exports only what the repository's
+schema describes. An object the older schema lacks fails the export, so narrow
+`Tables=` to the objects that database holds.
+
+#### What an export of a real database carries
+
+**An export publishes every stored path.** Several columns hold the location of
+a file as it was on the machine that registered it:
+`source_files.path_or_uri` and `relative_path` (for alignment manifests and
+their stream tables, an absolute path), `config_profile_versions.content_uri`
+for a profile outside the repository, `external_stream_sources.source_locator`,
+and some `artifacts.metadata_json` and `analysis_runs.notes` values. A CSV
+package copies them verbatim. If those paths name people, institutions or
+private folders, keep the package where the database is kept, and do not share
+it as though it were anonymous. A portable-root policy is deferred beyond v2.
+
+**Export to a local folder.** The package is staged beside the destination and
+published by one rename. On a folder a sync client (OneDrive, Dropbox) is
+watching, 7.14a once saw that rename raise an error after the package had
+already been placed, which leaves a complete package behind a failed call. A
+retry with `Overwrite=true` succeeded. Write the package to a local folder, then
+copy it.
+
+### 8.6 Persistent databases: rebuild, never migrate
+
+A database is tied to the schema version it was created at. When the repository
+moves to a new schema version, **rebuild**: create a fresh database at the live
+schema, run `vawlume.db.registerBuiltinSemantics`, and re-run your intake,
+imports and analyses from the untouched sources. VAWLUME ships no migration
+machinery and none is planned for v2.
+
+An older database is still readable as SQLite, but the API does not check its
+version before it writes. A writer that needs a table the older schema lacks
+fails with SQLite's own `no such table` message rather than a named VAWLUME
+error, and `registerBuiltinSemantics` will add its semantic rows to an older
+database without complaint. Probe an old database **on a copy** only. Export it
+only with `AllowSchemaVersionMismatch=true`, as above.
+
+Keep the database file on a local disk while anything writes to it, and treat
+the profiles, manifests, specifications and scripts that regenerate it as the
+things worth versioning (§8.4).
+
 ---
 
 ## 9. Validation and troubleshooting
@@ -2417,6 +2808,21 @@ that was never assessed.
 | Event outside declared coverage | `vawlume:alignment:EventOutsideCoverage` | Fix the declared coverage, or pass `ErrorOnOutsideCoverage=false` knowingly |
 | Bin or window rejected | `vawlume:sequence:WindowInvalid`, `:WindowNotDivisible`, `:BinOriginMisaligned`, `:AggregationUnsupported` | Supported aggregations are `onset_count`, `presence`, and `any_overlap` |
 
+### Comparison, sensitivity and QC facts
+
+| Symptom | Identifier | Cause |
+|---|---|---|
+| Two runs refused | `vawlume:attribution:ComparisonRecordingMismatch` | They are on different recordings. A comparison is within one recording |
+| Two runs refused | `:CorrespondenceAnalysisRequired` | They target different event sets. Name the stored analysis that joins them with `Correspondence=` (§7.10) |
+| Named analysis refused | `:CorrespondenceAnalysisInvalid` | It is missing, incomplete, of another kind or project, has no rows on the recording, or does not take both runs' event sets |
+| A side needs a policy | `:DecisionPolicyRequired`, `:DecisionPolicyNotFound` | The side carries decisions under several policy versions, or the named one decided nothing there. Name one with `LeftPolicy=` / `RightPolicy=` |
+| Scores not shown | `:ScoreNotComparable` | `CompareScores=true` across paths, methods or settings versions. Compare ranks, sets and statuses instead; the values are on different scales |
+| Family specification refused | `vawlume:eda:SensitivitySpecInvalid`, `:SensitivityReferenceRequired` | A field is missing or malformed, or the reference does not describe its stored run (its `run_key` and settings version must match storage) |
+| A handle refused | `:SensitivityHandleUnknown`, `:SensitivityHandleNotVariable` | The handle or factor does not exist, or method 1.0.0 does not let it vary. Not-variable handles are reported as rows in every summary |
+| Family refused on apply | `:SensitivityFamilyConflict` | A different design already holds that `family_key`. Use a new key |
+| Summary refused | `:SensitivityFamilyNotFound` | The reference names no applied family |
+| QC facts refused | `vawlume:estimator:QcFactsNotNative`, `:SettingsChecksumMismatch` | The run is not `native_estimate`, or its settings file has changed since the run |
+
 ### Three environment gotchas
 
 1. **`fetch` fails on NULL text columns.** MATLAB's Database Toolbox raises
@@ -2453,9 +2859,18 @@ twenty-five minutes. Passing the suite is the strongest available check that an
 environment is correctly configured. For the current size of the suite, and the
 rest of the repository inventory, run `repository_inventory` from
 [`../../tools/`](../../tools/) rather than trusting a count quoted here.
-Use the [canonical batch gate in the README](../../README.md#quick-start) for
-non-interactive verification with a nonzero exit code on failure or incomplete
-tests. Synthetic regression coverage does not establish scientific calibration.
+For non-interactive verification, run the same gate from a shell at the
+repository root:
+
+```text
+matlab -batch "addpath('src'); results = runtests('tests', IncludeSubfolders=true); disp(table(results)); assert(~isempty(results), 'No tests discovered.'); assertSuccess(results); assert(~any([results.Incomplete]), 'Incomplete tests.');"
+```
+
+It returns a nonzero exit code for failed or incomplete tests, an empty suite,
+or an execution error. On Windows, add `-wait` when a calling shell must wait for
+MATLAB and collect its exit code. *(Corrected at 7.15: this paragraph pointed to
+a gate in the README, which the README no longer carries.)* Synthetic regression
+coverage does not establish scientific calibration.
 
 ---
 
@@ -2522,6 +2937,19 @@ metadata-stratified subset probe, a per-factor per-response probe comparison,
 exact extractor-support-pattern characterization with registered-only feature
 comparability and coverage, and a measured-geometry spectrogram gallery, to
 exported tables, figures, an example index and a provenance record.
+
+Since Phase 7: read-only comparison of two stored attribution runs, within one
+event set and across event sets through a named stored matching or agreement
+analysis, with split, merge and unmatched units kept apart, structural empties
+and unknown inputs kept out of the disagreement count, and score values compared
+only on one scale; attribution-side and matching-side sensitivity families
+recorded as ordinary runs against a declared reference, with not-variable
+handles reported as rows; per-call margins of the native method; candidate
+no-score reasons as rows of their own, and schema rules for two attribution
+invariants (contract 07 D9, D10); one transform per `readWindow` read, or a
+stated ambiguity; one home for path resolution; a shared synthetic integrated
+fixture; and repository-wide integration checks, each verified by injecting the
+violation it guards against.
 
 ### Implemented but explicitly uncalibrated or narrow
 
@@ -2660,8 +3088,11 @@ exported tables, figures, an example index and a provenance record.
 - **The native method assumes spherical spreading from a point source.** It
   models no directivity, reflection, occlusion or frequency dependence. Its
   tolerance to an unmodelled level bias is half the gap between the two
-  candidates' predictions. Beyond that, the wrong animal fits well, and no QC
-  fact says so.
+  candidates' predictions. `vawlume.estimator.qcFacts` reports that tolerance
+  per call, how far each observation is from reversing the ranking, and when an
+  observation fits neither candidate. A wrong animal that fits within
+  tolerance, though, is not detectable from these facts: every fact then looks
+  ordinary.
 - **The native method cannot detect simultaneous calling.** A mixture of two
   callers yields one observed level difference, scored as if one animal
   produced it. Equal scores mean the geometry cannot separate the animals.
@@ -2768,6 +3199,68 @@ exported tables, figures, an example index and a provenance record.
   profile grammar, and the existing registrars inside the matching, agreement and
   attribution-policy paths have not been refactored onto it.
 
+**Comparison, sensitivity and QC facts (Phase 7):**
+
+- **Cross-path agreement on synthetic data is circular.** Every path's input in
+  the shipped fixture and demonstrations was written by this repository, so
+  agreement there shows that the machinery joins correctly, not that any path is
+  accurate. No ground truth for who called exists for any recording VAWLUME has
+  seen.
+- **No score is comparable across recordings, paths or settings versions**, and
+  `compare` refuses to put such values side by side rather than computing a
+  difference.
+- **Sensitivity shows how conclusions move** under one declared change at a
+  time. It selects nothing, and moving or not moving is not evidence of
+  correctness. Its results hold for the fixture or dataset they ran on.
+- **Both sensitivity orchestrators have run only on the synthetic fixture.** No
+  real-data run of either was made in v2, and analysis counts do not predict wall
+  time on real data.
+- **A failed sensitivity apply is not rolled back as a family.** Each producer
+  owns its transaction, so the variants applied before the failure remain, with
+  no family record. Re-applying meets `RunAlreadyApplied` on them; their run keys
+  are deterministic, so they can be found and inspected.
+- **A decision policy file that has moved or changed** since a run was decided
+  can no longer be re-read. `compare` then assumes all five statuses are
+  producible on that side and has no rank basis from the policy;
+  `result.sides.policy_read_status` says so.
+- **The QC facts make the native method's margin visible, not its failures.** A
+  wrong animal that fits within the margin is not detectable from storage.
+
+**Real-data acceptance boundary (7.14, 7.14a):**
+
+- Acceptance used **four right-microphone recordings** from one acquisition day,
+  four animals and one rig. It is **functional and consistency acceptance only**:
+  formats ingest, counts reconcile, provenance holds, refusals fire, and the
+  sessions behave alike. Nothing in it is validation or accuracy.
+- **Three anchors per clock pair.** Across the four sessions the audio clock
+  drifted −222 to −199 ppm against the acquisition clock, and the controller
+  12 to 16 ppm. Each affine fit has one residual degree of freedom.
+  **A piecewise transform is not supportable with three anchors**: a
+  two-segment fit is exactly determined and leaves no residual to inspect.
+  Leaving one anchor out leaves two, so its only output is that anchor's
+  prediction error.
+- **The audio anchors embed the controller's tone schedule** (each was placed at
+  a tone's leading edge minus 2 s). A systematic offset common to every session
+  would not appear in any residual.
+- **Behaviour is coded to the second.** The manual video anchors sit 0.18–0.73 s
+  before the TTL onsets in three sessions, and 1.15 s in the fourth, which
+  whole-second coding does not explain. They served as QC only. The video clock
+  was declared same-origin with the acquisition clock, not fitted.
+- **Protocol epochs are asserted by the controller program, not observed.** The
+  empty-chamber control is "protocol-asserted; not observed", and the marker
+  windows' white noise (to about 60 kHz) overlaps the lower call band; the tones
+  do not reach it.
+- **Native caller attribution is not applicable to these recordings.** Each has
+  one microphone channel; the rig's two microphones are separate files with
+  unknown relative clocks; there is no tracking and no microphone geometry. The
+  estimator refuses a plan by name (`vawlume:estimator:RunSpecInvalid`, no
+  participating entities) rather than receive inputs that do not exist.
+- **The four-recording consilience exploration completed, with an
+  uninformative probe comparison.** No recording-level metadata field exists to
+  stratify on, so its subset was the whole frame and the two probes agree by
+  construction. It took 8.7 hours against a 4.5-hour estimate; most of the
+  excess is response computation, not matching (§6.5).
+
 ### Modeled in the schema but not populated by current workflows
 
 `sequences`, `sequence_members`, `bouts`, and `bout_members` are implemented
@@ -2803,9 +3296,18 @@ than two candidates or two channels in the native method; agreement-group
 targets for the native path; marginalizing over tracks, or reading an identity
 association's value as a weight; gating or weighting on pose confidence or
 clock uncertainty; consuming imported claims or backend estimates in the native
-path; comparing native, backend and imported results, sensitivity analysis
-across paths, and comparing normalization profiles (Phase 7). (Paging and
-filtering in `report`, and its `windows` table, arrived in Phase 7.5.)
+path; a merged, consensus or "best" attribution across paths, or any composite
+agreement score. *(Comparing native, backend and imported results, sensitivity
+analysis across paths, and comparing normalization profiles were listed here
+until Phase 7 built them, §7.10. Paging and filtering in `report`, and its
+`windows` table, arrived in Phase 7.5.)*
+
+Beyond v2, by decision: relating the two microphones of a rig that records them
+as separate files (the inter-microphone consilience module); user-guided,
+program-refined anchor derivation at sub-second resolution; a portable-root
+policy for stored paths and manifest ownership (alignment R5 and R7); a
+same-origin timebase declaration; an intake writer for a recording's duration,
+sample rate and channel count; schema migration machinery.
 
 ---
 
@@ -2819,6 +3321,7 @@ filtering in `report`, and its `windows` table, arrived in Phase 7.5.)
 - [`../design/04_caller_attribution_contract.md`](../design/04_caller_attribution_contract.md) — caller-attribution design contract: what a candidate, a decision, and an imported claim each mean, and why a detection is not an attribution claim. Imported, backend and native results use the same run, target, candidate, evidence, decision, and read-back surfaces.
 - [`../design/05_backend_localization_contract.md`](../design/05_backend_localization_contract.md) — backend/localization design contract: what a localization estimate is, why a frame is part of a coordinate, and the five evidence dimensions.
 - [`../design/06_native_estimator_contract.md`](../design/06_native_estimator_contract.md) — native-estimator design contract: the method's five conditions, the two refusals Phase 6 lifted and where each lives, what an unscored candidate states, and what the phase cannot claim.
+- [`../design/07_integrated_validation_contract.md`](../design/07_integrated_validation_contract.md) — integrated validation contract: what a comparison and a sensitivity family may and may not claim, the stored joins across event sets, the QC facts, the stability labels of "Status of public functions", the real-data scope, and the persistent-database policy.
 
 ### Contracts per stage
 
@@ -2858,6 +3361,12 @@ filtering in `report`, and its `windows` table, arrived in Phase 7.5.)
 - [`../development/43_native_estimator_method.md`](../development/43_native_estimator_method.md) — the native method, its settings profile and its five conditions
 - [`../development/44_native_estimation_run.md`](../development/44_native_estimation_run.md) — the native run: one transaction, its evidence rows, reconstruction, refusals, deciding and reading back
 - [`../development/45_integrated_native_estimator_demonstration.md`](../development/45_integrated_native_estimator_demonstration.md) — the integrated native-estimator example, its six scenes, the model-mismatch failure, and what it cannot show
+- [`../development/46_attribution_comparison.md`](../development/46_attribution_comparison.md) — comparing two attribution runs, within one event set and across event sets through a named stored analysis
+- [`../development/47_attribution_sensitivity.md`](../development/47_attribution_sensitivity.md) — attribution-side and matching-side sensitivity families, their handles, and the summary
+- [`../development/48_native_qc_facts.md`](../development/48_native_qc_facts.md) — the native method's per-call margins, and the failure they cannot detect
+- [`../development/49_path_resolution.md`](../development/49_path_resolution.md) — the one home of path resolution, and the Windows forms it refuses
+- [`../development/50_integrated_fixture.md`](../development/50_integrated_fixture.md) — the shared synthetic Phase 7 scene, and why agreement on it is circular
+- [`../development/30_repository_self_description.md`](../development/30_repository_self_description.md) — what the repository checks about its own documentation
 - [`../development/35_consilience_exploration_workflow.md`](../development/35_consilience_exploration_workflow.md) — the exploratory workflow: its stages, the analysis-cost arithmetic, the diagnostic battery and what an undefined partial correlation means, fractional-factorial aliasing, subset sampling, the two support-pattern vocabularies, the thin shared feature space, the USVSEG frequency-extent limitation, and its explicit non-goals
 
 ### Configuration and schema

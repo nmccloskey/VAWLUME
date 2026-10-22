@@ -1,6 +1,8 @@
 function result = candidateGeometry(conn, eventRef, clock, tracking, participants, channelIndices)
 %CANDIDATEGEOMETRY Each participant's distance to each microphone, through identity.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 %   result = VAWLUME.ESTIMATOR.CANDIDATEGEOMETRY(conn, eventRef, clock, tracking, ...
 %       participants, channelIndices)
 %

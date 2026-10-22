@@ -1,6 +1,8 @@
 function result = resolveStrata(conn, recordingIds, options)
 %RESOLVESTRATA Resolve contract §I's recording-level stratum fields for a frame.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % RESULT = vawlume.eda.RESOLVESTRATA(CONN, RECORDINGIDS) resolves every candidate
 % stratum field the database already carries for those recordings. Supply
 % Fields=[...] to resolve a named list instead of discovering them.

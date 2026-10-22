@@ -1,6 +1,8 @@
 function difference = levelDifference(sideA, sideB, refuseClippedChannels)
 %LEVELDIFFERENCE Observed inter-channel level difference of one event, in dB.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 %   difference = VAWLUME.ACOUSTIC.LEVELDIFFERENCE(sideA, sideB, refuseClipped)
 %
 % For an ORDERED channel pair (a, b) of normalized power values of one event:

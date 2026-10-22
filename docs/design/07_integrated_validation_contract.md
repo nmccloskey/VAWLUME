@@ -15,6 +15,42 @@ trigger pairs and D10's no-score-reason table with its trigger, and nothing
 else. The DDL is documented in
 [`../development/31_caller_attribution_schema.md`](../development/31_caller_attribution_schema.md).
 
+**Status at 7.15 (post-implementation).** The live schema is still `0.14-draft`
+(`PRAGMA user_version = 14`); no itinerary after 7.2 changed `schema.sql`.
+Every decision is built, except where noted:
+
+| Decision | Built at | Documented in |
+|---|---|---|
+| D1, D4, D5 comparison within one event set | 7.6 | doc 46 |
+| D3 comparison across event sets | 7.7, with the consensus-to-consensus join at 7.9 | doc 46 |
+| D2, D6 attribution-side sensitivity families | 7.8 | doc 47 |
+| D7 matching-side sensitivity | 7.9 | doc 47 |
+| D8 the QC facts, including the positional margin | 7.10 | doc 48 |
+| D9, D10 the bump; their writers; `report` reading the reason table | 7.2; 7.4; 7.5 | doc 31, doc 44 |
+| D11 the integrated fixture | 7.3, 7.3a (plus the alignment-session core builder) | doc 50 |
+| D12 real data | 7.14 (preparation), 7.14a (acceptance; the four-recording exploration ran to completion); **7.14b, the acceptance record, is not yet written** | the usage guide §6.5 and §10; the development repository's handoffs |
+| D13 the integration checks | 7.13 | doc 30 |
+| D14 path resolution | 7.11 | doc 49 |
+| D16 the labels | 7.15 | the usage guide, "Status of public functions" |
+| D17 `readWindow`'s one transform; D18 EXP-006 | 7.12 | doc 24; doc 35 |
+| D19 the harness's owner | 7.14 | the development repository |
+| D20 `bracket_extrapolated` as a fixture fact | 7.3 | doc 50 |
+
+**Findings after the clauses were written** (recorded where they were made,
+summarized here):
+
+- **The sensitivity orchestrators have run only on the fixture.** D7 expected
+  no real-data run in v2, and none was made.
+- **`Apply=false` prices only the reference stage** of the consilience
+  exploration on a database with no candidate pairs (7.14a). Doc 35 already
+  said so; the usage guide now does too.
+- **The real rig's microphones are separate one-channel files.** The native
+  estimator's plan refuses a real recording by name for want of participants
+  (7.14a, `vawlume:estimator:RunSpecInvalid`): D12's "not applicable",
+  observed rather than assumed.
+- **Alignment intake stores absolute paths** in `source_files.relative_path` for
+  manifests and stream tables (7.14a). That is R7, deferred beyond v2 by D14.
+
 **Status at 7.2, two findings:**
 
 - **The `ON DELETE SET NULL` action fires D9's update twin.** This was tested

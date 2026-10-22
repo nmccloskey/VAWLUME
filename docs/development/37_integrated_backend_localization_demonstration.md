@@ -118,7 +118,9 @@ semantics row each.
 
 No distance, angle or frame transformation. No combination of evidence
 dimensions. No caller estimate. No candidate or evidence created by intake or
-correspondence. No comparison between the two backends' results (Phase 7).
+correspondence. No comparison between the two backends' results. *(Corrected at
+7.15: that comparison now exists, `vawlume.attribution.compare`, doc 46. This
+demonstration still does not call it.)*
 
 ## What the demonstration could not show
 
@@ -151,9 +153,12 @@ should look first.
   not shown.
 - **Raw window inspection.** `report` has no standalone windows table, so the
   windows are visible only through their claims, estimates, native fields and
-  correspondences.
+  correspondences. *(Corrected at 7.15: `report` has returned a `windows` table
+  since 7.5. This demonstration predates it.)*
 - **Any use of the declared inputs.** They are stored and read back; nothing
-  consumes them yet. That consumer is Phase 7's comparison.
+  consumes them yet. That consumer is Phase 7's comparison. *(Corrected at 7.15:
+  `vawlume.attribution.compare` now reads them, reporting each dimension as
+  `used`, `not_used` or `unknown` per side; doc 46.)*
 - **A real backend.** Both exports are invented, and so is every number.
 
 ## Validation limitation

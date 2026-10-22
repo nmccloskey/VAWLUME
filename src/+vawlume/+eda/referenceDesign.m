@@ -1,6 +1,8 @@
 function design = referenceDesign(reference, options)
 %REFERENCEDESIGN A one-configuration design that IS the reference configuration.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % DESIGN = vawlume.eda.REFERENCEDESIGN(REFERENCE) returns a design struct shaped
 % exactly like a vawlume.eda.screeningDesign result, holding one configuration
 % and no screened factors, so the reference configuration can be applied through

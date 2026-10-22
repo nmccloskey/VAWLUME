@@ -930,7 +930,7 @@ corrected in place with a visible marker by the itinerary that makes them false:
 - raw-video ingestion, pose estimation, or image-based re-identification;
 - dense tracking, audio or identity materialization;
 - cross-path comparison, sensitivity analysis, or comparison of normalization
-  profiles (Phase 7);
+  profiles (Phase 7); *(Built at 7.6–7.9: `vawlume.attribution.compare` and the sensitivity families, contract 07.)*
 - I-5 and P4-2 (D14).
 
 ## Inherited schema audit

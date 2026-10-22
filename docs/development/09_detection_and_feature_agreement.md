@@ -278,7 +278,7 @@ overstate:
 - **unmatched** means no cross-extractor correspondence survived the
   specification. It is *not* a false positive.
 - a **false positive or false negative** requires an independent manual
-  reference, which Phase 6 does not have. Missed events are not representable at
+  reference, which the v1 Phase 6 matching layer did not have. Missed events are not representable at
   all: `manual_reviews` requires an existing detection, group, or consensus
   event to attach to.
 - a **split or merge** group is one correspondence component, never several

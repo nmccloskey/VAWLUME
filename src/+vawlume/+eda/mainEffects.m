@@ -1,6 +1,8 @@
 function result = mainEffects(responses, design, options)
 %MAINEFFECTS Per-factor effect estimates, per response, in the response's own units.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % RESULT = vawlume.eda.MAINEFFECTS(RESPONSES, DESIGN) estimates each active
 % factor's main effect on EACH RESPONSE SEPARATELY, as the difference of response
 % means between the factor's high-level and low-level runs, reported alongside

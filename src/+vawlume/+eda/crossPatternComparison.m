@@ -1,6 +1,8 @@
 function result = crossPatternComparison(profile, equivalenceClass)
 %CROSSPATTERNCOMPARISON One feature across every support pattern, or a refusal.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % RESULT = vawlume.eda.CROSSPATTERNCOMPARISON(PROFILE, EQUIVALENCECLASS) returns
 % the per-pattern distribution rows for one feature, for a caller that intends to
 % put support pattern on an axis and that feature on the other. Called with no

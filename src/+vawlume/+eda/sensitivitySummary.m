@@ -1,6 +1,8 @@
 function result = sensitivitySummary(conn, familyRef, options)
 %SENSITIVITYSUMMARY How conclusions move across one sensitivity family. Read-only.
 %
+% Status: experimental (usage guide, "Status of public functions").
+%
 % RESULT = VAWLUME.EDA.SENSITIVITYSUMMARY(CONN, FAMILYREF) reads a family that
 % VAWLUME.EDA.ATTRIBUTIONSENSITIVITY recorded, compares every variant with the
 % family's declared reference through VAWLUME.ATTRIBUTION.COMPARE, and returns

@@ -749,7 +749,7 @@ them.
 - overwriting native timestamps, native coordinates, or native scores;
 - P4-3 (D8) and P4-2 (D9);
 - comparing a backend result against an imported one, or any cross-path
-  comparison or sensitivity analysis (Phase 7).
+  comparison or sensitivity analysis (Phase 7). *(Built at 7.6–7.9: `vawlume.attribution.compare` and the sensitivity families, contract 07.)*
 
 ## Inherited schema audit
 
