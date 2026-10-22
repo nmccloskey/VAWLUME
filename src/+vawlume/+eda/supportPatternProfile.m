@@ -596,12 +596,23 @@ if isempty(fieldnames(options.ThresholdContext))
     return
 end
 context = options.ThresholdContext;
-if ~isfield(context, "support_pattern_movement")
+% A context was supplied. One whose shape is not a probeConcordance result is
+% said to be unrecognised rather than treated as no context at all, so a change
+% to that result's shape cannot silently drop the ranges (EXP-044).
+if ~isfield(context, "support_pattern_movement") || ...
+        ~isstruct(context.support_pattern_movement) || ...
+        ~isfield(context.support_pattern_movement, "observed_counts") || ...
+        ~istable(context.support_pattern_movement.observed_counts)
+    value.status = "unrecognized";
+    value.source = "ThresholdContext";
+    value.note = "A ThresholdContext was supplied, but it has no " + ...
+        "support_pattern_movement.observed_counts table, so it is not a " + ...
+        "vawlume.eda.probeConcordance result this profile recognises. No " + ...
+        "threshold context is reported.";
     return
 end
 movement = context.support_pattern_movement;
-if ~isfield(movement, "observed_counts") || ...
-        height(movement.observed_counts) == 0
+if height(movement.observed_counts) == 0
     return
 end
 observed = movement.observed_counts;

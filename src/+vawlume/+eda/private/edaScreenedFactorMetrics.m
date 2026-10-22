@@ -9,6 +9,9 @@ function value = edaScreenedFactorMetrics()
 % strongly collinear factors in a screening design produce main effects that
 % cannot be attributed separately. The dependency report marks such a pair so the
 % finding reaches the leverage report rather than staying in a heatmap.
-value = ["temporal_iou", "abs_onset_difference_s", ...
-    "abs_offset_difference_s", "abs_duration_difference_s"];
+%
+% Read from edaFactorPolicy, the one declaration of factor and metric (EXP-042),
+% so the metric a factor's probe values are anchored on and the metric its
+% redundancy finding is about cannot diverge.
+value = edaFactorPolicy().metric_name';
 end

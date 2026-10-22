@@ -50,6 +50,15 @@ function result = readWindow(conn, streamRef, interval, options)
 % `pose_confidence`, because alignment uncertainty and localization uncertainty
 % are different quantities.
 %
+% EXACTLY ONE TRANSFORM, OR A REASON (contract 07 D17). With exactly one usable
+% fitted transform between the two clocks, it is applied. With several and none
+% named, `reference_time_status` is "transform_ambiguous": nothing is applied,
+% native times are untouched, and `candidate_alignment_run_ids` lists them.
+% Name one with AlignmentRun=<id>. A named run that is not among the usable
+% transforms for these two clocks gives "named_transform_unusable", with the
+% usable ones listed; it is never replaced by another. The newest run is never
+% chosen silently.
+%
 % See also VAWLUME.TRACKING.REGISTER, VAWLUME.TRACKING.ASSERTGEOMETRYCOMPATIBLE
 
 arguments
@@ -60,10 +69,16 @@ arguments
     options.SourceRoot (1,1) string = ""
     options.RepoRoot (1,1) string = ""
     options.ReferenceTimebaseKey (1,1) string = ""
+    options.AlignmentRun (1,1) double = NaN
     options.NativeTrackIds (1,:) string = string.empty
     options.BodypartLabels (1,:) string = string.empty
 end
 
+if ~isnan(options.AlignmentRun) && strlength(options.ReferenceTimebaseKey) == 0
+    error("vawlume:tracking:AlignmentRunWithoutReference", ...
+        "AlignmentRun names a transform to a reference clock, so it needs " + ...
+        "ReferenceTimebaseKey as well.");
+end
 if interval(2) < interval(1)
     error("vawlume:tracking:WindowInvalid", ...
         "The requested window ends before it starts: [%g %g].", ...
@@ -106,7 +121,8 @@ else
 end
 
 if strlength(options.ReferenceTimebaseKey) > 0
-    result = attachReferenceTime(conn, stream, result, options.ReferenceTimebaseKey);
+    result = attachReferenceTime(conn, stream, result, ...
+        options.ReferenceTimebaseKey, options.AlignmentRun);
 end
 end
 
@@ -127,7 +143,7 @@ if ~supported
 end
 end
 
-function result = attachReferenceTime(conn, stream, result, referenceKey)
+function result = attachReferenceTime(conn, stream, result, referenceKey, named)
 %ATTACHREFERENCETIME Project native times through a STORED alignment transform.
 %
 % The alignment layer owns transforms. This asks it for one and reports clearly
@@ -143,13 +159,33 @@ if result.basis ~= "time"
     return
 end
 
-runId = trackingResolveAlignmentRun(conn, stream, referenceKey);
-if isnan(runId)
+candidates = trackingResolveAlignmentRun(conn, stream, referenceKey);
+result.candidate_alignment_run_ids = candidates(:)';
+if ~isnan(named)
+    if ~ismember(named, candidates)
+        result.reference_time_status = "named_transform_unusable";
+        result.reference_time_message = "Alignment run " + string(named) + ...
+            " is not a usable fitted transform from timebase '" + ...
+            stream.timebase_name + "' to '" + referenceKey + "'. Usable: " + ...
+            idList(candidates) + ". No other transform is substituted.";
+        return
+    end
+    runId = named;
+elseif isempty(candidates)
     result.reference_time_status = "no_transform";
     result.reference_time_message = "No fitted transform relates timebase '" + ...
         stream.timebase_name + "' to '" + referenceKey + "'. Fit one through " + ...
         "the alignment layer; this reader never estimates a transform.";
     return
+elseif ~isscalar(candidates)
+    result.reference_time_status = "transform_ambiguous";
+    result.reference_time_message = string(numel(candidates)) + ...
+        " fitted transforms relate timebase '" + stream.timebase_name + ...
+        "' to '" + referenceKey + "' (alignment runs " + idList(candidates) + ...
+        "). None is chosen for you: name one with AlignmentRun=.";
+    return
+else
+    runId = candidates;
 end
 
 try
@@ -177,6 +213,14 @@ result.reference_time_status = "applied";
 % agree and how well a keypoint was localized are different quantities, and
 % collapsing them into one confidence would destroy both.
 result.transform = transform;
+end
+
+function text = idList(ids)
+if isempty(ids)
+    text = "none";
+else
+    text = strjoin(string(ids(:)'), ", ");
+end
 end
 
 function result = emptyResult(stream, interval, basis, coverage)
@@ -214,6 +258,7 @@ result.column_contract = struct();
 result.reference_timebase_key = "";
 result.reference_time_status = "not_requested";
 result.reference_time_message = "";
+result.candidate_alignment_run_ids = zeros(1, 0);
 result.transform = struct();
 
 result.identity_boundary = "native_track_id is an upstream trajectory label, " + ...

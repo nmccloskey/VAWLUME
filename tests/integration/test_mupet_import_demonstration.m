@@ -19,12 +19,14 @@ verifyTrue(testCase, demonstration.project_intake.committed);
 verifyEqual(testCase, demonstration.project_intake.preview_verdict, "READY FOR INGEST");
 verifyGreaterThan(testCase, demonstration.project_intake.recording_id, 0);
 
-% The adapter reads the CSV without database access, keeps the interval column
-% lexical so its native sentinel survives, and accepts the declared v2.1 version.
+% The adapter reads the CSV without database access, reads every mapped column
+% lexically so every token reaches the mapper and the interval's native sentinel
+% survives (7.12), and accepts the declared v2.1 version.
 adapter = demonstration.adapter_summary;
 verifyEqual(testCase, adapter.row_count, 4);
 verifyEqual(testCase, adapter.column_count, 13);
-verifyEqual(testCase, adapter.lexical_columns, "inter-syllable interval (sec)");
+verifySubstring(testCase, adapter.lexical_columns, "inter-syllable interval (sec)");
+verifySubstring(testCase, adapter.lexical_columns, "syllable duration (msec)");
 verifyEqual(testCase, adapter.extractor_version_status, "preferred");
 verifyEqual(testCase, adapter.adapter_errors, 0);
 verifyTrue(testCase, adapter.valid_for_ingest);

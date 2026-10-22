@@ -349,42 +349,23 @@ end
 function [runId, channels, action] = persistMeasurements(conn, event, channels, status, options)
 metricRows = resolveMetricDefinitions(conn, ...
     ["call_rms_amplitude"; "call_peak_abs_amplitude"; "call_band_power"]);
-oldAutoCommit = conn.AutoCommit;
-conn.AutoCommit = "off";
-try
-    existing = fetch(conn, "SELECT analysis_run_id, run_type, status, " + ...
-        "IFNULL(run_label,'') AS run_label, IFNULL(vawlume_version,'') AS vawlume_version, " + ...
-        "IFNULL(source_commit,'') AS source_commit, IFNULL(notes,'') AS notes " + ...
-        "FROM analysis_runs WHERE project_id=" + string(event.project_id) + ...
-        " AND run_key=" + acousticSqlText(options.RunKey));
-    if isempty(existing) || height(existing) == 0
-        values = struct(project_id=event.project_id, ...
-            run_type=runType(), run_key=options.RunKey, ...
-            run_label=options.RunLabel, vawlume_version=options.VawlumeVersion, ...
-            source_commit=options.SourceCommit, status=status, ...
-            completed_at_utc=currentTimestamp(), notes=options.Notes);
-        runId = acousticInsertRow(conn, "analysis_runs", values, "analysis_run_id");
-        for index = 1:numel(channels)
-            channels(index).derived_measurement_ids = insertMeasurements(conn, ...
-                runId, event, channels(index), metricRows);
+[runId, channels, action] = acousticFindOrCreateRun(conn, event.project_id, ...
+    options.RunKey, @create, @reuse);
+
+    function [id, written] = create()
+        id = acousticInsertRun(conn, event.project_id, runType(), status, options);
+        written = channels;
+        for index = 1:numel(written)
+            written(index).derived_measurement_ids = insertMeasurements(conn, ...
+                id, event, written(index), metricRows);
         end
-        action = "created";
-        commit(conn);
-    else
-        runId = double(existing.analysis_run_id(1));
-        assertRunCompatible(existing(1, :), status, options);
-        channels = assertMeasurementsCompatible(conn, runId, event, channels);
-        action = "reused";
     end
-catch exception
-    try
-        rollback(conn);
-    catch
+
+    function verified = reuse(id, row)
+        acousticAssertRunCompatible(row, runType(), status, options, ...
+            "vawlume:acoustic:MeasurementRunConflict");
+        verified = assertMeasurementsCompatible(conn, id, event, channels);
     end
-    conn.AutoCommit = oldAutoCommit;
-    rethrow(exception);
-end
-conn.AutoCommit = oldAutoCommit;
 end
 
 function rows = resolveMetricDefinitions(conn, keys)
@@ -413,19 +394,6 @@ for index = 1:height(channel.metrics)
     values.derivation_details_json = detailsJson;
     ids(index) = acousticInsertRow(conn, "derived_measurements", values, ...
         "derived_measurement_id");
-end
-end
-
-function assertRunCompatible(row, status, options)
-actual = [acousticPresentText(row.run_type(1)), acousticPresentText(row.status(1)), ...
-    acousticPresentText(row.run_label(1)), acousticPresentText(row.vawlume_version(1)), ...
-    acousticPresentText(row.source_commit(1)), acousticPresentText(row.notes(1))];
-expected = [runType(), status, options.RunLabel, ...
-    options.VawlumeVersion, options.SourceCommit, options.Notes];
-if ~isequal(actual, expected)
-    error("vawlume:acoustic:MeasurementRunConflict", ...
-        "RunKey '%s' already identifies an analysis run with different provenance or status.", ...
-        options.RunKey);
 end
 end
 
@@ -475,9 +443,4 @@ end
 function conflict()
 error("vawlume:acoustic:MeasurementRunConflict", ...
     "The existing analysis run does not contain exactly the requested deterministic measurements.");
-end
-
-function value = currentTimestamp()
-value = string(char(datetime("now", "TimeZone", "UTC", ...
-    "Format", "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")));
 end

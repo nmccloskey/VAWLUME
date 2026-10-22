@@ -76,6 +76,7 @@ verifyEqual(testCase, sort(h.Data(:)), sort(f.metrics.metric_a(isfinite( ...
     f.metrics.metric_a))));
 imageHandle = findall(correlationFigure, Tag="vawlume-correlation-matrix");
 verifyEqual(testCase, imageHandle.CData, f.dependencies.pearson);
+verifyFalse(testCase, correlationFigure.UserData.refused);
 ax = findall(correlationFigure, Tag="vawlume-eda-axes");
 verifyEqual(testCase, colormap(ax), parula(256), AbsTol=eps);
 
@@ -107,6 +108,12 @@ note = findall(fig, Tag="vawlume-eda-interpretation-note");
 verifyTrue(testCase, any(contains(string(note.String), ...
     "Undefined-reason vocabulary: insufficient observations")));
 verifyFalse(testCase, fig.UserData.per_cell_reason_labels);
+% Nothing is defined, so the figure says once, in its title, that it is a
+% refusal and why (EXP-051).
+verifyTrue(testCase, fig.UserData.refused);
+heading = string(get(get(findall(fig, Tag="vawlume-eda-axes"), "Title"), "String"));
+verifyTrue(testCase, any(contains(heading, "partial correlation: refused")));
+verifyTrue(testCase, any(contains(heading, "insufficient observations")));
 verifyEqual(testCase, fig.Position(3:4), 100 * [16 14]);
 ax = findall(fig, Tag="vawlume-eda-axes");
 verifyGreaterThanOrEqual(testCase, ax.Position(2), 0.59);

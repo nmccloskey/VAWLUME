@@ -2,6 +2,7 @@ function tests = test_mupet_export_adapter
 tests = functiontests({ ...
     @testNominalCsvProducesValidExtractorOutputIR, ...
     @testNativeHeadersAndLexicalMissingTokenSurvive, ...
+    @testAnUnexpectedTokenInAStrictNumericColumnReachesTheMapper, ...
     @testUnderscoreTerminalSentinelProducesIngestibleMissingValue, ...
     @testUnexpectedTextAndUnrelatedUnderscoreStillFailCoercion, ...
     @testDurationAndFrequencyTransformsStayInSourceMapping, ...
@@ -98,6 +99,31 @@ verifyEqual(testCase, string(unrelated.issue_table.code), ...
     "FIELD_VALUE_COERCION_FAILED");
 end
 
+function testAnUnexpectedTokenInAStrictNumericColumnReachesTheMapper(testCase)
+% 7.12. "syllable duration (msec)" declares no missing-value policy. Before,
+% MATLAB type inference read it as double and turned an unexpected token into a
+% silent NaN, so the token was neither preserved nor rejected. Read lexically,
+% the token reaches the mapper, which reports it.
+[repoRoot, cleanupPath] = setUpPath(); %#ok<ASGLU>
+cells = nominalExport();
+cells{3, 5} = 'oops';
+path = writeCsv(tempname + ".csv", cells);
+cleanupFile = onCleanup(@() deleteIfExists(path));
+result = vawlume.ingest.mupetExport(path, RepoRoot=repoRoot, ExtractorVersion="2.1");
+
+verifyTrue(testCase, ismember("syllable duration (msec)", ...
+    result.artifact.lexical_columns));
+verifyFalse(testCase, result.valid_for_ingest);
+duration = valueFor(result.ir, 2, "syllable duration (msec)");
+verifyEqual(testCase, duration.raw_value, "oops");
+verifyEqual(testCase, duration.status, "invalid");
+verifyTrue(testCase, any(result.ir.issues.code == "TYPE_COERCION_FAILED"));
+% Its neighbours, read the same way, still coerce to the same numbers.
+neighbour = valueFor(result.ir, 1, "syllable duration (msec)");
+verifyNotEqual(testCase, neighbour.status, "invalid");
+verifyEqual(testCase, neighbour.native_value_real, 48.0);
+end
+
 function testNativeHeadersAndLexicalMissingTokenSurvive(testCase)
 [repoRoot, cleanupPath] = setUpPath(); %#ok<ASGLU>
 [csvPath, configPath, cleanupFiles] = writeNominalFiles(); %#ok<ASGLU>
@@ -107,8 +133,12 @@ result = vawlume.ingest.mupetExport(csvPath, RepoRoot=repoRoot, ...
 expected = string(nominalHeaders());
 verifyEqual(testCase, string(result.table.Properties.VariableNames)', expected(:));
 verifyEqual(testCase, result.artifact.source_columns, expected(:));
-verifyEqual(testCase, result.artifact.lexical_columns, ...
-    "inter-syllable interval (sec)");
+% Every mapped column is read lexically (7.12), the interval among them.
+verifyTrue(testCase, ismember("inter-syllable interval (sec)", ...
+    result.artifact.lexical_columns));
+for column = result.artifact.lexical_columns'
+    verifyTrue(testCase, isstring(result.table.(column)), column);
+end
 verifyTrue(testCase, isstring(result.table.("inter-syllable interval (sec)")));
 verifyEqual(testCase, result.table.("inter-syllable interval (sec)")(4), "NA");
 

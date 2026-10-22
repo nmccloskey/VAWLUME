@@ -15,6 +15,9 @@ end
 
 function teardownOnce(testCase)
 testCase.TestData.cleanup = [];
+% The fixture template is cached across the suite and was left in %TEMP%
+% (7.12). It is removed here, once, after its last use.
+fixtureTemplate("", Remove=true);
 end
 
 function testRealMixedExampleRendersMeasuredGeometryOnly(testCase)
@@ -174,8 +177,20 @@ samples(burst) = 0.7 * taper .* sin(2 * pi * toneHz * t(burst));
 audiowrite(char(path), samples, sampleRate, BitsPerSample=16);
 end
 
-function path = fixtureTemplate(repoRoot)
+function path = fixtureTemplate(repoRoot, options)
+arguments
+    repoRoot (1,1) string
+    options.Remove (1,1) logical = false
+end
 persistent value
+if options.Remove
+    if ~isempty(value) && isfile(value)
+        delete(value);
+    end
+    value = [];
+    path = "";
+    return
+end
 if isempty(value) || ~isfile(value)
     value = string(tempname) + ".sqlite";
     [conn, ~] = vawlume.db.createPhase1FixtureDatabase(value, repoRoot);

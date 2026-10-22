@@ -1,9 +1,13 @@
 function readResult = mupetReadExportTable(artifactPath, spec, profileDocument)
 %MUPETREADEXPORTTABLE Read one MUPET CSV without losing lexical sentinels.
 %
-% Every profile mapping that declares missing_value_policy is imported as
-% string with MATLAB missing-token conversion disabled. All remaining columns
-% retain detectImportOptions' inferred types. No field semantics are restated.
+% Every column a profile mapping names (source_field or alias) is imported as
+% string with MATLAB missing-token conversion disabled, so every printed token
+% reaches the mapper, which alone decides what is valid. Left to MATLAB type
+% inference, an unexpected token in a numeric column would be erased before
+% strict mapping could reject or preserve it (7.12, as USVSEG reads). Columns no
+% mapping names keep detectImportOptions' inferred types. No field semantics are
+% restated.
 
 arguments
     artifactPath (1,1) string
@@ -39,10 +43,18 @@ try
             spec.delimiter, artifactPath);
     end
 
-    lexicalColumns = declaredLexicalColumns(profileDocument, options.VariableNames);
+    [lexicalColumns, policyColumns] = declaredLexicalColumns(profileDocument, ...
+        options.VariableNames);
     if ~isempty(lexicalColumns)
         options = setvartype(options, cellstr(lexicalColumns), "string");
+        % An empty field in a column with no missing-value policy stays absent,
+        % exactly as type inference left it (a missing string is the mapper's
+        % absent cell, like NaN). Every non-empty token arrives verbatim.
         options = setvaropts(options, cellstr(lexicalColumns), ...
+            TreatAsMissing={}, FillValue=string(missing));
+    end
+    if ~isempty(policyColumns)
+        options = setvaropts(options, cellstr(policyColumns), ...
             TreatAsMissing={}, FillValue="");
     end
     tbl = readtable(artifactPath, options);
@@ -66,15 +78,13 @@ readResult = struct(table=tbl, delimiter=spec.delimiter, ...
     lexical_columns=lexicalColumns(:));
 end
 
-function columns = declaredLexicalColumns(profileDocument, actualNames)
+function [columns, policyColumns] = declaredLexicalColumns(profileDocument, actualNames)
 columns = strings(0, 1);
+policyColumns = strings(0, 1);
 mappings = normalizeSequence(profileDocument.field_mappings);
 actualNames = string(actualNames);
 for index = 1:numel(mappings)
     mapping = mappings{index};
-    if ~isfield(mapping, "missing_value_policy")
-        continue
-    end
     labels = string(mapping.source_field);
     if isfield(mapping, "aliases")
         labels = [labels; string(mapping.aliases(:))]; %#ok<AGROW>
@@ -82,9 +92,13 @@ for index = 1:numel(mappings)
     match = actualNames(ismember(actualNames, labels));
     if isscalar(match)
         columns(end + 1, 1) = match; %#ok<AGROW>
+        if isfield(mapping, "missing_value_policy")
+            policyColumns(end + 1, 1) = match; %#ok<AGROW>
+        end
     end
 end
 columns = unique(columns, "stable");
+policyColumns = unique(policyColumns, "stable");
 end
 
 function items = normalizeSequence(raw)

@@ -407,15 +407,10 @@ end
 function [runId, outcomes, action] = persistNormalization(conn, source, response, ...
         policy, outcomes, status, options, repoRoot)
 metricRows = resolveNormalizedMetrics(conn, unique(outcomes.normalized_metric));
-oldAutoCommit = conn.AutoCommit;
-conn.AutoCommit = "off";
-try
-    existing = fetch(conn, "SELECT analysis_run_id, run_type, status, " + ...
-        "IFNULL(run_label,'') AS run_label, IFNULL(vawlume_version,'') AS vawlume_version, " + ...
-        "IFNULL(source_commit,'') AS source_commit, IFNULL(notes,'') AS notes " + ...
-        "FROM analysis_runs WHERE project_id=" + string(source.project_id) + ...
-        " AND run_key=" + acousticSqlText(options.RunKey));
-    if isempty(existing) || height(existing) == 0
+[runId, outcomes, action] = acousticFindOrCreateRun(conn, source.project_id, ...
+    options.RunKey, @create, @reuse);
+
+    function [id, written] = create()
         registered = vawlume.db.registerProfileVersion(conn, ...
             struct(project_id=source.project_id), struct( ...
             profile_key=policy.profile_key, profile_name=policy.profile_name, ...
@@ -423,54 +418,39 @@ try
             profile_kind=policy.profile_kind, ...
             profile_schema_version=policy.profile_schema_version, ...
             description=policy.description), RepoRoot=repoRoot);
-        runId = acousticInsertRow(conn, "analysis_runs", struct( ...
-            project_id=source.project_id, run_type=runType(), ...
-            run_key=options.RunKey, run_label=options.RunLabel, ...
-            vawlume_version=options.VawlumeVersion, ...
-            source_commit=options.SourceCommit, status=status, ...
-            completed_at_utc=currentTimestamp(), notes=options.Notes), ...
-            "analysis_run_id");
+        id = acousticInsertRun(conn, source.project_id, runType(), status, options);
         acousticInsertRow(conn, "analysis_run_profiles", struct( ...
-            analysis_run_id=runId, ...
+            analysis_run_id=id, ...
             profile_version_id=registered.profile_version_id, ...
             assignment_role="call_level_normalization_policy"), "inserted_rowid");
         for parent = parentRuns(source, response)'
             acousticInsertRow(conn, "analysis_run_sources", struct( ...
-                analysis_run_id=runId, source_analysis_run_id=parent.id, ...
+                analysis_run_id=id, source_analysis_run_id=parent.id, ...
                 dependency_role=parent.role), "inserted_rowid");
         end
-        for index = find(outcomes.status == "normalized")'
-            values = struct(analysis_run_id=runId, ...
+        written = outcomes;
+        for index = find(written.status == "normalized")'
+            values = struct(analysis_run_id=id, ...
                 metric_definition_id=metricRows.metric_definition_id( ...
-                    metricRows.metric_key == outcomes.normalized_metric(index)));
+                    metricRows.metric_key == written.normalized_metric(index)));
             values.(source.target_column) = source.target_id;
-            values.recording_channel_id = outcomes.recording_channel_id(index);
-            values.value_real = outcomes.value(index);
-            values.unit = outcomes.unit(index);
+            values.recording_channel_id = written.recording_channel_id(index);
+            values.value_real = written.value(index);
+            values.unit = written.unit(index);
             values.derivation_details_json = detailsJson(source, response, ...
-                policy, outcomes(index, :));
-            outcomes.derived_measurement_id(index) = acousticInsertRow(conn, ...
+                policy, written(index, :));
+            written.derived_measurement_id(index) = acousticInsertRow(conn, ...
                 "derived_measurements", values, "derived_measurement_id");
         end
-        commit(conn);
-        action = "created";
-    else
-        runId = double(existing.analysis_run_id(1));
-        assertRunCompatible(existing(1, :), status, options);
-        assertPolicyCompatible(conn, runId, policy);
-        assertParentsCompatible(conn, runId, source, response);
-        outcomes = assertRowsCompatible(conn, runId, source, response, policy, outcomes);
-        action = "reused";
     end
-catch exception
-    try
-        rollback(conn);
-    catch
+
+    function verified = reuse(id, row)
+        acousticAssertRunCompatible(row, runType(), status, options, ...
+            "vawlume:acoustic:NormalizationRunConflict");
+        assertPolicyCompatible(conn, id, policy);
+        assertParentsCompatible(conn, id, source, response);
+        verified = assertRowsCompatible(conn, id, source, response, policy, outcomes);
     end
-    conn.AutoCommit = oldAutoCommit;
-    rethrow(exception);
-end
-conn.AutoCommit = oldAutoCommit;
 end
 
 function parents = parentRuns(source, response)
@@ -494,17 +474,6 @@ rows.metric_definition_id = double(rows.metric_definition_id);
 rows.metric_key = string(rows.metric_key);
 end
 
-function assertRunCompatible(row, status, options)
-actual = [acousticPresentText(row.run_type(1)), acousticPresentText(row.status(1)), ...
-    acousticPresentText(row.run_label(1)), acousticPresentText(row.vawlume_version(1)), ...
-    acousticPresentText(row.source_commit(1)), acousticPresentText(row.notes(1))];
-expected = [runType(), status, options.RunLabel, ...
-    options.VawlumeVersion, options.SourceCommit, options.Notes];
-if ~isequal(actual, expected)
-    conflict("RunKey '" + options.RunKey + ...
-        "' already identifies an analysis run with different provenance or status.");
-end
-end
 
 function assertPolicyCompatible(conn, runId, policy)
 rows = fetch(conn, "SELECT cp.profile_key, cpv.version_label, " + ...
@@ -562,11 +531,6 @@ end
 
 function conflict(message)
 error("vawlume:acoustic:NormalizationRunConflict", "%s", message);
-end
-
-function value = currentTimestamp()
-value = string(char(datetime("now", "TimeZone", "UTC", ...
-    "Format", "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'")));
 end
 
 function root = resolveRepoRoot(root)

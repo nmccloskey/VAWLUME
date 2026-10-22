@@ -248,6 +248,46 @@ verifyFalse(testCase, any(contains(lower(string(fieldnames(applied))), ...
 clear cleanup
 end
 
+function testSeveralTransformsAreAmbiguousUntilOneIsNamed(testCase)
+% P6-4, contract 07 D17. Two solved transforms relate the same two clocks. The
+% reader used to apply the newest silently; it now applies none and lists both
+% until the caller names one, and never substitutes for a named run it cannot
+% use.
+[fixture, cleanup] = setUpRegistered(); %#ok<ASGLU>
+conn = fixture.conn;
+writeSolvedTransform(conn);
+writeSecondSolvedTransform(conn);
+read = @(varargin) vawlume.tracking.readWindow(conn, streamRef(), [0 5], ...
+    "SourceRoot", fixture.scratch, "RepoRoot", fixture.repo_root, ...
+    "ReferenceTimebaseKey", "neural_native", varargin{:});
+
+ambiguous = read();
+verifyEqual(testCase, ambiguous.reference_time_status, "transform_ambiguous");
+verifyEqual(testCase, ambiguous.candidate_alignment_run_ids, [1 2]);
+verifySubstring(testCase, ambiguous.reference_time_message, "AlignmentRun=");
+verifyTrue(testCase, all(isnan(ambiguous.samples.time_reference_s)));
+verifyTrue(testCase, all(isfinite(ambiguous.samples.time_native_s)));
+
+first = read("AlignmentRun", 1);
+verifyEqual(testCase, first.reference_time_status, "applied");
+verifyEqual(testCase, first.samples.time_reference_s, ...
+    first.samples.time_native_s + 10, AbsTol=1e-12);
+second = read("AlignmentRun", 2);
+verifyEqual(testCase, second.samples.time_reference_s, ...
+    second.samples.time_native_s + 20, AbsTol=1e-12);
+
+unusable = read("AlignmentRun", 99);
+verifyEqual(testCase, unusable.reference_time_status, "named_transform_unusable");
+verifyEqual(testCase, unusable.candidate_alignment_run_ids, [1 2]);
+verifyTrue(testCase, all(isnan(unusable.samples.time_reference_s)));
+
+verifyError(testCase, @() vawlume.tracking.readWindow(conn, streamRef(), ...
+    [0 5], SourceRoot=fixture.scratch, RepoRoot=fixture.repo_root, ...
+    AlignmentRun=1), "vawlume:tracking:AlignmentRunWithoutReference");
+
+clear cleanup
+end
+
 function testUnusableTransformIsReportedNotSilentlyDegraded(testCase)
 [fixture, cleanup] = setUpRegistered(); %#ok<ASGLU>
 conn = fixture.conn;
@@ -309,6 +349,27 @@ execute(conn, "INSERT INTO time_alignment_runs(alignment_set_id," + ...
     "'offset','estimated',2,0.001,0.002)");
 execute(conn, "INSERT INTO alignment_segments(alignment_run_id,segment_index," + ...
     "source_start,source_end,scale,offset_s) VALUES(1,1,0,100,1.0,10.0)");
+end
+
+function writeSecondSolvedTransform(conn)
+%WRITESECONDSOLVEDTRANSFORM A second fit of the same two clocks, offset 20 s,
+% in its own alignment set, after writeSolvedTransform.
+execute(conn, "INSERT INTO analysis_runs(project_id,run_type,run_key,status) " + ...
+    "VALUES(1,'temporal_alignment','align-2','completed')");
+execute(conn, "INSERT INTO alignment_sets(analysis_run_id," + ...
+    "recording_id,reference_timebase_id,alignment_set_key,status) " + ...
+    "VALUES((SELECT analysis_run_id FROM analysis_runs WHERE run_key='align-2')," + ...
+    "1,(SELECT timebase_id FROM timebases WHERE timebase_name='neural_native')," + ...
+    "'set-2','fitted')");
+execute(conn, "INSERT INTO time_alignment_runs(alignment_set_id," + ...
+    "source_timebase_id,target_timebase_id,method,status,n_anchors_used," + ...
+    "fit_rmse_s,max_error_s) VALUES(" + ...
+    "(SELECT alignment_set_id FROM alignment_sets WHERE alignment_set_key='set-2')," + ...
+    "(SELECT timebase_id FROM timebases WHERE timebase_name='video_native')," + ...
+    "(SELECT timebase_id FROM timebases WHERE timebase_name='neural_native')," + ...
+    "'offset','estimated',2,0.001,0.002)");
+execute(conn, "INSERT INTO alignment_segments(alignment_run_id,segment_index," + ...
+    "source_start,source_end,scale,offset_s) VALUES(2,1,0,100,1.0,20.0)");
 end
 
 function writeTrackingCsv(path, options)

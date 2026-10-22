@@ -22,6 +22,19 @@ function result = runScreen(conn, dataset, materialized, options)
 %                           default false
 %   WarnAtAnalyses / MaximumAnalyses / AllowExceedingMaximum
 %                           the analysis ceiling, enforced before any write
+%   ReuseManifest           the manifest of an earlier probe of the SAME
+%                           exploration run, applied in this session. See
+%                           below. Default: none
+%
+% REUSE ACROSS PROBES (EXP-050). Two probes of one exploration share its run key,
+% so a unit (configuration, recording, pair) they have in common derives the same
+% analysis run key, and the second probe's matcher or composer call would end in
+% status "reused" after rebuilding the whole plan to find that out. With
+% ReuseManifest, a unit whose run key and specification checksum appear there
+% with status "committed" or "reused" and an analysis id is taken from it
+% directly: same status ("reused"), same id, same empty detail, no call. A unit
+% not found there runs as usual. RESULT.prior_reuse counts the units taken this
+% way. It changes how long a probe takes, never what it stores or reports.
 %
 % THIS FUNCTION OWNS EVERY DATABASE WRITE IN THE EXPLORATORY WORKFLOW. Nothing
 % downstream of it writes at all.
@@ -66,6 +79,7 @@ arguments
     options.WarnAtAnalyses (1,1) double {mustBePositive} = 250
     options.MaximumAnalyses (1,1) double {mustBePositive} = 2500
     options.AllowExceedingMaximum (1,1) logical = false
+    options.ReuseManifest table = table()
 end
 
 requireFields(dataset, ["recordings", "pairs", "project_key"]);
@@ -78,6 +92,8 @@ cost = vawlume.eda.probeCost(dataset, height(configurations), ...
     AllowExceedingMaximum=options.AllowExceedingMaximum);
 
 agreementSpecPath = resolveAgreementSpec(options);
+options.ReuseManifest = reusableUnits(options.ReuseManifest, materialized, ...
+    options.Apply);
 manifest = emptyManifest();
 started = tic;
 abandoned = false;
@@ -122,6 +138,7 @@ result = struct( ...
     status_counts=statusCounts(manifest), ...
     design_completeness=completeness, ...
     elapsed_seconds=elapsed, ...
+    prior_reuse=priorReuse(manifest, options.ReuseManifest), ...
     unit_status_vocabulary=edaUnitStatuses()', ...
     pair_ordering=dataset.pair_ordering, ...
     signed_difference_direction=dataset.signed_difference_direction, ...
@@ -154,7 +171,11 @@ end
 
 function [status, detail, analysisId] = applyMatching(conn, recording, pair, ...
     runKey, specPath, options)
-analysisId = NaN;
+[found, status, detail, analysisId] = fromPriorProbe(options.ReuseManifest, ...
+    runKey);
+if found
+    return
+end
 try
     outcome = vawlume.matching.compare(conn, ...
         struct(recording_id=recording.recording_id), ...
@@ -189,7 +210,13 @@ end
 
 sources = matchingRunKeys(materialized, configuration, recording, dataset);
 analysisId = NaN;
-if ~options.Apply
+[found, priorStatus, priorDetail, priorId] = fromPriorProbe( ...
+    options.ReuseManifest, keys.agreement);
+if found
+    status = priorStatus;
+    detail = priorDetail;
+    analysisId = priorId;
+elseif ~options.Apply
     % Planning cannot compose: the composer resolves its sources from stored
     % analyses, and in a dry run none has been written. Reporting the unit as
     % planned is honest; claiming it was validated would not be.
@@ -628,6 +655,65 @@ elseif any(ismember(manifest.status, ["failed", "conflict", "skipped"]))
     value = "completed_with_problems";
 else
     value = "completed";
+end
+end
+
+% ----------------------------------------------------------- prior reuse ---
+
+function value = reusableUnits(prior, materialized, applied)
+%REUSABLEUNITS The units of an earlier probe this probe may take as they are.
+%
+% Only an applied probe reuses, only from the same exploration run, only units
+% that succeeded with an analysis id, and only where this probe's configuration
+% carries the same specification checksum - so a taken unit is exactly the one
+% the matcher or composer would have reported "reused".
+value = emptyManifest();
+if ~applied || isempty(prior) || height(prior) == 0
+    return
+end
+requireColumns(prior, value.Properties.VariableNames);
+index = materialized.index;
+keep = prior.exploration_run_key == materialized.exploration_run_key & ...
+    ismember(prior.status, ["committed", "reused"]) & ...
+    isfinite(prior.analysis_run_id);
+[known, at] = ismember(prior.configuration_id, string(index.configuration_id));
+sameChecksum = false(height(prior), 1);
+sameChecksum(known) = prior.specification_checksum_sha256(known) == ...
+    string(index.checksum_sha256(at(known)));
+value = prior(keep & sameChecksum, value.Properties.VariableNames);
+end
+
+function [found, status, detail, analysisId] = fromPriorProbe(prior, runKey)
+match = find(prior.run_key == runKey, 1);
+found = ~isempty(match);
+status = "";
+detail = "";
+analysisId = NaN;
+if found
+    % Exactly what the matcher and the composer report for an analysis that
+    % already exists under this key with this specification.
+    status = "reused";
+    analysisId = prior.analysis_run_id(match);
+end
+end
+
+function value = priorReuse(manifest, prior)
+taken = ismember(manifest.run_key, prior.run_key);
+value = struct( ...
+    unit_count=nnz(taken), ...
+    matching_unit_count=nnz(taken & manifest.unit_kind == "matching"), ...
+    agreement_unit_count=nnz(taken & manifest.unit_kind == "agreement"), ...
+    note="Units taken from an earlier probe of the same exploration run, " + ...
+        "without calling the matcher or the composer. Each is reported " + ...
+        "exactly as the call would have reported it: status reused, the " + ...
+        "same analysis id.");
+end
+
+function requireColumns(value, names)
+missingNames = string(names(~ismember(names, value.Properties.VariableNames)));
+if ~isempty(missingNames)
+    error("vawlume:eda:RunnerInputInvalid", ...
+        "ReuseManifest is missing column(s): %s.", strjoin(missingNames, ", "));
 end
 end
 

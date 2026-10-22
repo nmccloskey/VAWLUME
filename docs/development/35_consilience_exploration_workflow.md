@@ -392,6 +392,13 @@ output says so.
 The subset is where the extra search budget is spent; the full dataset gets the
 compact screen.
 
+A unit (configuration, recording, pair) the reference run or the screen already
+applied under this exploration run key is not re-planned. Its row is taken from
+their manifests with the status, analysis id and empty detail the matcher or
+composer would have returned (`reused`), and `subset.reuse` counts such units
+(EXP-050, 7.12). When the subset is the whole frame and its design repeats the
+screen's configurations, that is every unit.
+
 Strata are **recording-level only**. The admitted grammar is
 `recording_attribute:<name>`, `entity_attribute:<name>`, `epoch:<type>`, and
 `recording`. `support_pattern` and `extractor_set` are refused by name, because
@@ -802,7 +809,13 @@ infer wrongly from an output that looks authoritative.
 12. **Real-data execution is materially expensive.** The one-recording Pilot 3
     run took roughly 5.8 hours overall: about 3.62 hours for the 16-configuration
     screen and 2.09 hours for the same-recording 16-configuration subset probe.
-    Profile or estimate cost before scaling to the four-recording pilot dataset.
+    That second figure was spent re-planning analyses the screen had already
+    written (every unit ended `reused`). Since 7.12 the subset probe takes such
+    a unit from the reference and screen manifests without calling the matcher
+    or composer (`runScreen` `ReuseManifest`, EXP-050). Nothing it stores or
+    reports changes; the provenance gains a `subset_probe_reuse` record. An
+    identical-frame run is therefore about 3.7 hours on that recording. Profile
+    or estimate cost before scaling to the four-recording pilot dataset.
 13. **Gallery review is limited.** Real audio rendering was spot-checked, not
     comprehensively adjudicated. A zero-height DeepSqueak extent was traced to
     the source Stats export and is not a VAWLUME rendering defect.

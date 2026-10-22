@@ -17,8 +17,9 @@ function value = edaFactorPolicy()
 % is looser. "Low" and "high" name the parameter value, never the strictness.
 % Without this recorded, the sign of a screening main effect is uninterpretable
 % and an axis label is actively misleading.
-factorName = ["min_temporal_iou"; "max_abs_onset_difference_s"; ...
-    "max_abs_offset_difference_s"; "max_abs_duration_difference_s"];
+% The factor names are the screened IoU floor plus the plausibility bounds
+% edaGateBoundNames declares, in that order (EXP-042: one declaration site).
+factorName = ["min_temporal_iou"; edaGateBoundNames()'];
 metricName = ["temporal_iou"; "abs_onset_difference_s"; ...
     "abs_offset_difference_s"; "abs_duration_difference_s"];
 lowQuantile = [0.10; 0.50; 0.50; 0.50];

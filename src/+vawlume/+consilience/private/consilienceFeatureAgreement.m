@@ -311,7 +311,9 @@ if numel(values) < 2
     value = NaN;
     return
 end
-quartiles = prctile(values, [25 75]);
+% vawlume.eda.sampleQuantile: the same definition as prctile's default, under
+% base MATLAB on every release (EXP-005).
+quartiles = vawlume.eda.sampleQuantile(values, [0.25 0.75]);
 value = quartiles(2) - quartiles(1);
 end
 

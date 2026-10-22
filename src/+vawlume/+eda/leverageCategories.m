@@ -347,13 +347,21 @@ function value = aliasedMainEffects(design)
 % Read from the alias structure rather than from the resolution number alone, so
 % a design whose table says a particular main effect is not uniquely attributable
 % is believed even if its resolution label suggests otherwise.
+%
+% An alias structure that states neither field is read as aliased (EXP-043).
+% Unknown aliasing must not promote interaction_suspected rows to magnitude
+% categories, which is the unearned confidence the alias trigger exists to
+% prevent.
 alias = design.alias;
 if isfield(alias, "main_effects_clear_of_two_factor_interactions")
     value = ~logical(alias.main_effects_clear_of_two_factor_interactions);
     return
 end
-value = isfield(alias, "resolution") && isfinite(alias.resolution) && ...
-    alias.resolution < 4;
+if isfield(alias, "resolution") && isfinite(alias.resolution)
+    value = alias.resolution < 4;
+    return
+end
+value = true;
 end
 
 function value = factorNameFor(design, letter, fallback)

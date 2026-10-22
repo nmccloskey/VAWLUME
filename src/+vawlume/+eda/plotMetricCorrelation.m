@@ -57,9 +57,15 @@ if ~showCellReasons
     % interpretation box. The larger default canvas keeps every cell legible.
     ax.Position = [0.10 0.60 0.84 0.30];
 end
+% A matrix with no defined off-diagonal cell is a refusal, not a sparse heatmap,
+% and says so once and prominently rather than only through crossed cells
+% (EXP-051).
+offDiagonal = ~eye(numel(names));
+refused = ~any(isfinite(matrix(offDiagonal)));
 figureData = fig.UserData;
 figureData.undefined_reason_vocabulary = reasonVocabulary;
 figureData.per_cell_reason_labels = showCellReasons;
+figureData.refused = refused;
 fig.UserData = figureData;
 imageHandle = imagesc(ax, matrix, [-1 1]);
 imageHandle.AlphaData = isfinite(matrix);
@@ -74,7 +80,15 @@ ax.YTickLabel = replace(names, "_", " ");
 ax.XTickLabelRotation = 35;
 xlabel(ax, "Metric");
 ylabel(ax, "Metric");
-title(ax, "Exploratory " + kind + " correlation", Interpreter="none");
+if refused
+    refusal = "No " + kind + " correlation is defined between any two " + ...
+        "metrics. Reason(s): " + strjoin(replace(reasonVocabulary, "_", " "), ...
+        ", ") + ".";
+    title(ax, ["Exploratory " + kind + " correlation: refused", refusal], ...
+        Interpreter="none");
+else
+    title(ax, "Exploratory " + kind + " correlation", Interpreter="none");
+end
 hold(ax, "on");
 observations = double(dependencies.correlation_observations);
 for row = 1:numel(names)

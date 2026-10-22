@@ -193,8 +193,33 @@ reported, never imputed as `1.0`.
 
 With `ReferenceTimebaseKey`, the reader asks the alignment layer for a **stored**
 transform and adds `time_reference_s`. It never fits one. `reference_time_status`
-is `applied`, `no_transform`, `unusable_transform`, or `unsupported_basis`, and a
-refusal leaves native times untouched rather than degrading to a simpler model.
+is one of:
+
+- `applied`;
+- `no_transform`;
+- `transform_ambiguous`;
+- `named_transform_unusable`;
+- `unusable_transform`;
+- `unsupported_basis`.
+
+Any status but `applied` leaves native times untouched rather than degrading to
+a simpler model.
+
+**Exactly one transform, or a reason** (contract 07 D17, since 7.12):
+
+- With exactly one usable fitted transform between the two clocks, it is
+  applied. This is unchanged.
+- With several and none named, the status is `transform_ambiguous`, nothing is
+  applied, and `candidate_alignment_run_ids` lists them. Before 7.12 the newest
+  run was applied silently.
+- `AlignmentRun=<id>` names one. A named run that is not among the usable
+  transforms for these two clocks gives `named_transform_unusable`, with the
+  usable ones listed, and no other run is substituted.
+- `AlignmentRun` without `ReferenceTimebaseKey` is refused
+  (`vawlume:tracking:AlignmentRunWithoutReference`).
+
+The native estimator path names its run through `positionsAtInstants` and is
+unaffected.
 
 Fit diagnostics come back under `result.transform`, deliberately apart from
 `pose_confidence`: how well two clocks agree and how well a keypoint was

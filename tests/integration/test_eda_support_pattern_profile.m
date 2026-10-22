@@ -485,6 +485,15 @@ verifyEqual(testCase, carried.threshold_context.keyed_on, ...
     "supported_extractor_pair_pattern");
 verifySubstring(testCase, carried.threshold_context.note, ...
     "NOT with `patterns`");
+
+% A supplied context of another shape is unrecognised, not absent: a change to
+% the probe result's shape must not silently drop the ranges (EXP-044).
+reshaped = vawlume.eda.supportPatternProfile(testCase.TestData.fixture.conn, ...
+    struct(run_key=context.agreement_run_key), context.reference, ...
+    ThresholdContext=struct(support_pattern_movement=struct(counts=table())));
+verifyEqual(testCase, reshaped.threshold_context.status, "unrecognized");
+verifyEmpty(testCase, reshaped.threshold_context.ranges);
+verifySubstring(testCase, reshaped.threshold_context.note, "not a");
 end
 
 function testTheSharedSpaceLimitationIsStatedInTheOutput(testCase)

@@ -12,6 +12,7 @@ tests = functiontests({ ...
     @testAssessmentsPersistAtomicallyWithTheStatistics, ...
     @testFailureLeavesNoHalfWrittenAgreementAnalysis, ...
     @testRerunReusesAndChangedStatusConflicts, ...
+    @testAStoredNullTemporalMetricIsAbsentNotAnError, ...
     @testThresholdConfigurationsChangeOutcomesWithoutMutatingEachOther, ...
     @testSensitivityRefusesNonComparableInputsAndNamesNoWinner, ...
     @testConsilienceWritesNothingUpstreamAndNoScore});
@@ -573,6 +574,29 @@ end
 end
 
 % ---------------------------------------------------------------- helpers ---
+
+function testAStoredNullTemporalMetricIsAbsentNotAnError(testCase)
+% EXP-006. A hand-edited NULL in a stored candidate metric used to make the
+% read raise. It is absence: the row keeps NaN in memory, never 0, and the
+% summary of that statistic leaves it out of both its value and its n.
+[fixture, cleanup] = setUpFixture(); %#ok<ASGLU>
+before = summarize(fixture, "match-nominal");
+rowsBefore = before.temporal_agreement.rows;
+verifyGreaterThan(testCase, height(rowsBefore), 0);
+
+execute(fixture.conn, "UPDATE candidate_pairs SET temporal_iou = NULL");
+after = summarize(fixture, "match-nominal");
+
+verifyTrue(testCase, all(isnan(after.temporal_agreement.rows.temporal_iou)));
+verifyEqual(testCase, after.temporal_agreement.rows.onset_difference_s, ...
+    rowsBefore.onset_difference_s);
+summary = after.temporal_agreement.summary;
+iou = summary(summary.statistic == "temporal_iou", :);
+verifyEqual(testCase, iou.n, 0);
+verifyTrue(testCase, isnan(iou.mean_signed));
+onset = summary(summary.statistic == "onset_difference_s", :);
+verifyEqual(testCase, onset.n, height(rowsBefore));
+end
 
 function report = summarizeNominal(fixture)
 report = summarize(fixture, "match-nominal");
