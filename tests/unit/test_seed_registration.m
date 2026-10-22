@@ -4,7 +4,54 @@ tests = functiontests({ ...
     @testEveryShippedExtractorProfileVersionIsRegistered, ...
     @testRegisterBuiltinSemanticsRejectsConflicts, ...
     @testSameVersionChangedProfileBytesRejectAsConflict, ...
-    @testDeliberateProfileVersionRevisionCanCoexist});
+    @testDeliberateProfileVersionRevisionCanCoexist, ...
+    @testSyncingADatabaseSeededWithAnOlderVersionAppendsTheShippedOne});
+end
+
+function testSyncingADatabaseSeededWithAnOlderVersionAppendsTheShippedOne(testCase)
+% Contract 07 D13 (E14, R3): the persistent-database registry sync. A database
+% created under an older shipped version of a profile is synchronized with
+% vawlume.db.registerBuiltinSemantics. The older version stays exactly as it
+% was, the shipped version is appended beside it, and a second sync changes
+% nothing.
+repoRoot = repoRootForTest();
+addpath(fullfile(repoRoot, "src"));
+cleanupPath = onCleanup(@() rmpath(fullfile(repoRoot, "src")));
+[conn, dbFile] = createDisposableDatabase(repoRoot);
+cleanupDb = onCleanup(@() cleanupDatabase(conn, dbFile));
+
+% The realistic upgrade: one repository whose shipped profile file is replaced in
+% place by a newer version, under a database that persists across the update.
+% A scratch copy of config/ stands for that repository.
+scratchRoot = string(tempname);
+copyfile(fullfile(repoRoot, "config"), fullfile(scratchRoot, "config"));
+cleanupRoot = onCleanup(@() rmdir(scratchRoot, "s"));
+relative = fullfile("config", "01_mapping_profiles", "extractors", "deepsqueak", ...
+    "deepsqueak_output_mapping_profile.json");
+shippedBytes = fileread(fullfile(repoRoot, relative));
+shippedVersion = string(jsondecode(shippedBytes).profile.profile_version);
+writeText(fullfile(scratchRoot, relative), replace(shippedBytes, ...
+    """profile_version"": """ + shippedVersion + """", """profile_version"": ""0.0.1"""));
+vawlume.db.registerBuiltinSemantics(conn, scratchRoot);
+seeded = profileVersionRows(conn, "vawlume.deepsqueak.output.v3_2");
+verifyEqual(testCase, string(seeded.version_label), "0.0.1");
+
+writeText(fullfile(scratchRoot, relative), shippedBytes);
+synced = vawlume.db.registerBuiltinSemantics(conn, scratchRoot);
+afterSync = profileVersionRows(conn, "vawlume.deepsqueak.output.v3_2");
+verifyEqual(testCase, string(afterSync.version_label), ["0.0.1"; shippedVersion], ...
+    "The shipped version was not appended beside the older one.");
+verifyEqual(testCase, afterSync(1, :), seeded, ...
+    "Syncing rewrote the older version; profile versions are append-only.");
+verifyGreaterThan(testCase, synced.inserted, 0);
+
+counts = semanticCounts(conn);
+again = vawlume.db.registerBuiltinSemantics(conn, scratchRoot);
+verifyEqual(testCase, again.inserted, 0, "A second sync inserted rows.");
+verifyEqual(testCase, semanticCounts(conn), counts, "A second sync changed the registry.");
+verifyEqual(testCase, profileVersionRows(conn, "vawlume.deepsqueak.output.v3_2"), afterSync);
+verifyEqual(testCase, height(fetch(conn, "PRAGMA foreign_key_check")), 0);
+clear cleanupPath cleanupDb cleanupRoot
 end
 
 function testEveryShippedExtractorProfileVersionIsRegistered(testCase)

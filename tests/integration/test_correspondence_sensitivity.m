@@ -20,10 +20,11 @@ addpath(fullfile(root, "src"));
 tracked = fullfile(root, "config", "05_matching_profiles", "prototype_matching_consilience_spec.json");
 trackedBytes = fileread(tracked);
 [fixture, cleanup] = vawlume.db.buildIntegratedFixture(RepoRoot=root);
+nativeBefore = nativeSnapshot(fixture.conn);
 work = string(tempname);
 mkdir(work);
 t = struct(root=root, fixture=fixture, cleanup=cleanup, work=work, tracked=tracked, ...
-    tracked_bytes=trackedBytes);
+    tracked_bytes=trackedBytes, native_before=nativeBefore);
 t.spec = familySpec(t, "p79-family");
 t.state_before_plan = state(fixture.conn);
 t.plan = vawlume.eda.correspondenceSensitivity(fixture.conn, t.spec, Print=false, RepoRoot=root);
@@ -35,6 +36,22 @@ t.applied = vawlume.eda.correspondenceSensitivity(fixture.conn, spec, Apply=true
 t.summary = vawlume.eda.sensitivitySummary(fixture.conn, ...
     struct(analysis_run_id=t.applied.family_analysis_run_id));
 testCase.TestData = t;
+end
+
+function testTheSensitivityRunsLeaveEveryNativeTableUnchanged(testCase)
+% Plan §12 integration check 2 (contract 07 D13, E8): planning and applying this
+% sensitivity family wrote derived runs only. Every native row that existed when
+% the fixture was built is byte-identical afterwards. New native rows (an
+% alignment variant ingests its own clock evidence) are appends, not overwrites.
+before = testCase.TestData.native_before;
+after = nativeSnapshot(testCase.TestData.fixture.conn);
+verifyNotEmpty(testCase, before.detections, "No native rows to compare.");
+for name = string(fieldnames(before))'
+    verifyGreaterThanOrEqual(testCase, height(after.(name)), height(before.(name)), ...
+        "Native rows of " + name + " were deleted under the sensitivity runs.");
+    verifyEqual(testCase, after.(name)(1:min(end, height(before.(name))), :), ...
+        before.(name), "Native rows of " + name + " were overwritten under the sensitivity runs.");
+end
 end
 
 function teardownOnce(testCase)
@@ -284,4 +301,28 @@ function value = state(conn)
 version = fetch(conn, "PRAGMA data_version");
 changes = fetch(conn, "SELECT total_changes() AS n");
 value = [double(version{1, 1}), double(changes.n(1))];
+end
+
+% ------------------------------------- plan §12 check 2 (contract 07 D13, E8) ---
+
+function snapshot = nativeSnapshot(conn)
+% Every column of every native table, type-faithful (REAL bit-exact by
+% printf %!.17g, BLOB as hex, NULL as a token), in rowid order.
+snapshot = struct();
+for name = ["detections", "event_measurements", "external_events", ...
+        "external_streams", "external_stream_sources", "external_stream_coverage", ...
+        "tracking_streams", "tracking_series", "tracking_identity_associations", ...
+        "imported_attribution_windows", "imported_attribution_claims", ...
+        "attribution_localization_estimates", "artifacts", "source_files", ...
+        "alignment_anchor_observations", "extraction_runs"]
+    columns = string(fetch(conn, "SELECT name FROM pragma_table_info('" + name + ...
+        "')").name)';
+    projections = "IFNULL('V' || CASE typeof(""" + columns + """) " + ...
+        "WHEN 'real' THEN printf('%!.17g', """ + columns + """) " + ...
+        "WHEN 'blob' THEN hex(""" + columns + """) " + ...
+        "ELSE CAST(""" + columns + """ AS TEXT) END, 'N')";
+    rows = fetch(conn, "SELECT " + strjoin(projections + " AS c" + ...
+        (1:numel(columns)), ", ") + " FROM """ + name + """ ORDER BY rowid");
+    snapshot.(name) = string(table2cell(rows));
+end
 end

@@ -344,6 +344,90 @@ verifyEqual(testCase, sort(other), sort(permittedArithmetic()), ...
     strjoin(setdiff(permittedArithmetic(), other), newline));
 end
 
+function testNoTransformArithmeticOutsideTheAlignmentPackage(testCase)
+% Plan §12 integration check 3, contract 07 D13 (E9): time alignment has one
+% authoritative transform representation, so clock-coefficient arithmetic (a
+% fitted offset_s, scale or slope combined with a time) occurs only in
+% src/+vawlume/+alignment/. Every other package reaches a reference time through
+% applyTransform / applyTransformInterval / applyInverseTransform.
+%
+% The same stripping machinery as the spatial scanner (R2): string literals and
+% comments are removed, so prose naming a coefficient is never a hit.
+%
+% What this cannot see: arithmetic on a coefficient renamed to something else
+% before use. Reading a coefficient back from storage is not arithmetic and is
+% not a hit; combining it with a time is.
+root = repositoryRoot();
+[home, other] = transformHits(root);
+verifyNotEmpty(testCase, home, ...
+    "No coefficient arithmetic was found even in +alignment/. Either the " + ...
+    "appliers moved or the pattern stopped matching anything; a guard that " + ...
+    "finds nothing anywhere proves nothing.");
+verifyEqual(testCase, sort(other), sort(permittedTransformArithmetic()), ...
+    "Clock-coefficient arithmetic outside src/+vawlume/+alignment/ (one " + ...
+    "transform representation, plan §12 check 3):" + newline + ...
+    strjoin(setdiff(other, permittedTransformArithmetic()), newline) + newline + ...
+    "Listed exemptions no longer found:" + newline + ...
+    strjoin(setdiff(permittedTransformArithmetic(), other), newline));
+% The scanner's own regressions.
+pattern = transformPattern();
+for line = ["t = segment.scale * x + segment.offset_s;", "y = x + offset_s;", ...
+        "r = (t - offset_s) / scale;", "y = slope*x;"]
+    verifyNotEmpty(testCase, regexp(stripCode(line), pattern, "once"), ...
+        "The transform pattern missed: " + line);
+end
+for line = ["x = row.offset_s;", "s = struct(scale=1);", "% y = scale * t;", ...
+        "label = ""scale * t"";", "upscaled = 2 * n;"]
+    verifyEmpty(testCase, regexp(stripCode(line), pattern, "once"), ...
+        "The transform pattern matched a non-arithmetic line: " + line);
+end
+end
+
+function value = transformPattern()
+coefficient = "\<(offset_s|scale|slope)\>";
+value = "(" + coefficient + "\s*[\*\+\-/]|[\*\+\-/]\s*(\w+\.)*" + coefficient + ")";
+end
+
+function [home, other] = transformHits(root)
+files = dir(fullfile(root, "src", "**", "*.m"));
+pattern = transformPattern();
+permittedRoot = "src/+vawlume/+alignment/";
+home = strings(0, 1);
+other = strings(0, 1);
+for index = 1:numel(files)
+    path = fullfile(files(index).folder, files(index).name);
+    relative = replace(extractAfter(string(path), strlength(string(root)) + 1), "\", "/");
+    lines = splitlines(string(fileread(path)));
+    inBlockComment = false;
+    for lineNumber = 1:numel(lines)
+        trimmed = strtrim(lines(lineNumber));
+        if trimmed == "%{"
+            inBlockComment = true;
+            continue
+        elseif trimmed == "%}"
+            inBlockComment = false;
+            continue
+        elseif inBlockComment
+            continue
+        end
+        code = strtrim(stripCode(lines(lineNumber)));
+        if ~isempty(regexp(code, pattern, "once"))
+            if startsWith(relative, permittedRoot)
+                home(end+1, 1) = relative + " | " + code; %#ok<AGROW>
+            else
+                other(end+1, 1) = relative + " | " + code; %#ok<AGROW>
+            end
+        end
+    end
+end
+end
+
+function value = permittedTransformArithmetic()
+% Every hit OUTSIDE src/+vawlume/+alignment/, and why it is not clock-transform
+% arithmetic. Exhaustive, per line, never a package.
+value = strings(0, 1);
+end
+
 function testTheArithmeticScannerSeesWhatItShould(testCase)
 % The scanner's own regressions, each a way the Phase 5 version was blind:
 %  * \b is NOT a word boundary in MATLAB regexp (it is \< and \>), so the

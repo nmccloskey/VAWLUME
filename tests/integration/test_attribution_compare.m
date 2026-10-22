@@ -191,6 +191,23 @@ end
 
 % =================================================== the closed vocabulary ===
 
+function testEveryPathPairHasTheSameOutputShape(testCase)
+% Contract 07 D13 check 5, revision R1 (built at 7.13): compare's output has one
+% canonical structure, whatever the paths. Every pair of the three paths over
+% the shared detection set returns the same fields and the same columns, in the
+% same order, so no path gets a field another lacks.
+f = testCase.TestData.fixture;
+pairs = ["imported", "backend"; "imported", "native_detections"; ...
+    "backend", "native_detections"; "native_detections", "imported"];
+reference = outputNames(compareRuns(f, pairs(1, 1), pairs(1, 2)));
+verifyGreaterThan(testCase, numel(reference), 10);
+for k = 2:height(pairs)
+    names = outputNames(compareRuns(f, pairs(k, 1), pairs(k, 2)));
+    verifyEqual(testCase, names, reference, pairs(k, 1) + " vs " + pairs(k, 2) + ...
+        " does not have the canonical output structure.");
+end
+end
+
 function testTheOutputIsAClosedVocabularyAndCombinesNothing(testCase)
 % Guard (contract 07 D4, itinerary 7.6 C): every field and column is named in
 % the closed list, none matches a combining name, and every categorical value
