@@ -29,7 +29,7 @@ Every decision is built, except where noted:
 | D9, D10 the bump; their writers; `report` reading the reason table | 7.2; 7.4; 7.5 | doc 31, doc 44 |
 | D11 the integrated fixture | 7.3, 7.3a (plus the alignment-session core builder) | doc 50 |
 | D12 real data | 7.14 (preparation), 7.14a (acceptance; the four-recording exploration ran to completion); **7.14b, the acceptance record, is not yet written** | the usage guide §6.5 and §10; the development repository's handoffs |
-| D13 the integration checks | 7.13 | doc 30 |
+| D13 the integration checks | 7.13; re-verified by injection at 7.17 | doc 52 *(corrected at 7.17a: this row first said doc 30, which is the self-description document)* |
 | D14 path resolution | 7.11 | doc 49 |
 | D16 the labels | 7.15 | the usage guide, "Status of public functions" |
 | D17 `readWindow`'s one transform; D18 EXP-006 | 7.12 | doc 24; doc 35 |
@@ -1179,7 +1179,7 @@ tripwires.
 |---|---|---|
 | MUPET reader leaves non-lexical numeric mappings to MATLAB type inference | Fix: adapter hardening | 7.12 |
 | MUPET recheck against the untouched 1,317-row file | **Substituted.** That file belongs to the left microphone, which the user put out of scope. 7.14a rechecks the same real shape on the four right-microphone MUPET files (one terminal `_` each). 7.14 also confirms from the part 17a record whether the 1,317-row file was already ingested there | 7.14a |
-| USVSEG `NaN` recheck (1,159 rows) | **Substituted** as above: the four right-microphone USVSEG files (1–28 `NaN` rows each) | 7.14a |
+| USVSEG `NaN` recheck (1,159 rows) | **Substituted** as above: the four right-microphone USVSEG files (1–28 `NaN` rows each). *(Corrected at 7.17a: 7.14a measured the files in `NaN` **cells**, 56–112 per file, every one stored raw with no payload. The row count above was never measured.)* | 7.14a |
 | Persistent-database lifecycle: registry sync, no DDL migration | Policy: D12 (rebuild). Guard: D13 | 7.13 (guard), 7.14a (follows policy) |
 | R7: portable provenance roots | Re-defer: D14 (user) | — |
 | R5: manifest ownership | Re-defer: D14 (user) | — |

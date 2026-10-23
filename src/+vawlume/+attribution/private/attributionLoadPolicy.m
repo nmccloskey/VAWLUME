@@ -68,24 +68,19 @@ policy.rule_key = requiredText(rule, "key");
 %       separation step; several contenders are always "ambiguous". For a
 %       consistency score two strong contenders mean the geometry cannot
 %       separate the animals, which is a claim about the evidence
-implementedRules = ["threshold_with_separation_and_co_occurrence", ...
-    "threshold_with_separation"];
+% Each implemented rule is declared ONCE, with the statuses it can produce, so
+% the list of implemented rules and their producible sets cannot drift apart:
+% a rule added here must state its set (7.17 F2). A comparison reads the set to
+% mark a status another run's rule cannot express as a structural empty
+% (contract 07 D4), rather than hard-coding which path can say what.
+rules = implementedRuleStatuses();
+implementedRules = string(fieldnames(rules))';
 if ~ismember(policy.rule_key, implementedRules)
     error("vawlume:attribution:PolicyRuleUnknown", ...
         "decision_rule.key '%s' is not a rule VAWLUME implements (%s).", ...
         policy.rule_key, strjoin(implementedRules, ", "));
 end
-% The statuses each implemented rule can produce, beside the dispatch list so the
-% two cannot drift apart. A comparison reads this to mark a status another run's
-% rule cannot express as a structural empty (contract 07 D4), rather than
-% hard-coding which path can say what.
-switch policy.rule_key
-    case "threshold_with_separation_and_co_occurrence"
-        policy.producible_statuses = ["assigned", "ambiguous", "unassigned", ...
-            "excluded", "simultaneous"];
-    otherwise
-        policy.producible_statuses = ["assigned", "ambiguous", "unassigned", "excluded"];
-end
+policy.producible_statuses = rules.(policy.rule_key);
 policy.rule_version = requiredText(rule, "version");
 policy.reads = requiredText(rule, "reads");
 if ~ismember(policy.reads, ["score", "probability"])
@@ -188,4 +183,13 @@ end
 
 function value = canonicalPath(path)
 value = vawlume.internal.resolvePath(path);
+end
+
+function value = implementedRuleStatuses()
+% Every decision rule VAWLUME implements, keyed by rule key, with the statuses
+% it can produce. The only place either list is written.
+value = struct( ...
+    threshold_with_separation_and_co_occurrence=["assigned", "ambiguous", ...
+        "unassigned", "excluded", "simultaneous"], ...
+    threshold_with_separation=["assigned", "ambiguous", "unassigned", "excluded"]);
 end

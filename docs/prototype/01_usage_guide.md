@@ -1059,7 +1059,7 @@ Two runtime facts from that run:
   committed, and the matcher reports each one `reused`. 7.14a applied the
   reference configuration one recording at a time first; the dataset call then
   re-planned those 16 units in 174 s in all, about 11 s each, against about 52 s
-  to compute one. *(Part 17a had measured about 117 s per re-planned unit on one
+  to compute one. *(The one-recording acceptance run above, the consilience workstream's Part 17a, had measured about 117 s per re-planned unit on one
   recording.)*
 - **The matching cost scales with detections.** The per-configuration time on
   one recording, scaled by each recording's detection count, predicted the
@@ -2402,7 +2402,7 @@ reason; asking to vary one raises `vawlume:eda:SensitivityHandleNotVariable`:
 `matching_duration` is reported `not_variable`: the tracked specification has no
 duration bound to vary.
 
-Plan before you apply. Every generated profile goes under `output_root`, never
+Plan before you apply. The plan, with its cost, is printed only when `Print=true` (the default): an apply with `Print=false` prints nothing, so plan first with `Apply=false` and read the plan it returns. Every generated profile goes under `output_root`, never
 under `config/`, and the tracked files are never edited. Re-applying the same
 design reuses it. Producers own their own transactions, so a failure part-way
 leaves the variants already applied with no family record; re-applying then
@@ -3387,6 +3387,7 @@ sample rate and channel count; schema migration machinery.
 - [`../development/49_path_resolution.md`](../development/49_path_resolution.md) — the one home of path resolution, and the Windows forms it refuses
 - [`../development/50_integrated_fixture.md`](../development/50_integrated_fixture.md) — the shared synthetic Phase 7 scene, and why agreement on it is circular
 - [`../development/51_integrated_validation_demonstration.md`](../development/51_integrated_validation_demonstration.md) — the integrated-validation example, its refusals, and what it could not show
+- [`../development/52_integration_checks.md`](../development/52_integration_checks.md) — the integration checks, the guard behind each, what each would not catch, and how each was injection-verified
 - [`../development/30_repository_self_description.md`](../development/30_repository_self_description.md) — what the repository checks about its own documentation
 - [`../development/35_consilience_exploration_workflow.md`](../development/35_consilience_exploration_workflow.md) — the exploratory workflow: its stages, the analysis-cost arithmetic, the diagnostic battery and what an undefined partial correlation means, fractional-factorial aliasing, subset sampling, the two support-pattern vocabularies, the thin shared feature space, the USVSEG frequency-extent limitation, and its explicit non-goals
 
